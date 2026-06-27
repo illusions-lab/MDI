@@ -1,40 +1,58 @@
-### About illusion Markdown (.mdi)
+# illusion Markdown — MDI
 
-**illusion Markdown (extension: .mdi)** is a universal Markdown extension format specifically designed to support and enhance Japanese text formatting. 
+**illusion Markdown (`.mdi`)** is a Markdown extension format designed for Japanese typography.  
+It inherits all standard Markdown syntax and adds a minimal set of extensions to express ruby, tate-chu-yoko, no-break, line breaks, and kerning — things that are difficult or verbose in plain Markdown.
 
-While preserving the lightweight and easy-to-write nature of standard Markdown, it introduces specialized syntax to seamlessly handle unique Japanese typographic elements, enabling richer and more flexible document creation.
-
-#### Key Features
-
-* **Full Support for Japanese Typography**
-    Easily implement distinct Japanese formatting—such as ruby characters (furigana), emphasis marks (bouten), and structures designed for vertical writing—using intuitive and simple syntax instead of complex HTML tags.
-* **Seamless Compatibility with Standard Markdown**
-    Since it is built upon standard Markdown specifications, all basic syntax (headings, lists, links, tables) remains fully functional. This ensures a minimal learning curve, allowing you to start writing immediately.
-* **Enhanced Expressiveness**
-    Beyond technical documentation, it empowers writers to create beautifully structured and aesthetically pleasing Japanese texts using only plain text.
-
-#### Ideal Use Cases
-* **Novels and Scenarios:** Perfect for literary writing that frequently utilizes ruby and emphasis marks.
-* **Blogs and Media Articles:** Ideal for creating highly readable Japanese web layouts.
-* **Manuals and Specifications:** Excellent for structuring complex Japanese technical documents.
+**illusion Markdown (`.mdi`)** は日本語組版のための Markdown 拡張フォーマットです。  
+標準 Markdown の構文をすべて継承しつつ、ルビ・縦中横・改行抑止・改行マーカー・字間調整など、プレーンな Markdown では表現しにくい要素を簡潔な記法で補います。
 
 ---
-### illusion Markdown（.mdi）について
 
-illusion Markdown（拡張子：.mdi）は、汎用的なMarkdown記法をベースに、日本語特有の表現や記述スタイルをサポートするために開発された拡張フォーマットです。
+## Documentation / ドキュメント
 
-従来のMarkdownの「シンプルで書きやすい」という利点をそのまま活かしつつ、日本語の文章作成において不足しがちな特殊な記法を補完することで、より豊かで柔軟なドキュメント作成を実現します。
+| Document | 内容 |
+|----------|------|
+| **[SYNTAX.md](./SYNTAX.md)** | **Full MDI syntax reference / MDI 構文リファレンス（英日双語）** |
 
-#### 主な特徴
+The syntax reference covers every MDI extension with examples, HTML output, and CSS hooks.  
+All standard Markdown features (headings, lists, links, tables, code blocks, etc.) are inherited from CommonMark and are not re-documented here.
 
-* **日本語特有の記法を完全サポート**
-    ルビ（ふりがな）、傍点（圏点）、縦書きを想定したフォーマットなど、日本語ならではの細やかなテキスト表現を、直感的でシンプルな記法で記述できます。複雑なHTMLタグは必要ありません。
-* **標準Markdownとのシームレスな互換性**
-    ベースは一般的なMarkdown規格に準拠しているため、見出し、リスト、リンク、表作成などの基本操作は従来のまま利用可能です。学習コストを最小限に抑え、すぐに使い始めることができます。
-* **表現力の拡張**
-    技術的なドキュメントにとどまらず、テキストのみでより美しく整った日本語の文章構造を表現することが可能です。
+構文リファレンスは、全 MDI 拡張の例・HTML 出力・CSS クラスを英日双語で解説しています。  
+見出し・リスト・リンク・表・コードブロックなど標準 Markdown 機能は CommonMark をそのまま継承します。
 
-#### 活用シーン
-* **小説やシナリオの執筆:** ルビや傍点を多用する文学的な表現に。
-* **ブログやメディア記事:** 読みやすさを重視した日本語のレイアウトに。
-* **マニュアルや仕様書:** 複雑な日本語ドキュメントの構造化に。
+---
+
+## At a Glance / 構文一覧
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| **Ruby** ルビ | `{base\|ruby}` | `{東京\|とうきょう}` |
+| **Ruby (split)** 分割ルビ | `{base\|r.u.by}` | `{東京\|とう.きょう}` |
+| **Tate-chu-yoko** 縦中横 | `^text^` | `第^12^話` |
+| **No-break** 改行抑止 | `[[no-break:text]]` | `[[no-break:新宿区]]` |
+| **Line break** 改行 | `[[br]]` | `曙。[[br]]やうやう` |
+| **Blank paragraph** 空白段落 | `[[blank]]` | `[[blank]]` |
+| **Kerning** 字間調整 | `[[kern:<em>:text]]` | `[[kern:-0.1em:言葉]]` |
+
+---
+
+## Key Features / 主な特徴
+
+- **Japanese typography out of the box** — ruby, tate-chu-yoko, no-break, kerning without HTML tags.  
+  ルビ・縦中横・改行抑止・字間調整を HTML タグなしで記述できます。
+- **Fully compatible with standard Markdown** — headings, lists, links, tables work as-is.  
+  見出し・リスト・リンク・表はそのまま使えます。
+- **Semantic, CSS-driven rendering** — MDI provides annotation; appearance is controlled by CSS.  
+  MDI は意味的なアノテーションのみを担い、見た目は CSS に委ねます。
+
+---
+
+## Ideal Use Cases / 活用シーン
+
+- **Novels and scenarios / 小説・シナリオ** — ruby and line-break control for literary Japanese.
+- **Blogs and articles / ブログ・記事** — readable Japanese web layout with proper typography.
+- **Manuals and specs / マニュアル・仕様書** — structured Japanese technical documents.
+
+---
+
+*MDI is developed as part of the [illusions](https://github.com/Iktahana/illusions) project.*
