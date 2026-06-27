@@ -21,7 +21,7 @@ While preserving the lightweight and easy-to-write nature of standard Markdown, 
 ---
 ### illusion Markdown（.mdi）について
 
-**illusion Markdown（拡張子：.mdi）**は、汎用的なMarkdown記法をベースに、日本語特有の表現や記述スタイルをサポートするために開発された拡張フォーマットです。
+illusion Markdown（拡張子：.mdi）は、汎用的なMarkdown記法をベースに、日本語特有の表現や記述スタイルをサポートするために開発された拡張フォーマットです。
 
 従来のMarkdownの「シンプルで書きやすい」という利点をそのまま活かしつつ、日本語の文章作成において不足しがちな特殊な記法を補完することで、より豊かで柔軟なドキュメント作成を実現します。
 
