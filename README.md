@@ -59,6 +59,6 @@ All standard Markdown features (headings, lists, links, tables, code blocks, etc
 
 <div align="right">
   <a href="https://www.art.nihon-u.ac.jp/education/department/literature/">
-    <img src="https://www.art.nihon-u.ac.jp/img2025/common/header_logo.svg" height="64" alt="日本大学芸術学部">
+    <img src="https://raw.githubusercontent.com/illusions-lab/.github/44b758b310ab3f16a6f11fd3b3b7eb583a9244cc/images/NUArt_colored.svg" height="64" alt="日本大学芸術学部">
   </a>
 </div>
