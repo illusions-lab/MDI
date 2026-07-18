@@ -1,4 +1,4 @@
-# @mdi/cli
+# @illusions-lab/mdi-cli
 
 Command-line interface for MDI: `mdi build input.mdi --to html|pdf|epub|docx`.
 

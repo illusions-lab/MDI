@@ -1,5 +1,5 @@
 {
-  "name": "@mdi/to-docx",
+  "name": "@illusions-lab/mdi-to-docx",
   "version": "2.0.1",
   "description": "Render MDI (.mdi) documents to DOCX",
   "license": "MIT",

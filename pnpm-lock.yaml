@@ -23,19 +23,19 @@ importers:
 
   packages/cli:
     dependencies:
-      '@mdi/remark':
+      '@illusions-lab/mdi-remark':
         specifier: workspace:*
         version: link:../remark
-      '@mdi/to-docx':
+      '@illusions-lab/mdi-to-docx':
         specifier: workspace:*
         version: link:../to-docx
-      '@mdi/to-epub':
+      '@illusions-lab/mdi-to-epub':
         specifier: workspace:*
         version: link:../to-epub
-      '@mdi/to-html':
+      '@illusions-lab/mdi-to-html':
         specifier: workspace:*
         version: link:../to-html
-      '@mdi/to-pdf':
+      '@illusions-lab/mdi-to-pdf':
         specifier: workspace:*
         version: link:../to-pdf
     devDependencies:
@@ -139,7 +139,7 @@ importers:
 
   packages/to-epub:
     dependencies:
-      '@mdi/to-hast':
+      '@illusions-lab/mdi-to-hast':
         specifier: workspace:*
         version: link:../to-hast
       hast-util-to-html:
@@ -180,7 +180,7 @@ importers:
 
   packages/to-html:
     dependencies:
-      '@mdi/to-hast':
+      '@illusions-lab/mdi-to-hast':
         specifier: workspace:*
         version: link:../to-hast
       hast-util-to-html:
@@ -199,7 +199,7 @@ importers:
 
   packages/to-pdf:
     dependencies:
-      '@mdi/to-html':
+      '@illusions-lab/mdi-to-html':
         specifier: workspace:*
         version: link:../to-html
       playwright:

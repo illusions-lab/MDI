@@ -1,5 +1,5 @@
 {
-  "name": "@mdi/to-pdf",
+  "name": "@illusions-lab/mdi-to-pdf",
   "version": "2.0.1",
   "description": "Render MDI (.mdi) documents to PDF",
   "license": "MIT",
@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mdi/to-html": "workspace:*",
+    "@illusions-lab/mdi-to-html": "workspace:*",
     "playwright": "^1.48.0"
   },
   "devDependencies": {

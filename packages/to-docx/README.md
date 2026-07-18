@@ -1,4 +1,4 @@
-# @mdi/to-docx
+# @illusions-lab/mdi-to-docx
 
 Maps MDI mdast directly to OOXML (native <w:ruby>, <w:eastAsianLayout>, section-level vertical writing) — does not go through hast/HTML.
 
