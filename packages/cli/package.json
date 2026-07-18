@@ -1,6 +1,6 @@
 {
   "name": "@mdi/cli",
-  "version": "0.0.0",
+  "version": "2.0.1",
   "description": "Command-line interface for converting MDI (.mdi) documents",
   "license": "MIT",
   "type": "module",
@@ -9,7 +9,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts src/cli.ts --format esm --dts",
     "test": "vitest run --passWithNoTests",

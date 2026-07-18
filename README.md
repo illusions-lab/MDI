@@ -62,11 +62,27 @@ pnpm build
 pnpm test
 ```
 
-Versioning and publishing are managed with [Changesets](https://github.com/changesets/changesets):
+### Versioning / バージョニング
 
-```bash
-pnpm changeset
-```
+Every package's version is `<MDI spec version>.<package release number>` — the major.minor pair always equals the MDI spec version this repo targets (currently `2.0`), and the patch number is each package's own independent release count, **starting at `.1`** (never `.0`) for the first release under a given spec version. For example the first release under MDI 2.0 is `2.0.1`; a later fix to just `@mdi/to-docx` might be `2.0.7` while `@mdi/to-html` is still `2.0.3` — patch numbers are independent per package, only major.minor is shared.
+
+すべてのパッケージのバージョンは `<MDI 仕様バージョン>.<パッケージ自身のリリース回数>` です。major.minor はこのリポジトリが対応する MDI 仕様バージョン（現在 `2.0`）に常に一致し、patch は各パッケージが独自にカウントするリリース回数で、そのバージョンで最初のリリースは `.0` ではなく **`.1` から始まります**。例えば MDI 2.0 対応の初回リリースは `2.0.1`。以降、`@mdi/to-docx` だけ修正を重ねて `2.0.7` になっても `@mdi/to-html` は `2.0.3` のまま、というように patch は各パッケージ独立です。
+
+- **Ordinary releases** (same spec version): use Changesets as normal — always choose a **patch** bump, never minor/major.  
+  **通常のリリース**（同じ仕様バージョン内）: 通常どおり Changesets を使い、常に **patch** bump のみを選びます（minor/major は使いません）。
+
+  ```bash
+  pnpm changeset       # record what changed; always pick "patch"
+  pnpm version         # apply pending changesets
+  pnpm release         # build + publish
+  ```
+
+- **Spec version bump** (e.g. MDI 2.0 → 2.1): Changesets has no concept of "MDI spec version," so this is a separate, explicit step — it rewrites every package's version to `<new spec version>.1` regardless of each package's prior patch count.  
+  **仕様バージョンの引き上げ**（例: MDI 2.0 → 2.1）: Changesets は「MDI 仕様バージョン」という概念を知らないため、これは別の明示的な手順です。各パッケージの直前の patch 数に関係なく、全パッケージのバージョンを `<新しい仕様バージョン>.1` へ書き換えます。
+
+  ```bash
+  pnpm bump-spec-version 2.1
+  ```
 
 ---
 

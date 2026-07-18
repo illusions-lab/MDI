@@ -1,6 +1,6 @@
 {
   "name": "@mdi/to-docx",
-  "version": "0.0.0",
+  "version": "2.0.1",
   "description": "Render MDI (.mdi) documents to DOCX",
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "test": "vitest run --passWithNoTests",

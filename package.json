@@ -1,7 +1,7 @@
 {
   "name": "mdi-js",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.1",
   "license": "MIT",
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -13,7 +13,8 @@
     "typecheck": "turbo run typecheck",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "turbo run build && changeset publish",
+    "bump-spec-version": "node scripts/bump-spec-version.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
