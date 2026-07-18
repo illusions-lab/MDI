@@ -1,7 +1,7 @@
 {
-  "name": "mdi-to-hast",
+  "name": "@mdi/remark",
   "version": "0.0.0",
-  "description": "mdast (MDI) to hast transform, shared by the HTML/PDF/EPUB converters",
+  "description": "remark plugin for MDI 2.0 (illusion Markdown): GFM + front matter + MDI extensions",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,11 @@
   },
   "dependencies": {
     "mdast-util-mdi": "workspace:*",
-    "mdast-util-to-hast": "^13.0.0"
+    "micromark-extension-mdi": "workspace:*",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.0"
   },
   "devDependencies": {
     "tsup": "^8.3.0",

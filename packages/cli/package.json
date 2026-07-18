@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "remark-mdi": "workspace:*",
+    "@mdi/remark": "workspace:*",
     "@mdi/to-html": "workspace:*",
     "@mdi/to-pdf": "workspace:*",
     "@mdi/to-epub": "workspace:*",

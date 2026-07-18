@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "mdi-to-hast": "workspace:*",
+    "@mdi/to-hast": "workspace:*",
     "hast-util-to-html": "^9.0.0",
     "jszip": "^3.10.0"
   },

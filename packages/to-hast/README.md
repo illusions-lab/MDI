@@ -1,4 +1,4 @@
-# mdi-to-hast
+# @mdi/to-hast
 
 Maps MDI mdast nodes to hast, following the HTML mapping defined in SYNTAX.md. Shared foundation for @mdi/to-html, @mdi/to-pdf, and @mdi/to-epub.
 

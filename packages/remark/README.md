@@ -1,4 +1,4 @@
-# remark-mdi
+# @mdi/remark
 
 Bundled remark plugin: GFM + YAML front matter + MDI extensions. The recommended entry point for producing an MDI mdast tree.
 
