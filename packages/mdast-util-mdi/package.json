@@ -23,7 +23,9 @@
   "dependencies": {
     "micromark-extension-mdi": "workspace:*",
     "mdast-util-from-markdown": "^2.0.0",
-    "mdast-util-to-markdown": "^2.1.0"
+    "mdast-util-to-markdown": "^2.1.0",
+    "@types/mdast": "^4.0.0",
+    "@types/unist": "^3.0.0"
   },
   "devDependencies": {
     "tsup": "^8.3.0",
