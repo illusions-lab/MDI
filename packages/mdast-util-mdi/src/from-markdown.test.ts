@@ -3,7 +3,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { mdi } from "micromark-extension-mdi";
 import type { Paragraph, Root, Text } from "mdast";
 import { mdiFromMarkdown } from "./from-markdown.js";
-import type { MdiEm, MdiKern, MdiNoBreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
+import type { MdiBlank, MdiEm, MdiKern, MdiNoBreak, MdiPagebreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
 
 function parse(value: string): Root {
 	return fromMarkdown(value, {
@@ -234,5 +234,81 @@ describe("mdiBracketMacro", () => {
 	it("does not close on an escaped bracket", () => {
 		const node = firstParagraphChildren(parse(String.raw`[[em:foo\]bar]]`))[0] as MdiEm;
 		expect(withoutPosition(node.children)).toEqual([{ type: "text", value: "foo]bar" }]);
+	});
+});
+
+describe("mdiBlank", () => {
+	it.each(["\\", "\\  ", "<br>", "<br />", "[[blank]]"])("parses %s as a blank paragraph", (value) => {
+		const tree = parse(value);
+		expect(tree.children).toHaveLength(1);
+		expect(withoutPosition(tree.children[0] as MdiBlank)).toEqual({ type: "mdiBlank" });
+	});
+
+	it("keeps one node for every consecutive blank marker", () => {
+		const tree = parse("\\\n\\\n\\");
+		expect(tree.children.map((node) => node.type)).toEqual(["mdiBlank", "mdiBlank", "mdiBlank"]);
+	});
+
+	it("interrupts paragraphs", () => {
+		const tree = parse("春は曙。\n\\\n夏は夜。");
+		expect(withoutPosition(tree)).toEqual({
+			type: "root",
+			children: [
+				{ type: "paragraph", children: [{ type: "text", value: "春は曙。" }] },
+				{ type: "mdiBlank" },
+				{ type: "paragraph", children: [{ type: "text", value: "夏は夜。" }] },
+			],
+		});
+	});
+
+	it.each(["\\ hello", "hello\\"])("leaves non-standalone markers as text", (value) => {
+		const children = firstParagraphChildren(parse(value));
+		expect((children[0] as Text).value).toBe(value);
+	});
+});
+
+describe("mdiBlockMacro", () => {
+	it("parses a pagebreak with an omitted variant", () => {
+		const tree = parse("before\n\n[[pagebreak]]\n\nafter");
+		expect(withoutPosition(tree.children[1] as MdiPagebreak)).toEqual({ type: "mdiPagebreak" });
+	});
+
+	it("parses pagebreak variants", () => {
+		const tree = parse("[[pagebreak:right]]");
+		expect(withoutPosition(tree.children[0] as MdiPagebreak)).toEqual({ type: "mdiPagebreak", variant: "right" });
+	});
+
+	it("applies indent to the following paragraph", () => {
+		const tree = parse("[[indent:2]]\nparagraph");
+		expect(tree.children).toHaveLength(1);
+		expect((tree.children[0] as Paragraph).data?.mdiIndent).toBe(2);
+	});
+
+	it.each([
+		["[[bottom]]", 0],
+		["[[bottom:2]]", 2],
+	])("applies %s to the following paragraph", (macro, expected) => {
+		const tree = parse(`${macro}\nparagraph`);
+		expect((tree.children[0] as Paragraph).data?.mdiBottom).toBe(expected);
+	});
+
+	it("keeps an invalid indent literal", () => {
+		const tree = parse("[[indent:0]]\nparagraph");
+		expect(tree.children).toHaveLength(2);
+		expect((tree.children[0] as Paragraph).children).toEqual([{ type: "text", value: "[[indent:0]]" }]);
+		expect((tree.children[1] as Paragraph).data?.mdiIndent).toBeUndefined();
+	});
+
+	it("keeps stacked block macros literal", () => {
+		const tree = parse("[[indent:2]]\n[[bottom]]\nparagraph");
+		expect(tree.children).toHaveLength(3);
+		expect((tree.children[0] as Paragraph).children).toEqual([{ type: "text", value: "[[indent:2]]" }]);
+		expect((tree.children[1] as Paragraph).children).toEqual([{ type: "text", value: "[[bottom]]" }]);
+		expect((tree.children[2] as Paragraph).data).toBeUndefined();
+	});
+
+	it("keeps a trailing block macro literal", () => {
+		const tree = parse("[[indent:2]]");
+		expect((tree.children[0] as Paragraph).children).toEqual([{ type: "text", value: "[[indent:2]]" }]);
 	});
 });
