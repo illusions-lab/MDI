@@ -10,23 +10,30 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./mdi.css": "./dist/mdi.css"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts && cp src/mdi.css dist/mdi.css",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@illusions-lab/mdi-remark": "workspace:*",
     "mdast-util-mdi": "workspace:*",
     "mdast-util-to-hast": "^13.0.0"
   },
   "devDependencies": {
+    "@types/hast": "^3.0.0",
+    "@types/mdast": "^4.0.0",
+    "hast-util-to-html": "^9.0.0",
+    "remark-parse": "^11.0.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
+    "unified": "^11.0.0",
     "vitest": "^2.1.0"
   }
 }
