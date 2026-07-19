@@ -3,6 +3,10 @@
   "version": "2.0.0",
   "description": "Shared export profile schema for MDI converters",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/illusions-lab/mdi-js"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
