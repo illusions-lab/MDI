@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkMdi from "@illusions-lab/mdi-remark";
-import { cssStringEscape, mdiToHast } from "./index.js";
+import { cssStringEscape, MDI_STYLESHEET, mdiToHast } from "./index.js";
 
 function html(source: string): string {
 	const processor = unified().use(remarkParse).use(remarkMdi);
@@ -33,6 +33,7 @@ describe("mdiToHast", () => {
 
 	it("renders tcy and explicit breaks", () => {
 		expect(html("^12^")).toBe('<p><span class="mdi-tcy">12</span></p>');
+		expect(MDI_STYLESHEET).toContain(".mdi-tcy {\n  text-combine-upright: all;");
 		expect(html("[[br]]")).toBe('<p><br class="mdi-break"></p>');
 	});
 

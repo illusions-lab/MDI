@@ -60,10 +60,6 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'mdi-js',
-			logo: {
-				src: './src/assets/illusions.svg',
-				alt: 'Illusions Lab',
-			},
 			favicon: '/illusions-kanji.svg',
 			description:
 				'Node.js tooling for illusion Markdown (MDI) — parse .mdi and convert to HTML, PDF, EPUB, DOCX.',

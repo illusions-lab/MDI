@@ -51,8 +51,25 @@ for (const { name, version } of published) {
 	const notes = changelogEntry(dir, version) ?? `${name} ${version}`;
 	const tag = `${name}@${version}`;
 
-	console.log(`Creating GitHub Release ${tag}...`);
-	execFileSync("gh", ["release", "create", tag, tarballPath, "--title", tag, "--notes", notes], {
+	const exists = (() => {
+		try {
+			execFileSync("gh", ["release", "view", tag], { cwd: root, stdio: "ignore" });
+			return true;
+		} catch {
+			return false;
+		}
+	})();
+
+	if (!exists) {
+		console.log(`Creating GitHub Release ${tag}...`);
+		execFileSync("gh", ["release", "create", tag, "--title", tag, "--notes", notes], {
+			cwd: root,
+			stdio: "inherit",
+		});
+	}
+
+	console.log(`Uploading tarball for ${tag}...`);
+	execFileSync("gh", ["release", "upload", tag, tarballPath, "--clobber"], {
 		cwd: root,
 		stdio: "inherit",
 	});

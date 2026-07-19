@@ -10,6 +10,9 @@ export const MDI_STYLESHEET = `.mdi-em {
   white-space: nowrap;
   word-break: keep-all;
 }
+.mdi-tcy {
+  text-combine-upright: all;
+}
 .mdi-blank {
   min-block-size: 1lh; /* an empty <p> otherwise collapses to zero height */
 }
