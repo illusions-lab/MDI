@@ -3,13 +3,6 @@ name: Release
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      publish_versioned:
-        description: Publish the package versions already committed on the selected ref.
-        required: true
-        type: boolean
-        default: false
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -18,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -39,29 +31,20 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Create release PR or publish
-        id: changesets
-        if: github.event_name != 'workflow_dispatch'
-        uses: changesets/action@v1
-        with:
-          version: pnpm run version
-          publish: pnpm release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+      - name: Calculate next patch versions
+        id: versions
+        run: node scripts/compute-release-versions.mjs
 
-      - name: Publish versioned packages
-        id: manual-release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_versioned
+      - name: Publish next patch versions
+        id: publish
         run: node scripts/publish-versioned-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Create GitHub Releases with downloadable tarballs
-        if: steps.changesets.outputs.published == 'true' || steps.manual-release.outputs.published == 'true'
+        if: steps.publish.outputs.published == 'true'
         run: node scripts/create-github-releases.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages || steps.manual-release.outputs.publishedPackages }}
+          PUBLISHED_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
