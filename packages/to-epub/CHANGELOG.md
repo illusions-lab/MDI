@@ -1,5 +1,11 @@
 # @illusions-lab/mdi-to-epub
 
+## 2.0.5
+
+### Patch Changes
+
+- @illusions-lab/mdi-to-hast@2.0.5
+
 ## 2.0.4
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # docs
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies
+  - micromark-extension-mdi@2.0.3
+  - mdast-util-mdi@2.0.3
+  - @illusions-lab/mdi-to-hast@2.0.5
+
 ## 0.0.3
 
 ### Patch Changes

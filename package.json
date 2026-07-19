@@ -8,12 +8,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "turbo run build",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
+    "build": "cargo build --workspace --release && turbo run build",
+    "test": "cargo test --workspace && turbo run test",
+    "typecheck": "cargo clippy --workspace -- -D warnings && turbo run typecheck",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "turbo run build && changeset publish",
+    "release": "pnpm run build && changeset publish",
     "bump-spec-version": "node scripts/bump-spec-version.mjs"
   },
   "devDependencies": {

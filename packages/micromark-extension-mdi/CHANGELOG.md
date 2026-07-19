@@ -1,5 +1,14 @@
 # micromark-extension-mdi
 
+## 2.0.3
+
+### Patch Changes
+
+- Add the Rust MDI syntax core to the repository verification pipeline. The
+  JavaScript micromark/remark API and parsed output are unchanged; this release
+  establishes the shared language-neutral grammar foundation for future native
+  bindings.
+
 ## 2.0.2
 
 ### Patch Changes

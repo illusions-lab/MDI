@@ -5,8 +5,8 @@
 // taken from that package's own CHANGELOG.md entry for the version.
 //
 // Invoked from .github/workflows/release.yml after a successful publish,
-// with `publishedPackages` (changesets/action's own output, a JSON array of
-// {name, version}) passed in via PUBLISHED_PACKAGES.
+// with `publishedPackages` passed in via PUBLISHED_PACKAGES. Changesets emits
+// a JSON array of {name, version}; the manual release path may emit names.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -36,11 +36,16 @@ for (const dir of readdirSync(packagesDir)) {
 	dirByName.set(pkg.name, path.join(packagesDir, dir));
 }
 
-for (const { name, version } of published) {
+for (const entry of published) {
+	const name = typeof entry === "string" ? entry : entry.name;
 	const dir = dirByName.get(name);
 	if (!dir) {
-		console.error(`Could not find a workspace package directory for ${name}, skipping its release.`);
-		continue;
+		throw new Error(`Could not find a workspace package directory for ${name}.`);
+	}
+	const packageJson = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+	const version = typeof entry === "string" ? packageJson.version : entry.version;
+	if (!name || !version) {
+		throw new Error("Each published package must include a name and version.");
 	}
 
 	console.log(`Packing ${name}@${version}...`);

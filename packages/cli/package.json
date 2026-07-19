@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-cli",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Command-line interface for converting MDI (.mdi) documents",
   "license": "MIT",
   "repository": {

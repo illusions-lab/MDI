@@ -1,5 +1,16 @@
 # @illusions-lab/mdi-cli
 
+## 2.0.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @illusions-lab/mdi-remark@2.0.4
+  - @illusions-lab/mdi-to-docx@2.0.4
+  - @illusions-lab/mdi-to-epub@2.0.5
+  - @illusions-lab/mdi-to-html@2.0.5
+  - @illusions-lab/mdi-to-pdf@2.0.5
+
 ## 2.0.4
 
 ### Patch Changes
