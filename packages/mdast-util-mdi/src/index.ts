@@ -14,3 +14,4 @@ export type {
 } from "./types.js";
 
 export { mdiFromMarkdown } from "./from-markdown.js";
+export { mdiToMarkdown } from "./to-markdown.js";
