@@ -21,12 +21,14 @@ describe("mdiToDocx", () =>
     );
     const document = await zip.file("word/document.xml")!.async("string");
     expect(document).toContain("<w:document");
-    expect(document).toContain("<w:ruby>");
+    expect(document).toContain("<w:ruby ");
     expect(document).toContain("<w:eastAsianLayout");
+    expect(document).not.toContain("<undefined>");
+    expect(document).not.toContain("</undefined>");
   }));
 
 describe("DOCX heading styles", () => {
-  it("defines all built-in heading levels with black document typography", async () => {
+  it("defines an all-black H1-H9 hierarchy and print block styles", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToDocx(parse("# One\n\n## Two\n\n### Three"), {
         typesetting: { fontFamily: "Noto Serif JP" },
@@ -35,7 +37,7 @@ describe("DOCX heading styles", () => {
     const document = await zip.file("word/document.xml")!.async("string");
     const styles = await zip.file("word/styles.xml")!.async("string");
     expect(document).toContain('<w:pStyle w:val="Heading1"/>');
-    for (const level of [1, 2, 3, 4, 5, 6]) {
+    for (const level of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
       expect(styles).toContain(`w:styleId="Heading${level}"`);
       expect(styles).toMatch(
         new RegExp(
@@ -44,6 +46,10 @@ describe("DOCX heading styles", () => {
       );
     }
     expect(styles).toContain('w:rFonts w:ascii="Noto Serif JP"');
+    expect(styles).toContain('w:styleId="MdiQuote"');
+    expect(styles).toContain('w:styleId="MdiList"');
+    expect(styles).toContain('w:styleId="MdiCode"');
+    expect(styles).toContain('w:styleId="MdiThematicBreak"');
   });
 });
 
@@ -57,7 +63,7 @@ describe("DOCX print defaults", () => {
     expect(document).toContain('w:w="11906"'); // A4 width in twips
     expect(document).toContain('w:h="16838"'); // A4 height in twips
     expect(document).toContain(
-      'w:top="1417" w:right="1417" w:bottom="1417" w:left="1417"'
+      'w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"'
     );
     expect(document).not.toContain("w:textDirection");
     expect(styles).toMatch(
@@ -67,7 +73,7 @@ describe("DOCX print defaults", () => {
 });
 
 describe("mdiToDocx edge cases", () => {
-  it("keeps supported GFM list and inline content while table blocks are skipped", async () => {
+  it("keeps supported GFM list, table, and inline content", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToDocx(
         parse(
@@ -78,8 +84,39 @@ describe("mdiToDocx edge cases", () => {
     const document = await zip.file("word/document.xml")!.async("string");
     expect(document).toContain("done");
     expect(document).toContain("<w:strike/>");
-    expect(document).toContain("<w:ruby>");
-    expect(document).not.toContain("dropped");
+    expect(document).toContain("<w:ruby ");
+    expect(document).toContain("dropped");
+    expect(document).toContain("w:tbl");
+    expect(document).toContain('w:type="dxa"');
+  });
+
+  it("preserves inline code, image alt text, links, and footnote references", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(
+        parse("`code` [link text](https://example.com) ![diagram](image.png) note[^a]\n\n[^a]: definition")
+      )
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    expect(document).toContain("code");
+    expect(document).toContain("link text");
+    expect(document).toContain("[Image: diagram]");
+    expect(document).toContain("[a]");
+  });
+
+  it("maps quotes, fenced code, and thematic breaks to their print styles", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(
+        parse(
+          "> quoted text\n\n```ts\nconst value = 1;\n```\n\n---\n\n- listed item"
+        )
+      )
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    expect(document).toContain('w:pStyle w:val="MdiQuote"');
+    expect(document).toContain('w:pStyle w:val="MdiCode"');
+    expect(document).toContain('w:pStyle w:val="MdiThematicBreak"');
+    expect(document).toContain('w:pStyle w:val="MdiList"');
+    expect(document).toContain("const value = 1;");
   });
 
   it("serializes split ruby readings as a dot-joined Word ruby reading", async () => {

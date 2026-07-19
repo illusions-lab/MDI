@@ -45,7 +45,7 @@ mdi build novel.mdi --to txt-ruby --config novel.export.json
 
 The CLI resolves a relative `coverPath` against the profile file and accepts JPEG and PNG covers only. Invalid dimensions, ranges, page-number values, and chapter split levels fail clearly instead of producing a different layout.
 
-Without a profile, PDF and DOCX use a conventional A4 portrait, horizontal layout: 25 mm margins, 40 characters per line, and 34 lines per page. Front matter `writing-mode: vertical` selects vertical composition; it uses landscape A4 by default to keep the character grid readable. An explicit profile overrides either default.
+Without a profile, PDF and DOCX use a conventional A4 portrait, horizontal layout: 25.4 mm (one-inch, matching Word's Normal preset) margins, 40 characters per line, and 34 lines per page. Front matter `writing-mode: vertical` selects vertical composition; it uses landscape A4 by default to keep the character grid readable. An explicit profile overrides either default.
 
 ## Format support
 

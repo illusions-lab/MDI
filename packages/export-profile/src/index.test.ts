@@ -21,7 +21,7 @@ describe("export profiles", () => {
       landscape: false,
       charactersPerLine: 40,
       linesPerPage: 34,
-      margins: { top: 25, bottom: 25, left: 25, right: 25 },
+      margins: { top: 25.4, bottom: 25.4, left: 25.4, right: 25.4 },
     });
   });
   it("uses front matter for the writing-mode default without overriding explicit settings", () => {

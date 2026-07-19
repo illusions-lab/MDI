@@ -39,8 +39,18 @@ describe("PDF export profile", () => {
       resolveExportProfile()
     );
     expect(html).toContain("@page{size:210mm 297mm");
-    expect(html).toContain("padding:25mm 25mm 25mm 25mm");
+    expect(html).toContain("@page{size:210mm 297mm;margin:25.4mm 25.4mm 25.4mm 25.4mm}");
+    expect(html).not.toContain("body{padding:");
     expect(html).toContain("html{writing-mode:horizontal-tb!important");
+  });
+  it("applies margins through @page so every forced page receives them", () => {
+    const html = applyPdfProfile(
+      "<html><head></head><body><p>first</p><div class=\"mdi-pagebreak\"></div><p>second</p></body></html>",
+      resolveExportProfile()
+    );
+    expect(html).toContain("@page{size:210mm 297mm;margin:25.4mm 25.4mm 25.4mm 25.4mm}");
+    expect(html).toContain("mdi-pagebreak");
+    expect(html).not.toContain("padding:25.4mm");
   });
   it("applies geometry, composition, full-width indentation, and page options", () => {
     const html = applyPdfProfile(

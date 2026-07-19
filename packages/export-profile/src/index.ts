@@ -161,7 +161,8 @@ export const DEFAULT_EXPORT_PROFILE: ResolvedExportProfile = {
     landscape: false,
     charactersPerLine: 40,
     linesPerPage: 34,
-    margins: { top: 25, bottom: 25, left: 25, right: 25 },
+    // Match Word's Normal preset: one inch on all sides.
+    margins: { top: 25.4, bottom: 25.4, left: 25.4, right: 25.4 },
     pageNumbers: { enabled: true, format: "simple", position: "bottom-center" },
   },
   epub: { chapterSplitLevel: "h1" },

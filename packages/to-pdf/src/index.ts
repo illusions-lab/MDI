@@ -33,8 +33,7 @@ export async function mdiToPdf(
     const pageNumber = resolved.pagination.pageNumbers;
     return Buffer.from(
       await page.pdf({
-        width: `${width}mm`,
-        height: `${height}mm`,
+        preferCSSPageSize: true,
         printBackground: true,
         margin: { top: "0mm", right: "0mm", bottom: "0mm", left: "0mm" },
         displayHeaderFooter: pageNumber.enabled,
@@ -77,11 +76,11 @@ export function applyPdfProfile(
     : "";
   const writingMode =
     typesetting.writingMode === "vertical" ? "vertical-rl" : "horizontal-tb";
-  const css = `<style id="mdi-export-profile">@page{size:${width}mm ${height}mm;margin:0}html{writing-mode:${writingMode}!important;background:#fff;color:#000}html,body{width:${width}mm;min-height:${height}mm;margin:0;box-sizing:border-box}body{padding:${
+  const css = `<style id="mdi-export-profile">@page{size:${width}mm ${height}mm;margin:${
     pagination.margins.top
   }mm ${pagination.margins.right}mm ${pagination.margins.bottom}mm ${
     pagination.margins.left
-  }mm;font-family:${cssValue(
+  }mm}html{writing-mode:${writingMode}!important;background:#fff;color:#000}html,body{margin:0;box-sizing:border-box}body{font-family:${cssValue(
     typesetting.fontFamily
   )};font-size:${fontSize}mm;line-height:${lineHeight};writing-mode:${writingMode};text-orientation:mixed;color:#000}p{margin:0 0 .75em;text-indent:${
     typesetting.fullwidthSpaceIndent ? "0" : `${typesetting.textIndentEm}em`
