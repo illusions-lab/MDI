@@ -1,5 +1,12 @@
 # @illusions-lab/mdi-to-epub
 
+## 2.0.4
+
+### Patch Changes
+
+- Updated dependencies [1375175]
+  - @illusions-lab/mdi-to-hast@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes
