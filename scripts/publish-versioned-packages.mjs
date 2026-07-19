@@ -6,11 +6,13 @@ import { join } from "node:path";
 const root = new URL("..", import.meta.url).pathname;
 const manifests = globSync(join(root, "packages", "*", "package.json"));
 const pending = [];
+const releasePackages = [];
 const dryRun = process.argv.includes("--dry-run");
 
 for (const manifestPath of manifests) {
 	const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 	if (manifest.private) continue;
+	releasePackages.push({ name: manifest.name, version: manifest.version });
 	try {
 		execFileSync("npm", ["view", `${manifest.name}@${manifest.version}`, "version"], {
 			cwd: root,
@@ -26,8 +28,11 @@ if (pending.length > 0 && !dryRun) {
 }
 
 if (process.env.GITHUB_OUTPUT) {
-	appendFileSync(process.env.GITHUB_OUTPUT, `published=${pending.length > 0}\n`);
-	appendFileSync(process.env.GITHUB_OUTPUT, `publishedPackages=${JSON.stringify(pending)}\n`);
+	// A manual dispatch is also used to repair/create GitHub Releases for
+	// versions already on npm. The release script is idempotent and skips tags
+	// that already exist.
+	appendFileSync(process.env.GITHUB_OUTPUT, `published=${releasePackages.length > 0}\n`);
+	appendFileSync(process.env.GITHUB_OUTPUT, `publishedPackages=${JSON.stringify(releasePackages)}\n`);
 }
 
 console.log(
