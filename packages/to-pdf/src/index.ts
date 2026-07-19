@@ -3,7 +3,7 @@ import type { Root } from "mdast";
 import { mdiToHtml } from "@illusions-lab/mdi-to-html";
 import {
   PAGE_DIMENSIONS,
-  resolveExportProfile,
+  resolvePrintProfile,
   type ExportProfile,
   type ResolvedExportProfile,
 } from "@illusions-lab/mdi-export-profile";
@@ -18,14 +18,7 @@ export async function mdiToPdf(
   const sourceWritingMode = (
     tree.data as { frontmatter?: { writingMode?: unknown } } | undefined
   )?.frontmatter?.writingMode;
-  const resolved = resolveExportProfile(
-    profile ?? {
-      typesetting: {
-        writingMode:
-          sourceWritingMode === "vertical" ? "vertical" : "horizontal",
-      },
-    }
-  );
+  const resolved = resolvePrintProfile(profile, sourceWritingMode);
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -82,17 +75,17 @@ export function applyPdfProfile(
   const fullwidth = typesetting.fullwidthSpaceIndent
     ? "　".repeat(Math.round(typesetting.textIndentEm))
     : "";
-  const css = `<style id="mdi-export-profile">@page{size:${width}mm ${height}mm;margin:0}html,body{width:${width}mm;height:${height}mm;margin:0;box-sizing:border-box}body{padding:${
+  const writingMode =
+    typesetting.writingMode === "vertical" ? "vertical-rl" : "horizontal-tb";
+  const css = `<style id="mdi-export-profile">@page{size:${width}mm ${height}mm;margin:0}html{writing-mode:${writingMode}!important;background:#fff;color:#000}html,body{width:${width}mm;min-height:${height}mm;margin:0;box-sizing:border-box}body{padding:${
     pagination.margins.top
   }mm ${pagination.margins.right}mm ${pagination.margins.bottom}mm ${
     pagination.margins.left
   }mm;font-family:${cssValue(
     typesetting.fontFamily
-  )};font-size:${fontSize}mm;line-height:${lineHeight};writing-mode:${
-    typesetting.writingMode === "vertical" ? "vertical-rl" : "horizontal-tb"
-  };text-orientation:mixed}p{text-indent:${
+  )};font-size:${fontSize}mm;line-height:${lineHeight};writing-mode:${writingMode};text-orientation:mixed;color:#000}p{margin:0 0 .75em;text-indent:${
     typesetting.fullwidthSpaceIndent ? "0" : `${typesetting.textIndentEm}em`
-  }}</style>`;
+  }}h1,h2,h3,h4,h5,h6{color:#000;break-after:avoid;margin:0 0 .75em;line-height:1.25}h1{font-size:1.6em}h2{font-size:1.35em}h3{font-size:1.15em}a{color:inherit;text-decoration:none}.mdi-pagebreak,.mdi-pagebreak-right,.mdi-pagebreak-left{background:transparent}</style>`;
   return html
     .replace("</head>", `${css}</head>`)
     .replace(/(<p(?:\s[^>]*)?>)(?!\s*<\/p>)/g, `$1${fullwidth}`);

@@ -17,7 +17,7 @@ import type {} from "mdast-util-mdi";
 import type {} from "@illusions-lab/mdi-remark";
 import {
   PAGE_DIMENSIONS,
-  resolveExportProfile,
+  resolvePrintProfile,
   type ExportProfile,
   type ResolvedExportProfile,
 } from "@illusions-lab/mdi-export-profile";
@@ -29,15 +29,9 @@ export async function mdiToDocx(
   tree: Root,
   profile?: ExportProfile
 ): Promise<Buffer> {
-  const options = resolveExportProfile(
-    profile ?? {
-      typesetting: {
-        writingMode:
-          tree.data?.frontmatter?.writingMode === "vertical"
-            ? "vertical"
-            : "horizontal",
-      },
-    }
+  const options = resolvePrintProfile(
+    profile,
+    tree.data?.frontmatter?.writingMode
   );
   const children = tree.children.flatMap((node) => block(node, options));
   const dimensions = PAGE_DIMENSIONS[options.pagination.pageSize];
@@ -80,6 +74,12 @@ export async function mdiToDocx(
           },
           paragraph: { spacing: { line: lineTwips } },
         },
+        heading1: { run: headingRun(options) },
+        heading2: { run: headingRun(options) },
+        heading3: { run: headingRun(options) },
+        heading4: { run: headingRun(options) },
+        heading5: { run: headingRun(options) },
+        heading6: { run: headingRun(options) },
       },
     },
     sections: [
@@ -110,6 +110,11 @@ export async function mdiToDocx(
     ],
   });
   return Packer.toBuffer(document);
+}
+
+/** Word's built-in Heading styles are blue by default; MDI headings inherit document typography. */
+function headingRun(options: ResolvedExportProfile) {
+  return { font: options.typesetting.fontFamily, color: "000000" };
 }
 
 function pageNumberSection(

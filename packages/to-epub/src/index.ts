@@ -4,7 +4,8 @@ import type { Root } from "mdast";
 import type { RootContent as HastRootContent } from "hast";
 import { MDI_STYLESHEET, mdiToHast } from "@illusions-lab/mdi-to-hast";
 import {
-  resolveExportProfile,
+  resolvePrintProfile,
+  type ResolvedExportProfile,
   type ExportProfile,
 } from "@illusions-lab/mdi-export-profile";
 
@@ -24,15 +25,9 @@ export async function mdiToEpub(
   tree: Root,
   options: EpubExportOptions = {}
 ): Promise<Buffer> {
-  const profile = resolveExportProfile(
-    options.profile ?? {
-      typesetting: {
-        writingMode:
-          tree.data?.frontmatter?.writingMode === "vertical"
-            ? "vertical"
-            : "horizontal",
-      },
-    }
+  const profile = resolvePrintProfile(
+    options.profile,
+    tree.data?.frontmatter?.writingMode
   );
   const zip = new JSZip();
   const { hast, frontmatter } = mdiToHast(tree);
@@ -69,7 +64,10 @@ export async function mdiToEpub(
       xhtml(
         chapter.title || title,
         lang,
-        toHtml({ type: "root", children: chapter.children })
+        toHtml(
+          { type: "root", children: chapter.children },
+          { closeSelfClosing: true, tightSelfClosing: true }
+        )
       )
     )
   );
@@ -182,7 +180,7 @@ function textContent(node: HastRootContent): string {
     ? node.children.map(textContent).join("")
     : "";
 }
-function epubStyles(profile: ReturnType<typeof resolveExportProfile>): string {
+function epubStyles(profile: ResolvedExportProfile): string {
   const mode =
     profile.typesetting.writingMode === "vertical"
       ? "writing-mode:vertical-rl;-webkit-writing-mode:vertical-rl;text-orientation:mixed;"

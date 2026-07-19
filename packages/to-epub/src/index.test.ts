@@ -52,6 +52,13 @@ describe("mdiToEpub edge cases", () => {
     ).toEqual(["OEBPS/chapter-1.xhtml"]);
   });
 
+  it("writes XML-compatible self-closing line breaks", async () => {
+    const zip = await JSZip.loadAsync(await mdiToEpub(parse("one[[br]]two")));
+    const chapter = await zip.file("OEBPS/chapter-1.xhtml")!.async("string");
+    expect(chapter).toContain('<br class="mdi-break"/>');
+    expect(chapter).not.toMatch(/<br(?:\s[^>]*)?(?<!\/)>/);
+  });
+
   it("splits chapters for left and right pagebreak variants", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToEpub(

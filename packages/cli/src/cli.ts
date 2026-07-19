@@ -8,11 +8,14 @@ if (!args || process.argv[2] !== "build") {
   );
   process.exitCode = 1;
 } else {
-  build(args.input, args.format, {
-    output: args.output,
-    profile: await loadExportProfile(args.config),
-  }).catch((error: unknown) => {
+  try {
+    const output = await build(args.input, args.format, {
+      output: args.output,
+      profile: await loadExportProfile(args.config),
+    });
+    console.log(`Written ${output}`);
+  } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-  });
+  }
 }

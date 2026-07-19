@@ -25,6 +25,47 @@ describe("mdiToDocx", () =>
     expect(document).toContain("<w:eastAsianLayout");
   }));
 
+describe("DOCX heading styles", () => {
+  it("defines all built-in heading levels with black document typography", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(parse("# One\n\n## Two\n\n### Three"), {
+        typesetting: { fontFamily: "Noto Serif JP" },
+      })
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    const styles = await zip.file("word/styles.xml")!.async("string");
+    expect(document).toContain('<w:pStyle w:val="Heading1"/>');
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      expect(styles).toContain(`w:styleId="Heading${level}"`);
+      expect(styles).toMatch(
+        new RegExp(
+          `w:styleId="Heading${level}"[\\s\\S]*?w:color w:val="000000"`
+        )
+      );
+    }
+    expect(styles).toContain('w:rFonts w:ascii="Noto Serif JP"');
+  });
+});
+
+describe("DOCX print defaults", () => {
+  it("writes conventional A4 portrait geometry and black heading styles", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(parse("# Heading\n\nBody text"))
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    const styles = await zip.file("word/styles.xml")!.async("string");
+    expect(document).toContain('w:w="11906"'); // A4 width in twips
+    expect(document).toContain('w:h="16838"'); // A4 height in twips
+    expect(document).toContain(
+      'w:top="1417" w:right="1417" w:bottom="1417" w:left="1417"'
+    );
+    expect(document).not.toContain("w:textDirection");
+    expect(styles).toMatch(
+      /w:styleId="Heading1"[\s\S]*?w:color w:val="000000"/
+    );
+  });
+});
+
 describe("mdiToDocx edge cases", () => {
   it("keeps supported GFM list and inline content while table blocks are skipped", async () => {
     const zip = await JSZip.loadAsync(

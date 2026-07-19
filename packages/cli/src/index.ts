@@ -3,10 +3,6 @@ import { dirname, extname, resolve } from "node:path";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkMdi from "@illusions-lab/mdi-remark";
-import { mdiToHtml } from "@illusions-lab/mdi-to-html";
-import { mdiToPdf } from "@illusions-lab/mdi-to-pdf";
-import { mdiToEpub } from "@illusions-lab/mdi-to-epub";
-import { mdiToDocx } from "@illusions-lab/mdi-to-docx";
 import {
   parseExportProfileJson,
   resolveExportProfile,
@@ -41,16 +37,22 @@ export async function build(
   const tree = processor.runSync(processor.parse(source)) as Root;
   const result =
     format === "html"
-      ? mdiToHtml(tree)
+      ? (await import("@illusions-lab/mdi-to-html")).mdiToHtml(tree)
       : format === "pdf"
-      ? await mdiToPdf(tree, resolvedOptions.profile)
+      ? await (
+          await import("@illusions-lab/mdi-to-pdf")
+        ).mdiToPdf(tree, resolvedOptions.profile)
       : format === "epub"
-      ? await mdiToEpub(tree, {
+      ? await (
+          await import("@illusions-lab/mdi-to-epub")
+        ).mdiToEpub(tree, {
           profile: resolvedOptions.profile,
           cover: await loadCover(resolvedOptions.profile),
         })
       : format === "docx"
-      ? await mdiToDocx(tree, resolvedOptions.profile)
+      ? await (
+          await import("@illusions-lab/mdi-to-docx")
+        ).mdiToDocx(tree, resolvedOptions.profile)
       : mdiToText(tree, resolvedOptions.profile, format === "txt-ruby");
   const extension = format === "txt-ruby" ? "txt" : format;
   const destination =

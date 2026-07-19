@@ -14,17 +14,17 @@ description: Share exact PDF, DOCX, EPUB, and text export settings across applic
     "identifier": "isbn:9780000000000"
   },
   "typesetting": {
-    "writingMode": "vertical",
+    "writingMode": "horizontal",
     "fontFamily": "Noto Serif JP",
     "textIndentEm": 1,
     "fullwidthSpaceIndent": false
   },
   "pagination": {
     "pageSize": "A4",
-    "landscape": true,
+    "landscape": false,
     "charactersPerLine": 40,
-    "linesPerPage": 30,
-    "margins": { "top": 34, "bottom": 28, "left": 28, "right": 45 },
+    "linesPerPage": 34,
+    "margins": { "top": 25, "bottom": 25, "left": 25, "right": 25 },
     "pageNumbers": {
       "enabled": true,
       "format": "simple",
@@ -44,6 +44,8 @@ mdi build novel.mdi --to txt-ruby --config novel.export.json
 ```
 
 The CLI resolves a relative `coverPath` against the profile file and accepts JPEG and PNG covers only. Invalid dimensions, ranges, page-number values, and chapter split levels fail clearly instead of producing a different layout.
+
+Without a profile, PDF and DOCX use a conventional A4 portrait, horizontal layout: 25 mm margins, 40 characters per line, and 34 lines per page. Front matter `writing-mode: vertical` selects vertical composition; it uses landscape A4 by default to keep the character grid readable. An explicit profile overrides either default.
 
 ## Format support
 

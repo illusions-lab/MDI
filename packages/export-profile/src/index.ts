@@ -151,17 +151,17 @@ export const PAGE_SIZES = Object.keys(PAGE_DIMENSIONS) as PageSize[];
 export const DEFAULT_EXPORT_PROFILE: ResolvedExportProfile = {
   metadata: {},
   typesetting: {
-    writingMode: "vertical",
+    writingMode: "horizontal",
     fontFamily: "serif",
     textIndentEm: 1,
     fullwidthSpaceIndent: false,
   },
   pagination: {
     pageSize: "A4",
-    landscape: true,
+    landscape: false,
     charactersPerLine: 40,
-    linesPerPage: 30,
-    margins: { top: 34, bottom: 28, left: 28, right: 45 },
+    linesPerPage: 34,
+    margins: { top: 25, bottom: 25, left: 25, right: 25 },
     pageNumbers: { enabled: true, format: "simple", position: "bottom-center" },
   },
   epub: { chapterSplitLevel: "h1" },
@@ -374,6 +374,30 @@ export function resolveExportProfile(
       ),
     },
   };
+}
+
+/**
+ * Resolves the profile used for a document export.
+ *
+ * A document's front matter supplies the writing-mode default, while an
+ * explicit export profile always wins. Vertical Japanese composition defaults
+ * to landscape paper so the default character grid remains readable.
+ */
+export function resolvePrintProfile(
+  profile: ExportProfile | undefined,
+  sourceWritingMode?: unknown
+): ResolvedExportProfile {
+  const writingMode =
+    profile?.typesetting?.writingMode ??
+    (sourceWritingMode === "vertical" ? "vertical" : "horizontal");
+  return resolveExportProfile({
+    ...profile,
+    typesetting: { ...profile?.typesetting, writingMode },
+    pagination: {
+      ...profile?.pagination,
+      landscape: profile?.pagination?.landscape ?? writingMode === "vertical",
+    },
+  });
 }
 
 /** Parse a JSON profile for the CLI; malformed JSON never falls back silently. */

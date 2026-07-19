@@ -3,6 +3,7 @@ import {
   PAGE_SIZES,
   parseExportProfileJson,
   resolveExportProfile,
+  resolvePrintProfile,
 } from "./index.js";
 
 describe("export profiles", () => {
@@ -11,6 +12,32 @@ describe("export profiles", () => {
       expect(
         resolveExportProfile({ pagination: { pageSize } }).pagination.pageSize
       ).toBe(pageSize);
+  });
+  it("uses an A4 portrait print layout with conventional margins by default", () => {
+    const profile = resolveExportProfile();
+    expect(profile.typesetting.writingMode).toBe("horizontal");
+    expect(profile.pagination).toMatchObject({
+      pageSize: "A4",
+      landscape: false,
+      charactersPerLine: 40,
+      linesPerPage: 34,
+      margins: { top: 25, bottom: 25, left: 25, right: 25 },
+    });
+  });
+  it("uses front matter for the writing-mode default without overriding explicit settings", () => {
+    expect(resolvePrintProfile({}, "vertical").typesetting.writingMode).toBe(
+      "vertical"
+    );
+    expect(resolvePrintProfile({}, "vertical").pagination.landscape).toBe(true);
+    const explicit = resolvePrintProfile(
+      {
+        typesetting: { writingMode: "horizontal" },
+        pagination: { landscape: false },
+      },
+      "vertical"
+    );
+    expect(explicit.typesetting.writingMode).toBe("horizontal");
+    expect(explicit.pagination.landscape).toBe(false);
   });
   it("rejects invalid values instead of silently changing print layout", () => {
     expect(() =>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkMdi from "@illusions-lab/mdi-remark";
+import { resolveExportProfile } from "@illusions-lab/mdi-export-profile";
 import type { Root } from "mdast";
 import { applyPdfProfile, mdiToPdf } from "./index.js";
 
@@ -32,6 +33,15 @@ describe("mdiToPdf edge cases", () => {
 });
 
 describe("PDF export profile", () => {
+  it("uses a readable A4 portrait baseline for horizontal documents", () => {
+    const html = applyPdfProfile(
+      "<html><head></head><body><p>本文</p></body></html>",
+      resolveExportProfile()
+    );
+    expect(html).toContain("@page{size:210mm 297mm");
+    expect(html).toContain("padding:25mm 25mm 25mm 25mm");
+    expect(html).toContain("html{writing-mode:horizontal-tb!important");
+  });
   it("applies geometry, composition, full-width indentation, and page options", () => {
     const html = applyPdfProfile(
       "<html><head></head><body><p>本文</p></body></html>",
