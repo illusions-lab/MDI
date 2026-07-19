@@ -6,10 +6,14 @@ on:
   pull_request:
 
 jobs:
-  build:
+  javascript:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
 
       - uses: pnpm/action-setup@v4
 
@@ -24,3 +28,34 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
+
+  rust-native:
+    name: Rust (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            runner: ubuntu-latest
+          - platform: Linux ARM64
+            runner: ubuntu-24.04-arm
+          - platform: macOS x64
+            runner: macos-15-intel
+          - platform: macOS ARM64
+            runner: macos-15
+          - platform: Windows x64
+            runner: windows-latest
+          - platform: Windows ARM64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - run: cargo test --workspace
+
+      - if: matrix.platform == 'Linux x64'
+        run: cargo fmt --check && cargo clippy --workspace -- -D warnings

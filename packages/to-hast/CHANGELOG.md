@@ -1,5 +1,13 @@
 # @illusions-lab/mdi-to-hast
 
+## 2.0.5
+
+### Patch Changes
+
+- Updated dependencies
+  - mdast-util-mdi@2.0.3
+  - @illusions-lab/mdi-remark@2.0.4
+
 ## 2.0.4
 
 ### Patch Changes

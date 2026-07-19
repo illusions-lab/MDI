@@ -62,6 +62,26 @@ own in any unified pipeline (this documentation site uses exactly those two
 plus `mdiHandlers` — no converter involved), while `@illusions-lab/mdi-remark`
 is the batteries-included plugin for applications.
 
+## Rust syntax core and the JavaScript-first release
+
+The canonical MDI grammar lives in the separate
+[`illusions-lab/MDI`](https://github.com/illusions-lab/MDI) specification
+repository. This repository keeps its existing `mdi-js` name and JavaScript
+public API.
+
+`crates/mdi-core` is a language-neutral Rust implementation of the
+MDI-specific grammar: escapes, grapheme-aware ruby, tate-chu-yoko, boten,
+nestable inline macros, and MDI block macros. It intentionally does **not**
+parse CommonMark or GFM; those stay with micromark/remark in the JavaScript
+adapter. This preserves the established mdast API and means every existing JS
+consumer keeps its behavior.
+
+The first release containing the Rust core is JavaScript-first: the core is
+verified with Cargo alongside the existing JavaScript suite, while the
+published API remains the current micromark/remark pipeline. Native Node,
+Python, and WASM bindings are follow-up adapters over the same core, not new
+parsers with independent grammars.
+
 ## Versioning
 
 Package versions are `<MDI spec version>.<release>` — major.minor always

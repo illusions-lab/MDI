@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-to-hast",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "mdast (MDI) to hast transform, shared by the HTML/PDF/EPUB converters",
   "license": "MIT",
   "repository": {

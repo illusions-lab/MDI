@@ -62,13 +62,27 @@ All converters consume the **same mdast tree** produced by `@illusions-lab/mdi-r
 
 ## Development / 開発
 
-This is a [pnpm](https://pnpm.io) + [Turborepo](https://turbo.build) monorepo.
+This is a [pnpm](https://pnpm.io) + [Turborepo](https://turbo.build) monorepo
+with a Rust workspace for the language-neutral syntax core.
 
 ```bash
 pnpm install
 pnpm build
 pnpm test
 ```
+
+`crates/mdi-core` implements the MDI-only grammar (escapes, grapheme-aware
+ruby, tate-chu-yoko, inline macros, and block macros) as a language-neutral
+AST. It is an internal workspace crate in this JavaScript-first release; the
+published Node.js API remains the existing micromark/remark integration. The
+canonical grammar and its versioned specification remain in
+[`illusions-lab/MDI`](https://github.com/illusions-lab/MDI), not in this
+repository. Native Node and Python bindings will consume this same core in
+later releases.
+
+CI runs the Rust core natively on Linux, macOS, and Windows for both x64 and
+ARM64. The JavaScript integration suite (including Chromium PDF output) runs
+on Linux x64; platform-native bindings will use the same matrix when added.
 
 ### Versioning / バージョニング
 

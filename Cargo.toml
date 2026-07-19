@@ -1,0 +1,11 @@
+[workspace]
+members = ["crates/mdi-core"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/illusions-lab/mdi-js"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

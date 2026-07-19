@@ -58,6 +58,22 @@ tokenizer 和 mdast 工具可以單獨用在任何 unified 管線裡（本文檔
 只用了這兩個加 `mdiHandlers`，完全沒用轉換器）；而
 `@illusions-lab/mdi-remark` 是給應用程式的全配插件。
 
+## Rust 語法核心與 JavaScript-first 發布
+
+MDI 的權威語法由獨立的
+[`illusions-lab/MDI`](https://github.com/illusions-lab/MDI) 規範倉庫管理。
+本倉庫維持既有的 `mdi-js` 名稱與 JavaScript 公開 API。
+
+`crates/mdi-core` 是語言中立的 Rust 實作，處理 escape、以 grapheme cluster
+為單位的 ruby、縦中横、傍點、可巢狀的行內 macro 與區塊 macro。它刻意**不**
+解析 CommonMark 或 GFM；這些仍由 JavaScript adapter 中的 micromark/remark
+處理。因此既有 mdast API 和所有 JS 使用者的行為都能維持不變。
+
+包含 Rust core 的第一個發布採 JavaScript-first：Cargo 驗證會和既有的
+JavaScript test suite 一起跑，但公開 API 仍是目前的 micromark/remark pipeline。
+未來的 native Node、Python 與 WASM binding 都會是同一核心的 adapter，而不是
+各自重新實作一套 parser。
+
 ## 版本策略
 
 套件版本是 `<MDI 規範版本>.<發佈次數>` — major.minor 永遠等於對應的

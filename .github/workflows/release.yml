@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_versioned:
+        description: Publish the package versions already committed on the selected ref.
+        required: true
+        type: boolean
+        default: false
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -18,6 +25,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -30,6 +41,7 @@ jobs:
 
       - name: Create release PR or publish
         id: changesets
+        if: github.event_name != 'workflow_dispatch'
         uses: changesets/action@v1
         with:
           version: pnpm run version
@@ -39,9 +51,17 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
+      - name: Publish versioned packages
+        id: manual-release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_versioned
+        run: node scripts/publish-versioned-packages.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+
       - name: Create GitHub Releases with downloadable tarballs
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || steps.manual-release.outputs.published == 'true'
         run: node scripts/create-github-releases.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages || steps.manual-release.outputs.publishedPackages }}
