@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [main]
+  # Keeps the normal main-push release path intact while allowing a logged,
+  # idempotent recovery run if GitHub ever drops a push event.
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
