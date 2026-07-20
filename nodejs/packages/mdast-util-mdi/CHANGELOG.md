@@ -1,6 +1,6 @@
 # mdast-util-mdi
 
-## 2.0.4
+## 2.0.16
 
 ### Patch Changes
 

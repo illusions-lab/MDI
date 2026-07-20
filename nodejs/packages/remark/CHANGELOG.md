@@ -1,6 +1,6 @@
 # @illusions-lab/mdi-remark
 
-## 2.0.5
+## 2.0.17
 
 ### Patch Changes
 
@@ -9,7 +9,7 @@
   duplicate mdast text or document renderers.
 - Updated dependencies
   - @illusions-lab/mdi@2.0.2
-  - mdast-util-mdi@2.0.4
+  - mdast-util-mdi@2.0.16
 
 ## 2.0.4
 

@@ -1,6 +1,6 @@
 # @illusions-lab/mdi-cli
 
-## 2.0.6
+## 2.0.18
 
 ### Patch Changes
 
@@ -9,7 +9,7 @@
   duplicate mdast text or document renderers.
 - Updated dependencies
   - @illusions-lab/mdi@2.0.2
-  - @illusions-lab/mdi-to-pdf@2.0.6
+  - @illusions-lab/mdi-to-pdf@2.0.18
 
 ## 2.0.5
 

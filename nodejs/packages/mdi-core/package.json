@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "cd ../../../mdi-core && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target nodejs --out-dir ../nodejs/packages/mdi-core/dist -- --features wasm",
+    "build": "cd ../../../mdi-core && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target nodejs --out-dir ../nodejs/packages/mdi-core/dist -- --features wasm && node -e \"require('node:fs').rmSync('../nodejs/packages/mdi-core/dist/.gitignore', { force: true })\"",
     "test": "vitest run --passWithNoTests"
   }
 }

@@ -1,13 +1,13 @@
 # @illusions-lab/mdi-to-pdf
 
-## 2.0.6
+## 2.0.18
 
 ### Patch Changes
 
 - Make Rust the direct CLI path for HTML, text, EPUB, and DOCX. PDF now receives
   Rust-rendered HTML before Chromium layout, and the CLI no longer ships its
   duplicate mdast text or document renderers.
-  - @illusions-lab/mdi-to-html@2.0.6
+  - @illusions-lab/mdi-to-html@2.0.18
 
 ## 2.0.5
 

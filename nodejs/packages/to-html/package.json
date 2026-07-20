@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-to-html",
-  "version": "2.0.6",
+  "version": "2.0.18",
   "description": "Render MDI (.mdi) documents to HTML",
   "license": "MIT",
   "repository": {
