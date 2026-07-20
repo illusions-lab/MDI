@@ -1,10 +1,29 @@
 # @illusions-lab/mdi-to-html
 
-Legacy mdast-to-HTML compatibility adapter for unified ecosystem consumers.
-It does not parse MDI, but new source applications and the CLI should use
-`renderHtml()` from `@illusions-lab/mdi`, which renders complete source in
-Rust.
+Renders an MDI-flavoured mdast tree to a complete HTML document with MDI CSS
+and front-matter metadata. It is a compatibility renderer for unified users;
+it does not parse MDI source.
 
-Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
+## Install
 
-Documentation: https://mdi.illusions.app/
+```sh
+npm install @illusions-lab/mdi-to-html
+```
+
+## Usage
+
+```ts
+import { mdiToHtml } from "@illusions-lab/mdi-to-html";
+
+const html = mdiToHtml(mdastTree);
+```
+
+For complete source documents, use `renderHtml(source)` from
+[`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi).
+That route parses and renders in Rust, and is what the MDI CLI uses.
+
+## Documentation
+
+- [HTML and output model](https://mdi.illusions.app/ecosystem/outputs/)
+- [API reference](https://mdi.illusions.app/api/to-html/)
+- [MDI documentation](https://mdi.illusions.app/)

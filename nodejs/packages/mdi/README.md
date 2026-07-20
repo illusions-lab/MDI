@@ -4,6 +4,12 @@ The JavaScript interface to the Rust-authoritative MDI engine. Give it a
 complete `.mdi` source document and it returns the versioned document IR and
 diagnostics produced by `mdi-core`.
 
+## Install
+
+```sh
+npm install @illusions-lab/mdi
+```
+
 ```ts
 import { parse } from "@illusions-lab/mdi";
 
@@ -81,3 +87,10 @@ validation and serialization.
 The normative human-readable syntax is defined in
 [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md). The
 executable syntax authority is `mdi-core`.
+
+## Documentation
+
+- [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
+- [Document IR and diagnostics](https://mdi.illusions.app/core/document-ir/)
+- [Rendering model](https://mdi.illusions.app/core/rendering/)
+- [MDI documentation](https://mdi.illusions.app/)

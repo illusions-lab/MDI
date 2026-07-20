@@ -1,10 +1,31 @@
 # @illusions-lab/mdi-to-hast
 
-Legacy mdast-to-HAST compatibility adapter for unified ecosystem consumers.
-It contains no MDI grammar and is not used by the Rust-first CLI. New source
-applications should use `@illusions-lab/mdi` for Rust HTML; use this package
-only when an existing unified pipeline requires HAST.
+Converts an MDI-flavoured mdast tree into HAST and exposes the matching MDI CSS
+and `remark-rehype` handler table. It is for existing unified ecosystems; it
+does not parse MDI or decide syntax.
 
-Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
+## Install
 
-Documentation: https://mdi.illusions.app/
+```sh
+npm install @illusions-lab/mdi-to-hast
+```
+
+## Usage
+
+```ts
+import { mdiToHast, MDI_STYLESHEET } from "@illusions-lab/mdi-to-hast";
+
+const { hast, frontmatter } = mdiToHast(mdastTree);
+console.log(hast, frontmatter, MDI_STYLESHEET);
+```
+
+For complete `.mdi` source, prefer `renderHtml()` from
+[`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi): Rust
+parses and renders the document directly. Use this package only when a unified
+pipeline already owns an mdast tree.
+
+## Documentation
+
+- [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
+- [API reference](https://mdi.illusions.app/api/to-hast/)
+- [MDI documentation](https://mdi.illusions.app/)

@@ -1,6 +1,15 @@
-# @illusions-lab/mdi-cli
+# `@illusions-lab/mdi-cli`
 
-Thin command-line adapter for the Rust-authoritative MDI engine.
+Command-line interface for building complete `.mdi` documents through the
+Rust-authoritative MDI engine.
+
+## Install
+
+```sh
+npm install --global @illusions-lab/mdi-cli
+```
+
+## Build a document
 
 ```sh
 mdi build input.mdi --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all \
@@ -15,6 +24,30 @@ and front matter metadata while their full profile options move into Rust.
 
 `txt-all` writes every text variant next to the input and does not accept `-o`.
 
-Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
+## Examples
 
-Documentation: https://mdi.illusions.app/
+```sh
+# Rust renders semantic HTML.
+mdi build novel.mdi --to html -o public/novel.html
+
+# Rust produces EPUB and DOCX archives.
+mdi build novel.mdi --to epub
+mdi build novel.mdi --to docx
+
+# PDF uses Rust HTML and Chromium only for print layout.
+mdi build novel.mdi --to pdf --config print.json
+```
+
+## Architecture
+
+The CLI does not parse MDI itself. HTML, EPUB, DOCX, and text call the Rust
+engine through `@illusions-lab/mdi`; PDF gives Rust-rendered HTML to Chromium
+solely for print layout. `--config` currently configures PDF and text output.
+
+## Documentation
+
+- [CLI guide](https://mdi.illusions.app/bindings/cli/)
+- [Export profiles](https://mdi.illusions.app/guides/export-profiles/)
+- [MDI documentation](https://mdi.illusions.app/)
+
+Part of the [MDI repository](https://github.com/illusions-lab/MDI). MIT licensed.

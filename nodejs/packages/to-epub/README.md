@@ -1,10 +1,33 @@
 # @illusions-lab/mdi-to-epub
 
-Legacy mdast-to-EPUB compatibility adapter for unified ecosystem consumers.
-The Rust-first CLI uses `renderEpub()` from `@illusions-lab/mdi` directly.
-This package remains available for applications that need its existing
-profile, cover, and mdast integration surface.
+Creates an EPUB 3 archive from an MDI-flavoured mdast tree. The adapter keeps
+support for profile metadata, chapter splitting, cover images, and unified
+integration; it does not parse MDI.
 
-Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
+## Install
 
-Documentation: https://mdi.illusions.app/
+```sh
+npm install @illusions-lab/mdi-to-epub
+```
+
+## Usage
+
+```ts
+import { mdiToEpub } from "@illusions-lab/mdi-to-epub";
+
+const archive = await mdiToEpub(mdastTree, {
+  profile: { metadata: { title: "A short work" } },
+  cover: { data: coverBytes, mediaType: "image/png" },
+});
+```
+
+For complete `.mdi` source, use `renderEpub(source)` from
+[`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi).
+The Rust-first CLI follows that route.
+
+## Documentation
+
+- [Output model](https://mdi.illusions.app/ecosystem/outputs/)
+- [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
+- [API reference](https://mdi.illusions.app/api/to-epub/)
+- [MDI documentation](https://mdi.illusions.app/)

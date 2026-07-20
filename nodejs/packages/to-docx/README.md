@@ -1,10 +1,33 @@
 # @illusions-lab/mdi-to-docx
 
-Legacy mdast-to-DOCX compatibility adapter for unified ecosystem consumers.
-The Rust-first CLI uses `renderDocx()` from `@illusions-lab/mdi` directly.
-This package remains available for applications that need its existing
-profile-aware mdast integration surface.
+Creates a DOCX file from an MDI-flavoured mdast tree. It is a profile-aware
+compatibility adapter for unified applications and does not parse MDI source.
 
-Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
+## Install
 
-Documentation: https://mdi.illusions.app/
+```sh
+npm install @illusions-lab/mdi-to-docx
+```
+
+## Usage
+
+```ts
+import { writeFile } from "node:fs/promises";
+import { mdiToDocx } from "@illusions-lab/mdi-to-docx";
+
+const document = await mdiToDocx(mdastTree, {
+  typesetting: { writingMode: "vertical", fontFamily: "Noto Serif JP" },
+});
+await writeFile("book.docx", document);
+```
+
+For complete `.mdi` source, use `renderDocx(source)` from
+[`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi).
+The MDI CLI uses that Rust route directly.
+
+## Documentation
+
+- [Output model](https://mdi.illusions.app/ecosystem/outputs/)
+- [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
+- [API reference](https://mdi.illusions.app/api/to-docx/)
+- [MDI documentation](https://mdi.illusions.app/)
