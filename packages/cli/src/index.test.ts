@@ -135,6 +135,20 @@ describe("text export", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("preserves Japanese paired dashes in Shift_JIS Aozora output", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-aozora-dashes-"));
+    try {
+      const input = join(directory, "novel.mdi");
+      await writeFile(input, "彼は——振り返らなかった。");
+      const output = await build(input, "aozora");
+      const decoded = iconv.decode(await readFile(output), "shift_jis");
+      expect(decoded).toContain("彼は――振り返らなかった。");
+      expect(decoded).not.toContain("?");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("build edge cases", () => {

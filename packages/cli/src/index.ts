@@ -164,7 +164,19 @@ export function mdiToTextFormat(tree: Root, profile: ExportProfile | undefined, 
 }
 
 async function writeTextOutput(destination: string, text: string, format: TextOutputFormat): Promise<void> {
-  await writeFile(destination, format === "aozora" ? iconv.encode(text, "shift_jis") : text);
+  await writeFile(
+    destination,
+    format === "aozora" ? iconv.encode(normalizeAozoraShiftJis(text), "shift_jis") : text
+  );
+}
+
+/**
+ * Aozora Bunko's Shift_JIS workflow cannot encode U+2014 EM DASH.  Japanese
+ * manuscripts commonly use paired em dashes, so preserve both characters by
+ * converting each one to the Shift_JIS-compatible U+2015 HORIZONTAL BAR.
+ */
+function normalizeAozoraShiftJis(text: string): string {
+  return text.replaceAll("\u2014", "\u2015");
 }
 
 function defaultOutputPath(input: string, format: OutputFormat, extension: string): string {
