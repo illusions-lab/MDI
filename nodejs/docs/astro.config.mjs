@@ -20,7 +20,6 @@ function remarkMdiSyntax() {
 }
 
 const packages = [
-	'mdi',
 	'micromark-extension-mdi',
 	'mdast-util-mdi',
 	'remark',
@@ -29,7 +28,6 @@ const packages = [
 	'to-pdf',
 	'to-epub',
 	'to-docx',
-	'export-profile',
 	'cli',
 ];
 

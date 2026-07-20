@@ -20,7 +20,7 @@ This page documents only symbols present in `mdi-core/src/lib.rs` today. It is a
 - `render_text_format(&str, TextFormat, &str) -> String` — TXT, ruby, Narou, Kakuyomu, and Aozora conventions
 - `render_epub(&str) -> Result<Vec<u8>, String>` — baseline EPUB 3 archive
 - `render_docx(&str) -> Result<Vec<u8>, String>` — baseline DOCX archive
-- `render_pdf(&str, &PdfOptions) -> Result<Vec<u8>, String>` — native Chromium-controlled PDF layout
+- `render_pdf(&str, &PdfOptions) -> Result<Vec<u8>, String>` — Rust-controlled PDF layout through the configured Chromium host
 
 The public data types include `ParseOutput`, `ParserCapabilities`, `Diagnostic`, `DiagnosticSeverity`, `SourceSpan`, `Document`, `Frontmatter`, `FrontmatterEntry`, `MdiSyntaxDocument`, `MdiBlock`, `PagebreakVariant`, `Inline`, and `RubyReading`.
 
