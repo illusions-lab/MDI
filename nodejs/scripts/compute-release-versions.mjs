@@ -16,8 +16,8 @@ const packages = globSync(join(root, "packages", "*", "package.json"))
 const released = [];
 
 for (const { manifestPath, manifest } of packages) {
-  const [major, minor] = manifest.version.split(".");
-  if (!/^\d+$/.test(major) || !/^\d+$/.test(minor)) {
+  const [major, minor, patch] = manifest.version.split(".");
+  if (!/^\d+$/.test(major) || !/^\d+$/.test(minor) || !/^\d+$/.test(patch)) {
     throw new Error(
       `${manifest.name} must use a stable X.Y.Z version as its release baseline.`
     );
@@ -35,8 +35,28 @@ for (const { manifestPath, manifest } of packages) {
     .map((tag) => tag.slice(tagPrefix.length))
     .filter((patch) => /^\d+$/.test(patch))
     .map(Number);
+  let registryPatch = 0;
+  try {
+    const published = execFileSync("npm", ["view", manifest.name, "version"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const [publishedMajor, publishedMinor, publishedPatch] = published.split(".");
+    if (
+      publishedMajor === major &&
+      publishedMinor === minor &&
+      /^\d+$/.test(publishedPatch)
+    ) {
+      registryPatch = Number(publishedPatch);
+    }
+  } catch {
+    // A first publication has no npm version yet; tags and the manifest still
+    // provide a deterministic next patch.
+  }
+  const manifestPatch = Number(patch);
   const nextVersion = `${major}.${minor}.${
-    patches.length === 0 ? 1 : Math.max(...patches) + 1
+    Math.max(0, manifestPatch, registryPatch, ...patches) + 1
   }`;
 
   if (!dryRun) {

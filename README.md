@@ -158,8 +158,8 @@ Every package's version is `<MDI spec version>.<package release number>` — the
   ```bash
   cd nodejs
   pnpm changeset       # record what changed; always pick "patch"
-  pnpm version         # apply pending changesets
-  pnpm release         # build + publish
+  pnpm version         # apply pending changesets and commit the result
+  # Merge to main: GitHub Actions builds and publishes with its NPM_TOKEN.
   ```
 
 - **Spec version bump** (e.g. MDI 2.0 → 2.1): Changesets has no concept of "MDI spec version," so this is a separate, explicit step — it rewrites every package's version to `<new spec version>.1` regardless of each package's prior patch count.  
