@@ -1,7 +1,7 @@
 {
   "name": "@illusions-lab/mdi-remark",
   "version": "2.0.17",
-  "description": "remark plugin for MDI 2.0 (illusion Markdown): GFM + front matter + MDI extensions",
+  "description": "Rust-backed remark adapter for MDI 2.0 documents",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,7 +31,6 @@
     "@illusions-lab/mdi": "workspace:*",
     "@types/mdast": "^4.0.0",
     "mdast-util-mdi": "workspace:*",
-    "micromark-extension-mdi": "workspace:*",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",

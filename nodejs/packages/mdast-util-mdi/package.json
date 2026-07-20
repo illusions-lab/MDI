@@ -1,7 +1,7 @@
 {
   "name": "mdast-util-mdi",
   "version": "2.0.16",
-  "description": "mdast extension for MDI 2.0 (illusion Markdown) nodes",
+  "description": "mdast serialization extension for Rust-owned MDI 2.0 nodes",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -28,14 +28,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@illusions-lab/mdi-core": "workspace:*",
-    "micromark-extension-mdi": "workspace:*",
-    "mdast-util-from-markdown": "^2.0.0",
     "mdast-util-to-markdown": "^2.1.0",
     "@types/mdast": "^4.0.0",
     "@types/unist": "^3.0.0"
   },
   "devDependencies": {
+    "@illusions-lab/mdi-core": "workspace:*",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

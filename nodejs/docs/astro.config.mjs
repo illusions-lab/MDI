@@ -2,25 +2,16 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { createStarlightTypeDocPlugin } from 'starlight-typedoc';
-import { mdi } from 'micromark-extension-mdi';
-import { mdiFromMarkdown } from 'mdast-util-mdi';
+import remarkMdi from '@illusions-lab/mdi-remark';
 import { mdiHandlers } from '@illusions-lab/mdi-to-hast';
 
 /**
- * Register the MDI syntax extensions with Astro's remark pipeline.
- * Only the parser core is added here — GFM and frontmatter handling
- * (bundled by @illusions-lab/mdi-remark for library consumers) are
- * already provided by Astro itself.
+ * Rust-backed parser adapter for Astro's remark pipeline. It replaces the
+ * historical JavaScript micromark parser, then feeds the resulting mdast
+ * through Astro's ordinary rehype phase.
  */
-function remarkMdiSyntax() {
-	// @ts-expect-error `this` is the unified processor.
-	const data = this.data();
-	(data.micromarkExtensions ??= []).push(mdi());
-	(data.fromMarkdownExtensions ??= []).push(mdiFromMarkdown());
-}
 
 const packages = [
-	'micromark-extension-mdi',
 	'mdast-util-mdi',
 	'remark',
 	'to-hast',
@@ -53,7 +44,7 @@ for (const dir of packages) {
 export default defineConfig({
 	site: 'https://mdi.illusions.app',
 	markdown: {
-		remarkPlugins: [remarkMdiSyntax],
+		remarkPlugins: [remarkMdi],
 		remarkRehype: { handlers: mdiHandlers },
 	},
 	integrations: [
