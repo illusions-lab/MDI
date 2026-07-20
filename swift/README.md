@@ -10,6 +10,25 @@ The SwiftPM package is named `IllusionMarkdown`, while its library product and
 module are named `MDI`. This keeps the distribution name distinctive while
 making Swift usage align with the MDI format name.
 
+## Install with SwiftPM
+
+Add the package to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.1"),
+]
+```
+
+Then depend on the `MDI` product and import it in Swift:
+
+```swift
+import MDI
+```
+
+See the [Swift binding documentation](https://mdi.illusions.app/bindings/swift/)
+for the complete API reference and examples.
+
 ## Development
 
 Build the Rust dynamic library before running the Swift tests:
@@ -22,10 +41,10 @@ cd ../swift
 swift build
 ```
 
-The `Publish Swift Package` workflow turns the Rust core into an XCFramework,
-tests it, then writes the root `Package.swift`, tags a complete SemVer release,
-and uploads the binary with GitHub Actions' built-in `GITHUB_TOKEN`. No PAT or
-second repository is required.
+The `Publish Swift Package` workflow first prepares an XCFramework and opens a
+manifest pull request. After that PR is merged, it publishes that exact artifact
+with GitHub Actions' built-in `GITHUB_TOKEN`. No PAT or second repository is
+required.
 
 ## Usage
 
