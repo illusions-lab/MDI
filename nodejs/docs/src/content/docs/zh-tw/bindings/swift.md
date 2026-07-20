@@ -1,10 +1,53 @@
 ---
 title: Swift
-description: Swift binding 的狀態與預期契約。
+description: 使用 Swift Package Manager 安裝與使用 MDI。
 ---
 
-Swift 綁定是名為 `IllusionMarkdown` 的 Swift Package Manager 套件。它透過小型 C ABI 將所有解析與轉譯交給 `mdi-core`；Swift 不會包含語法或轉譯判斷。
+`IllusionMarkdown` 是 MDI 的 Swift Package Manager 發行套件；產品與 import module 都叫作 `MDI`：
 
-在此 repository 開發時，`swift/Package.swift` 提供本地綁定配置。`Publish Swift Package` workflow 會把原生 Rust 函式庫建置並測試為 XCFramework、寫入 root `Package.swift`、建立 tag，並用 GitHub Actions 的內建 token 上傳 artifact。
+```swift
+import MDI
+```
 
-它公開與其他語言相同的語法／IR 版本、診斷、UTF-8 位元組跨度與完整文件樹。`MDIParseResult.document` 使用無損的 `MDIJSONValue` 標記 JSON 值；跨度與診斷則使用 Swift 原生值型別。SwiftPM 發行套件是 `IllusionMarkdown`，import module 是 `MDI`。公開入口為 `parse`、`renderHTML`、`serialize`、`renderText`、`renderEPUB` 與 `renderDOCX`。
+Swift 會透過精簡的 C ABI 將解析和轉譯交給 Rust 的 `mdi-core`，不會重作語法，因此所有綁定共用同一份語法、文件 IR、診斷與 renderer。
+
+## 安裝
+
+在 `Package.swift` 加入相依套件，並讓使用它的 target 相依於 `MDI` 產品：
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.2"),
+]
+
+// target 的 dependencies：
+.product(name: "MDI", package: "MDI")
+```
+
+二進位套件支援 macOS 13+ 與 iOS 15+，包含 Apple Silicon 與適用的 Intel simulator。
+
+## 解析與 IR
+
+```swift
+let result = try MDI.parse("# 見出し\n\n{東京|とうきょう}で第^12^話")
+print(result.irVersion)          // "1.0"
+print(result.diagnostics)
+```
+
+`result.document` 是無損的 `MDIJSONValue` 樹；可用 `.object`、`.array`、`.string`、`.number`、`.bool`、`.null` pattern matching 取用節點。`MDISourceSpan` 使用 UTF-8 byte offset。
+
+## 轉譯
+
+```swift
+let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
+let mdi = try MDI.serialize("{東京|とうきょう} ^12^")
+let text = try MDI.renderText("# Title")
+let epub: Data = try MDI.renderEPUB("# Chapter")
+let docx: Data = try MDI.renderDOCX("# Chapter")
+```
+
+EPUB 與 DOCX 回傳 ZIP 格式的 `Data`，請以對應副檔名寫入檔案。
+
+## 錯誤與發布
+
+所有 API 都會拋出 `MDIError`：`core` 表示 Rust core 的失敗，`invalidWireFormat` 表示無效或不支援的 native 回應。CI 會建置 XCFramework、跑 XCTest，並對 `swift/Sources/MDI` 強制 90% line coverage、上傳 Codecov；發版只使用 GitHub Actions 內建 token，不需要 PAT 或獨立倉庫。
