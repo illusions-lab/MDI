@@ -99,6 +99,36 @@ jobs:
           name: rust
           fail_ci_if_error: true
 
+  swift:
+    name: Swift
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Build the Apple XCFramework
+        run: scripts/package-swift-xcframework.sh "$RUNNER_TEMP/mdi-swift"
+
+      - name: Test Swift binding with coverage
+        run: |
+          mkdir -p swift/Artifacts
+          ditto "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" swift/Artifacts/MDICore.xcframework
+          scripts/write-swift-package-manifest.sh local "swift/Artifacts/MDICore.xcframework"
+          swift test --enable-code-coverage
+          scripts/export-swift-coverage.sh swift/coverage.lcov
+
+      - name: Upload Swift coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./swift/coverage.lcov
+          flags: swift
+          name: swift
+          fail_ci_if_error: true
+
   python:
     name: Python binding
     runs-on: ubuntu-latest

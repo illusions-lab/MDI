@@ -16,9 +16,11 @@ flags:
   rust:
     paths:
       - mdi-core/
+  swift:
+    paths:
+      - swift/
 
 ignore:
   - nodejs/**/dist/
   - nodejs/docs/
   - python/
-  - swift/
