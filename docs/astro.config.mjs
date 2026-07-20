@@ -14,6 +14,7 @@ import { mdiHandlers } from '@illusions-lab/mdi-to-hast';
  */
 
 const packages = [
+	'mdi',
 	'mdast-util-mdi',
 	'remark',
 	'to-hast',
