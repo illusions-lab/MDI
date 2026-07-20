@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { unescapeMdi } from "./unescape.js";
+import { unescapeMdi } from "@illusions-lab/mdi-core";
 
 describe("unescapeMdi", () => {
 	it.each([

@@ -1,8 +1,7 @@
 import type { Extension as FromMarkdownExtension } from "mdast-util-from-markdown";
 import type { Paragraph, Parent, Root } from "mdast";
-import { blockMacroAmount, blockMacroKind, blockMacroVariant, resolveRuby as coreResolveRuby, unescapeRubyText as coreUnescapeRubyText } from "@illusions-lab/mdi-core";
+import { blockMacroAmount, blockMacroKind, blockMacroVariant, resolveRuby as coreResolveRuby, unescapeMdi, unescapeRubyText as coreUnescapeRubyText } from "@illusions-lab/mdi-core";
 import type { MdiEm, MdiKern, MdiNoBreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
-import { unescapeMdi } from "./unescape.js";
 import { graphemes } from "./graphemes.js";
 
 declare module "mdast-util-from-markdown" {
