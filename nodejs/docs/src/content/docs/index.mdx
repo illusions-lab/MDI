@@ -3,39 +3,55 @@ title: MDI
 description: Rust-powered tooling for illusion Markdown (MDI) — one parser and consistent output across every platform.
 template: splash
 hero:
-  tagline: One Rust parser for illusion Markdown (MDI), with consistent HTML, PDF, EPUB, DOCX, and text output.
+  tagline: Markdown for Japanese typography — ruby, tate-chu-yoko, boten, warichu, and vertical writing — parsed once in Rust and rendered identically to HTML, PDF, EPUB, DOCX, and text.
   actions:
     - text: Getting Started
       link: /guides/getting-started/
       icon: right-arrow
+    - text: What is MDI?
+      link: /learn/what-is-mdi/
+      icon: open-book
+      variant: minimal
     - text: MDI 2.0 Specification
       link: https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md
       icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+
+<Code code={`{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。\n彼は[[em:決して]]忘れないと誓った。`} lang="mdi" title="novel.mdi" />
 
 <CardGrid>
-	<Card title="One source of truth" icon="seti:rust">
-		`mdi-core` parses CommonMark, GFM, front matter, and every MDI
-		construct into one versioned document IR. The current Rust core API and
-		its migration boundary are documented explicitly.
+	<Card title="One grammar, one implementation" icon="seti:rust">
+		`mdi-core` parses CommonMark, GFM, front matter, and every MDI construct into one versioned document IR, in a single pass. No other language or tool contains a second copy of the grammar — see [Rust-authoritative architecture](/core/architecture/).
 	</Card>
 	<Card title="Japanese typography, for real" icon="translate">
-		Ruby (ルビ), tate-chu-yoko (縦中横), boten (傍点), warichu
-		(割注), kerning, and vertical writing are documented as first-class
-		syntax. See the [live showcase](/syntax/showcase/), which is a
-		document-build example rather than a syntax authority.
+		Ruby (ルビ), tate-chu-yoko (縦中横), boten (傍点), warichu (割注), kerning, page breaks, and vertical writing are first-class syntax with worked examples, parsed IR, and rendered output for each — see the [full syntax reference](/syntax/reference/) or the [live showcase](/syntax/showcase/).
 	</Card>
-	<Card title="Thin language interfaces" icon="puzzle">
-		JavaScript / TypeScript is the current binding surface. Python and Swift
-		are Planned; remark is available as an adapter when a unified pipeline
-		needs mdast.
+	<Card title="Five real outputs from one source" icon="document">
+		`renderHtml`, `renderTextFormat` (five flavors, including 小説家になろう and 青空文庫 conventions), `renderEpub`, `renderDocx`, and Rust-rendered PDF via Chromium — all implemented today, not planned. See [HTML / TXT / EPUB / DOCX / PDF outputs](/ecosystem/outputs/).
 	</Card>
-	<Card title="CLI included" icon="seti:shell">
-		`mdi build novel.mdi --to pdf` — one command from manuscript to a
-		current Node PDF pipeline; the Rust-native boundary is documented with
-		its implementation status.
+	<Card title="Thin, honest language interfaces" icon="puzzle">
+		JavaScript/TypeScript, Rust, and Python (`pip install illusion-markdown`) are real and documented with working code today. Swift is clearly marked **Planned**, with no fake install instructions — see [Bindings](/bindings/javascript/).
 	</Card>
 </CardGrid>
+
+## Try it in 30 seconds
+
+```bash
+npm install --global @illusions-lab/mdi-cli
+echo '{雪女|ゆき.おんな}が現れた。第^12^話のことである。' > novel.mdi
+mdi build novel.mdi --to html
+```
+
+```ts
+// or from code:
+import { parse, renderHtml } from "@illusions-lab/mdi";
+
+const source = "{雪女|ゆき.おんな}が現れた。第^12^話のことである。";
+const { document, diagnostics } = parse(source); // versioned IR + diagnostics
+const html = renderHtml(source);                 // <ruby>...<span class="mdi-tcy">12</span>...
+```
+
+Full walkthrough, including PDF/EPUB/DOCX and export profiles, in [Getting Started](/guides/getting-started/).
