@@ -1,77 +1,45 @@
 # MDI
 
-[日本語](./README.ja.md)
+<p align="center">
+  <strong>Markdown tooling for Japanese typography</strong><br />
+  Ruby, tate-chu-yoko, boten, warichu, vertical writing, and more.
+</p>
 
-[![CI](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/ci.yml/CI?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/illusions-lab/MDI/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/docs.yml/Docs?branch=main&style=for-the-badge&logo=readthedocs&logoColor=white&label=docs)](https://github.com/illusions-lab/MDI/actions/workflows/docs.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/release.yml/Release?branch=main&style=for-the-badge&logo=github&logoColor=white&label=release)](https://github.com/illusions-lab/MDI/actions/workflows/release.yml)
-[![codecov](https://img.shields.io/codecov/c/github/illusions-lab/MDI?style=for-the-badge&logo=codecov&logoColor=white)](https://app.codecov.io/gh/illusions-lab/MDI)
-[![npm version](https://img.shields.io/npm/v/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@illusions-lab/mdi)
-[![npm downloads](https://img.shields.io/npm/dm/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=downloads)](https://www.npmjs.com/package/@illusions-lab/mdi)
-[![Latest release](https://img.shields.io/github/v/release/illusions-lab/MDI?display_name=tag&sort=semver&style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI/releases)
-[![License](https://img.shields.io/github/license/illusions-lab/MDI?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](./LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/illusions-lab/MDI?style=for-the-badge&logo=git&logoColor=white)](https://github.com/illusions-lab/MDI/commits/main)
-[![Repository size](https://img.shields.io/github/repo-size/illusions-lab/MDI?style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI)
-[![GitHub stars](https://img.shields.io/github/stars/illusions-lab/MDI?style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI/stargazers)
+## What is MDI?
 
-**illusion Markdown (MDI)** is a Markdown extension for Japanese typography. It adds ruby, tate-chu-yoko, boten, warichu, vertical writing, and related features while retaining standard Markdown.
+**illusion Markdown (MDI)** is Markdown for Japanese publishing. It preserves the Markdown you already know while adding the typography that Japanese prose needs: ruby readings, tate-chu-yoko, boten, warichu, vertical writing, and page-aware output.
 
-This is the canonical repository for the [MDI 2.0 specification](./SYNTAX.md), the Rust implementation, language bindings, renderers, and developer tools.
+Write an `.mdi` document once, then render it as HTML, PDF, EPUB, DOCX, or text formats for platforms such as Kakuyomu, Narou, and Aozora Bunko. Ordinary CommonMark and GFM remain valid MDI, so you can introduce MDI features only where your document needs them.
 
-Documentation: <https://mdi.illusions.app/>
+```mdi
+# 春は曙
 
-## Quick start
-
-### CLI — convert an `.mdi` file
-
-Install the CLI, then render an MDI document to standalone HTML:
-
-```bash
-npm install --global @illusions-lab/mdi-cli
-
-mdi build novel.mdi --to html -o dist/novel.html
+{東京|とうきょう}で第^12^話を読む。
 ```
 
-The same command can produce `pdf`, `epub`, `docx`, `txt`, `txt-ruby`,
-`narou`, `kakuyomu`, or `aozora` output. Run `mdi build novel.mdi --to txt-all`
-to write every text variant beside the source file.
+## One parser, written in Rust
 
-### JavaScript — parse and render
+[`mdi-core`](./mdi-core) is the canonical Rust implementation of the MDI grammar. It parses CommonMark, GFM, YAML front matter, and MDI extensions into a versioned document IR, then provides deterministic HTML, TXT, EPUB, DOCX, and PDF renderers.
 
-Install the JavaScript binding:
+The language toolkits below call this same parser instead of reimplementing the grammar. That means an MDI document has consistent syntax, diagnostics, and rendering semantics everywhere it runs.
 
-```bash
-npm install @illusions-lab/mdi
-```
+## Language toolkits
 
-```js
-import { parse, renderHtml } from "@illusions-lab/mdi";
-
-const source = "# 春は曙\n\n{東京|とうきょう}で第^12^話を読む。";
-const { document, diagnostics } = parse(source);
-const html = renderHtml(source);
-
-console.log(document);    // Versioned MDI document IR
-console.log(diagnostics); // Syntax diagnostics, if any
-console.log(html);        // Standalone HTML rendered by Rust
-```
+| Language | Toolkit | Documentation |
+| --- | --- | --- |
+| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust documentation" /></a> |
+| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript and TypeScript documentation" /></a> |
+| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python documentation" /></a> |
+| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift documentation" /></a> |
+| Android / Kotlin | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
 
 <p align="center">
   <a href="https://mdi.illusions.app/">
-    <img src="https://img.shields.io/badge/Other%20languages-Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Other languages: read the MDI documentation" />
+    <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Read the MDI documentation" />
   </a>
 </p>
 
-For Rust, Python, Swift, renderer configuration, and complete API guidance,
-visit the <a href="https://mdi.illusions.app/">MDI documentation</a>.
-
-## Architecture
-
-Rust is the single executable authority for MDI syntax and document semantics. It parses CommonMark, GFM, front matter, and MDI extensions into a versioned document IR. JavaScript, Python, and Swift are thin host interfaces over that implementation.
-
-`mdi-core` owns parsing, validation, normalization, serialization, and deterministic HTML, TXT, EPUB, and DOCX rendering. PDF uses Rust-produced HTML; a host Chromium adapter performs only print layout and never parses MDI.
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership rules and interface contracts.
+[MDI 2.0 specification](./SYNTAX.md) · [日本語 README](./README.ja.md)
 
 ## Repository layout
 
@@ -81,6 +49,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership rules and interface contr
 | [`nodejs/`](./nodejs) | JavaScript/WASM bindings, ecosystem adapters, CLI, and documentation. |
 | [`python/`](./python) | PyO3 binding to `mdi-core`. |
 | [`swift/`](./swift) | UniFFI or C-ABI binding to `mdi-core`. |
+| [`android/`](./android) | Android Kotlin/JNI binding, native build scripts, and Android contract. |
+| [`mdi-android-jni/`](./mdi-android-jni) | Android-only JNI façade over `mdi-core`. |
 
 ## Node.js packages
 
@@ -93,6 +63,13 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership rules and interface contr
 | [`@illusions-lab/mdi-remark`](./nodejs/packages/remark), [`mdast-util-mdi`](./nodejs/packages/mdast-util-mdi) | Rust-backed Unified ecosystem adapters. |
 | [`@illusions-lab/mdi-to-hast`](./nodejs/packages/to-hast), [`@illusions-lab/mdi-to-html`](./nodejs/packages/to-html), [`@illusions-lab/mdi-to-epub`](./nodejs/packages/to-epub), [`@illusions-lab/mdi-to-docx`](./nodejs/packages/to-docx) | Legacy public compatibility adapters. |
 | [`@illusions-lab/mdi-export-profile`](./nodejs/packages/export-profile) | Shared typed export-profile configuration. |
+
+## Project status
+
+[![CI](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/ci.yml/CI?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/illusions-lab/MDI/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/docs.yml/Docs?branch=main&style=for-the-badge&logo=readthedocs&logoColor=white&label=Docs)](https://github.com/illusions-lab/MDI/actions/workflows/docs.yml)
+[![npm version](https://img.shields.io/npm/v/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@illusions-lab/mdi)
+[![License](https://img.shields.io/github/license/illusions-lab/MDI?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](./LICENSE)
 
 ## Development
 

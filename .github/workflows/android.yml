@@ -1,0 +1,54 @@
+name: Android
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  android:
+    name: Android JNI and Kotlin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and cargo-ndk
+        run: |
+          sdkmanager --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          cargo install cargo-ndk --locked
+
+      - name: Build Android native libraries
+        run: ./android/scripts/build-native.sh
+
+      - name: Run Kotlin unit tests
+        working-directory: android
+        run: ./scripts/run-gradle.sh :mdi-android:verifyDebugUnitTestCoverage
+
+      - name: Upload Android coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./android/mdi-android/build/reports/jacoco/jacocoDebugUnitTestReport/jacocoDebugUnitTestReport.xml
+          flags: android
+          name: android
+          fail_ci_if_error: true
+
+      - name: Run x86_64 instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          script: cd android && ./scripts/run-gradle.sh :mdi-android:connectedDebugAndroidTest

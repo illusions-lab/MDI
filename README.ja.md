@@ -1,53 +1,75 @@
 # MDI
 
-[English](./README.md)
+<p align="center">
+  <strong>日本語組版のための Markdown ツール群</strong><br />
+  ルビ、縦中横、傍点、割注、縦書きなどを扱えます。
+</p>
 
-[![CI](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/ci.yml/CI?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/illusions-lab/MDI/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/docs.yml/Docs?branch=main&style=for-the-badge&logo=readthedocs&logoColor=white&label=docs)](https://github.com/illusions-lab/MDI/actions/workflows/docs.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/release.yml/Release?branch=main&style=for-the-badge&logo=github&logoColor=white&label=release)](https://github.com/illusions-lab/MDI/actions/workflows/release.yml)
-[![codecov](https://img.shields.io/codecov/c/github/illusions-lab/MDI?style=for-the-badge&logo=codecov&logoColor=white)](https://app.codecov.io/gh/illusions-lab/MDI)
-[![npm version](https://img.shields.io/npm/v/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@illusions-lab/mdi)
-[![npm downloads](https://img.shields.io/npm/dm/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=downloads)](https://www.npmjs.com/package/@illusions-lab/mdi)
-[![Latest release](https://img.shields.io/github/v/release/illusions-lab/MDI?display_name=tag&sort=semver&style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI/releases)
-[![License](https://img.shields.io/github/license/illusions-lab/MDI?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](./LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/illusions-lab/MDI?style=for-the-badge&logo=git&logoColor=white)](https://github.com/illusions-lab/MDI/commits/main)
-[![Repository size](https://img.shields.io/github/repo-size/illusions-lab/MDI?style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI)
-[![GitHub stars](https://img.shields.io/github/stars/illusions-lab/MDI?style=for-the-badge&logo=github&logoColor=white)](https://github.com/illusions-lab/MDI/stargazers)
+## MDI とは？
 
-**illusion Markdown（MDI）** は、日本語組版のための Markdown 拡張フォーマットです。標準 Markdown を維持したまま、ルビ、縦中横、傍点、割注、縦書きなどを追加します。
+**illusion Markdown（MDI）** は、日本語の出版・組版のための Markdown です。使い慣れた Markdown をそのまま保ちながら、ルビ、縦中横、傍点、割注、縦書き、ページを意識した出力といった日本語の文章表現に必要な機能を加えます。
 
-このリポジトリは、[MDI 2.0 仕様](./SYNTAX.md)、Rust 実装、言語バインディング、レンダラー、開発ツールの正規リポジトリです。
+`.mdi` 文書を一度書けば、HTML、PDF、EPUB、DOCX、そしてカクヨム・小説家になろう・青空文庫向けのテキスト形式に出力できます。通常の CommonMark と GFM は有効な MDI でもあるため、必要な箇所だけで MDI の機能を使い始められます。
 
-ドキュメント：<https://mdi.illusions.app/>
+```mdi
+# 春は曙
 
-## アーキテクチャ
+{東京|とうきょう}で第^12^話を読む。
+```
 
-Rust は MDI 構文と文書セマンティクスにおける唯一の実行可能な権威です。CommonMark、GFM、front matter、MDI 拡張をバージョン化された文書 IR に解析します。JavaScript、Python、Swift はこの実装の薄いホストインターフェースです。
+## Rust で書かれた、ただ一つのパーサー
 
-`mdi-core` は、解析、検証、正規化、シリアライズ、決定論的な HTML、TXT、EPUB、DOCX レンダリングを担当します。PDF は Rust が生成した HTML を使い、ホスト側の Chromium adapter は印刷レイアウトだけを担当し、MDI を解析しません。
+[`mdi-core`](./mdi-core) は、MDI 文法の正規 Rust 実装です。CommonMark、GFM、YAML front matter、MDI 拡張をバージョン化された文書 IR に解析し、決定論的な HTML、TXT、EPUB、DOCX、PDF レンダラーを提供します。
 
-責務の規則とインターフェース契約は [ARCHITECTURE.md](./ARCHITECTURE.md) を参照してください。
+以下の各言語ツールキットは、文法を再実装せず、この同じパーサーを呼び出します。そのため、MDI 文書はどの環境でも一貫した構文、診断、レンダリングの意味論を持ちます。
+
+## 言語ツールキット
+
+| 言語 | ツールキット | ドキュメント |
+| --- | --- | --- |
+| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/ja/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust ドキュメント" /></a> |
+| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/ja/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript / TypeScript ドキュメント" /></a> |
+| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/ja/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python ドキュメント" /></a> |
+| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/ja/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift ドキュメント" /></a> |
+| Android / Kotlin | [`android/`](./android) | <a href="https://mdi.illusions.app/ja/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android / Kotlin ドキュメント" /></a> |
+
+<p align="center">
+  <a href="https://mdi.illusions.app/ja/">
+    <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="MDI ドキュメントを読む" />
+  </a>
+</p>
+
+[MDI 2.0 仕様](./SYNTAX.md) · [English README](./README.md)
 
 ## リポジトリ構成
 
-| ディレクトリ | 責務 |
+| ディレクトリ | 役割 |
 | --- | --- |
 | [`mdi-core/`](./mdi-core) | Rust パーサー、バージョン化 IR、検証、シリアライズ、決定論的レンダラー。 |
-| [`nodejs/`](./nodejs) | JavaScript/WASM バインディング、生態系 adapter、CLI、ドキュメント。 |
+| [`nodejs/`](./nodejs) | JavaScript/WASM バインディング、エコシステムアダプター、CLI、ドキュメント。 |
 | [`python/`](./python) | `mdi-core` の PyO3 バインディング。 |
 | [`swift/`](./swift) | `mdi-core` の UniFFI または C ABI バインディング。 |
+| [`android/`](./android) | Android Kotlin/JNI バインディング、ネイティブビルドスクリプト、Android 契約。 |
+| [`mdi-android-jni/`](./mdi-android-jni) | `mdi-core` 向けの Android 専用 JNI ファサード。 |
 
 ## Node.js パッケージ
 
 | パッケージ | 用途 |
 | --- | --- |
 | [`@illusions-lab/mdi`](./nodejs/packages/mdi) | Rust を基盤とする主要な型付き JavaScript API。 |
-| [`@illusions-lab/mdi-core`](./nodejs/packages/mdi-core) | 生成された低レベル WebAssembly bridge。 |
-| [`@illusions-lab/mdi-cli`](./nodejs/packages/cli) | Rust を利用するコマンドライン adapter。 |
-| [`@illusions-lab/mdi-to-pdf`](./nodejs/packages/to-pdf) | Rust HTML を Chromium でレイアウトする adapter。 |
-| [`@illusions-lab/mdi-remark`](./nodejs/packages/remark)、[`mdast-util-mdi`](./nodejs/packages/mdast-util-mdi) | Rust-backed Unified 生態系向け adapter。 |
-| [`@illusions-lab/mdi-to-hast`](./nodejs/packages/to-hast)、[`@illusions-lab/mdi-to-html`](./nodejs/packages/to-html)、[`@illusions-lab/mdi-to-epub`](./nodejs/packages/to-epub)、[`@illusions-lab/mdi-to-docx`](./nodejs/packages/to-docx) | 既存利用者向けに残す公開互換 adapter。 |
-| [`@illusions-lab/mdi-export-profile`](./nodejs/packages/export-profile) | 共通の型付き出力 profile 設定。 |
+| [`@illusions-lab/mdi-core`](./nodejs/packages/mdi-core) | 生成された低レベル WebAssembly ブリッジ。 |
+| [`@illusions-lab/mdi-cli`](./nodejs/packages/cli) | Rust を利用するコマンドラインアダプター。 |
+| [`@illusions-lab/mdi-to-pdf`](./nodejs/packages/to-pdf) | Rust HTML を Chromium でレイアウトするアダプター。 |
+| [`@illusions-lab/mdi-remark`](./nodejs/packages/remark)、[`mdast-util-mdi`](./nodejs/packages/mdast-util-mdi) | Rust を利用する Unified エコシステム向けアダプター。 |
+| [`@illusions-lab/mdi-to-hast`](./nodejs/packages/to-hast)、[`@illusions-lab/mdi-to-html`](./nodejs/packages/to-html)、[`@illusions-lab/mdi-to-epub`](./nodejs/packages/to-epub)、[`@illusions-lab/mdi-to-docx`](./nodejs/packages/to-docx) | 既存利用者向けに残す公開互換アダプター。 |
+| [`@illusions-lab/mdi-export-profile`](./nodejs/packages/export-profile) | 共通の型付き出力プロファイル設定。 |
+
+## プロジェクトの状態
+
+[![CI](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/ci.yml/CI?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/illusions-lab/MDI/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/docs.yml/Docs?branch=main&style=for-the-badge&logo=readthedocs&logoColor=white&label=Docs)](https://github.com/illusions-lab/MDI/actions/workflows/docs.yml)
+[![npm version](https://img.shields.io/npm/v/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@illusions-lab/mdi)
+[![License](https://img.shields.io/github/license/illusions-lab/MDI?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](./LICENSE)
 
 ## 開発
 
@@ -64,7 +86,7 @@ cargo build
 cargo test
 ```
 
-WASM bridge のビルドには、`wasm32-unknown-unknown` Rust target と `wasm-pack` も必要です。Node workspace の build は自動的に実行します。CI は Rust core を Linux、macOS、Windows の x64 と ARM64 でテストし、Chromium PDF 出力を含む JavaScript 結合テストを Linux x64 で実行します。
+WASM ブリッジのビルドには、`wasm32-unknown-unknown` Rust ターゲットと `wasm-pack` も必要です。Node ワークスペースのビルドが自動で実行します。CI は Rust core を Linux、macOS、Windows の x64 と ARM64 でテストし、Chromium PDF 出力を含む JavaScript 結合テストを Linux x64 で実行します。
 
 ## リリース
 
@@ -80,7 +102,7 @@ MDI 仕様バージョンを上げるには、`nodejs/` から `pnpm bump-spec-v
 
 ## 関連プロジェクト
 
-- [illusions-lab/milkdown-mdi](https://github.com/illusions-lab/milkdown-mdi) — MDI 構文と縦書き表示のための Milkdown エディタ plugin。
+- [illusions-lab/milkdown-mdi](https://github.com/illusions-lab/milkdown-mdi) — MDI 構文と縦書き表示のための Milkdown エディタプラグイン。
 
 ## ライセンス
 

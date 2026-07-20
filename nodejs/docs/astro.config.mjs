@@ -95,6 +95,7 @@ export default defineConfig({
 					translations: { ja: 'バインディング', 'zh-TW': 'Bindings' },
 					items: [
 						{ label: 'JavaScript / TypeScript', translations: { ja: 'JavaScript / TypeScript', 'zh-TW': 'JavaScript / TypeScript' }, slug: 'bindings/javascript' },
+						{ label: 'Android / Kotlin', translations: { ja: 'Android / Kotlin', 'zh-TW': 'Android / Kotlin' }, slug: 'bindings/android' },
 						{ label: 'Rust', translations: { ja: 'Rust', 'zh-TW': 'Rust' }, slug: 'bindings/rust' },
 						{ label: 'Python', translations: { ja: 'Python', 'zh-TW': 'Python' }, slug: 'bindings/python' },
 						{ label: 'Swift', translations: { ja: 'Swift', 'zh-TW': 'Swift' }, slug: 'bindings/swift' },

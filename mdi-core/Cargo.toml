@@ -1,10 +1,13 @@
 [package]
 name = "mdi-core"
-version = "2.0.1"
+version = "2.0.2"
 description = "Language-neutral parser for MDI 2.0 syntax"
 edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/illusions-lab/MDI"
+documentation = "https://docs.rs/mdi-core"
+readme = "README.md"
 keywords = ["markdown", "mdi", "ruby", "typesetting"]
 categories = ["parser-implementations", "text-processing"]
 

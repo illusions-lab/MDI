@@ -87,7 +87,7 @@ jobs:
 
       - name: Generate Rust coverage report
         if: matrix.platform == 'Linux x64'
-        run: cargo llvm-cov --locked --lcov --output-path lcov.info
+        run: cargo llvm-cov --locked --fail-under-lines 90 --lcov --output-path lcov.info
 
       - name: Upload Rust coverage to Codecov
         if: matrix.platform == 'Linux x64'

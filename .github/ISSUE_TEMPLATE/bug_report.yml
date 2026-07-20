@@ -1,0 +1,65 @@
+name: Bug report
+description: Report reproducible incorrect behavior in MDI or its bindings.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug. Please search existing issues first and remove any sensitive content.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Rust core / syntax / document IR
+        - Renderer or export format
+        - JavaScript or CLI binding
+        - Python binding
+        - Swift binding
+        - Android binding
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MDI version or commit
+      placeholder: e.g. @illusions-lab/mdi 2.0.1 or a Git commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest MDI input and code or command needed to reproduce the problem.
+      placeholder: "Input:\n```mdi\n...\n```\n\nCommand or code:\n```sh\n...\n```"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and diagnostics
+      description: Include complete error output, rendered output, or a screenshot when useful.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS:\nRuntime and version (Node/Python/Swift/Android):\nInstallation method:"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and confirmed this is not a duplicate.
+          required: true
+        - label: This report does not contain a security vulnerability or sensitive information.
+          required: true

@@ -1,0 +1,16 @@
+[package]
+name = "mdi-android-jni"
+version = "2.0.1"
+description = "Android JNI boundary for mdi-core"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/illusions-lab/MDI"
+publish = false
+
+[lib]
+name = "mdi_android"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21"
+mdi-core = { path = "../mdi-core" }

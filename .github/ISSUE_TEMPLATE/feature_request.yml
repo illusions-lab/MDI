@@ -1,0 +1,56 @@
+name: Feature request
+description: Propose an improvement to MDI, its specification, tooling, or documentation.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: For syntax or semantic changes, please describe compatibility and how the proposal fits the Rust-authoritative architecture.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - MDI syntax or specification
+        - Rust core / document IR
+        - Renderer or export format
+        - JavaScript or CLI binding
+        - Python binding
+        - Swift binding
+        - Android binding
+        - Documentation or examples
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is difficult today, and who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Include examples of MDI input/output or API usage where helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration impact
+      description: Note effects on existing documents, document IR consumers, bindings, or renderers. Write N/A if none.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and confirmed this is not a duplicate.
+          required: true
+        - label: This proposal does not disclose a security vulnerability.
+          required: true

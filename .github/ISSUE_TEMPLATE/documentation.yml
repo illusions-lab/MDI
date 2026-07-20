@@ -1,0 +1,31 @@
+name: Documentation improvement
+description: Report missing, unclear, or incorrect documentation.
+title: "docs: "
+labels: [documentation]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link to the page or repository path that needs attention.
+      placeholder: https://mdi.illusions.app/... or README.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear, missing, or incorrect?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: A proposed wording, example, or outline is welcome.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and confirmed this is not a duplicate.
+          required: true

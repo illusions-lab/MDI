@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://mdi.illusions.app/
+    about: Check the MDI documentation and API guides before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/illusions-lab/MDI/security/advisories/new
+    about: Report vulnerabilities privately; do not disclose them in a public issue.
