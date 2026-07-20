@@ -13,7 +13,6 @@ const shouldRenderSearch =
 <div class="header">
 	<div class="title-wrapper sl-flex">
 		<SiteTitle />
-		<a class="illusions-link" href="https://www.illusions.app/">illusions</a>
 	</div>
 	<div class="sl-flex print:hidden">
 		{shouldRenderSearch && <Search />}
@@ -51,26 +50,11 @@ const shouldRenderSearch =
 			min-width: 0;
 		}
 
-		.illusions-link {
-			color: var(--sl-color-gray-2);
-			font-size: var(--sl-text-sm);
-			white-space: nowrap;
-		}
-
-		.illusions-link:hover {
-			color: var(--sl-color-white);
-		}
-
 		.social-icons::after {
 			content: '';
 			height: 2rem;
 			border-inline-end: 1px solid var(--sl-color-gray-5);
 		}
 
-		@media (max-width: 32rem) {
-			.illusions-link {
-				display: none;
-			}
-		}
 	}
 </style>
