@@ -33,6 +33,7 @@ const changedFiles = execFileSync(
   .split("\n")
   .filter(Boolean);
 const changedPackages = new Set();
+const dependencyRoots = new Set();
 
 for (const file of changedFiles) {
   const nodejsRelative = relative(root, join(root, "..", file));
@@ -42,13 +43,23 @@ for (const file of changedFiles) {
       ({ manifestPath }) =>
         relative(root, manifestPath).startsWith(`packages/${packageMatch[1]}/`)
     );
-    if (entry) changedPackages.add(entry.manifest.name);
+    if (entry) {
+      changedPackages.add(entry.manifest.name);
+      // A package.json-only change is packaging metadata (for example a
+      // repository URL or license) and must not force consumer releases.
+      if (nodejsRelative !== `packages/${packageMatch[1]}/package.json`) {
+        dependencyRoots.add(entry.manifest.name);
+      }
+    }
   }
   if (file.startsWith("mdi-core/")) {
     const core = allPackages.find(
       ({ manifest }) => manifest.name === "@illusions-lab/mdi-core"
     );
-    if (core) changedPackages.add(core.manifest.name);
+    if (core) {
+      changedPackages.add(core.manifest.name);
+      dependencyRoots.add(core.manifest.name);
+    }
   }
 }
 
@@ -64,9 +75,10 @@ while (expanded) {
     };
     if (
       !releaseNames.has(manifest.name) &&
-      Object.keys(dependencies).some((name) => releaseNames.has(name))
+      Object.keys(dependencies).some((name) => dependencyRoots.has(name))
     ) {
       releaseNames.add(manifest.name);
+      dependencyRoots.add(manifest.name);
       expanded = true;
     }
   }
