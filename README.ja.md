@@ -84,4 +84,4 @@ MDI 仕様バージョンを上げるには、`nodejs/` から `pnpm bump-spec-v
 
 ## ライセンス
 
-プロジェクトのコードと MDI 仕様はすべて MIT ライセンスです。[LICENSE](./LICENSE) と [LICENSE-SPEC](./LICENSE-SPEC) を参照してください。
+MIT

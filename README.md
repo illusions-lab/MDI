@@ -20,6 +20,51 @@ This is the canonical repository for the [MDI 2.0 specification](./SYNTAX.md), t
 
 Documentation: <https://mdi.illusions.app/>
 
+## Quick start
+
+### CLI — convert an `.mdi` file
+
+Install the CLI, then render an MDI document to standalone HTML:
+
+```bash
+npm install --global @illusions-lab/mdi-cli
+
+mdi build novel.mdi --to html -o dist/novel.html
+```
+
+The same command can produce `pdf`, `epub`, `docx`, `txt`, `txt-ruby`,
+`narou`, `kakuyomu`, or `aozora` output. Run `mdi build novel.mdi --to txt-all`
+to write every text variant beside the source file.
+
+### JavaScript — parse and render
+
+Install the JavaScript binding:
+
+```bash
+npm install @illusions-lab/mdi
+```
+
+```js
+import { parse, renderHtml } from "@illusions-lab/mdi";
+
+const source = "# 春は曙\n\n{東京|とうきょう}で第^12^話を読む。";
+const { document, diagnostics } = parse(source);
+const html = renderHtml(source);
+
+console.log(document);    // Versioned MDI document IR
+console.log(diagnostics); // Syntax diagnostics, if any
+console.log(html);        // Standalone HTML rendered by Rust
+```
+
+<p align="center">
+  <a href="https://mdi.illusions.app/">
+    <img src="https://img.shields.io/badge/Other%20languages-Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Other languages: read the MDI documentation" />
+  </a>
+</p>
+
+For Rust, Python, Swift, renderer configuration, and complete API guidance,
+visit the <a href="https://mdi.illusions.app/">MDI documentation</a>.
+
 ## Architecture
 
 Rust is the single executable authority for MDI syntax and document semantics. It parses CommonMark, GFM, front matter, and MDI extensions into a versioned document IR. JavaScript, Python, and Swift are thin host interfaces over that implementation.
@@ -84,4 +129,4 @@ For an MDI specification version bump, run `pnpm bump-spec-version 2.1` from `no
 
 ## License
 
-All project code and the MDI specification are licensed under MIT. See [LICENSE](./LICENSE) and [LICENSE-SPEC](./LICENSE-SPEC).
+MIT
