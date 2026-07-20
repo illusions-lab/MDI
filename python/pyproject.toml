@@ -1,6 +1,6 @@
 [project]
 name = "illusion-markdown"
-version = "2.0.1"
+version = "2.0.2"
 description = "Python bindings for illusion Markdown (MDI), backed by the Rust core."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ build-backend = "maturin"
 
 [project.urls]
 Homepage = "https://github.com/illusions-lab/MDI"
-Documentation = "https://illusions-lab.github.io/mdi-js/"
+Documentation = "https://mdi.illusions.app/bindings/python/"
 Repository = "https://github.com/illusions-lab/MDI"
 Issues = "https://github.com/illusions-lab/MDI/issues"
 

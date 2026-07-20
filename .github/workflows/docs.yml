@@ -13,7 +13,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # A main deployment must not cancel documentation builds required by a PR.
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

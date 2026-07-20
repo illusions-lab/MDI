@@ -23,3 +23,6 @@ JSON-compatible Python dictionaries. Source spans are UTF-8 byte offsets.
 `serialize_mdi`, `render_text`, `render_text_format`, `render_epub`, and
 `render_docx` also delegate directly to `mdi-core`; Python contains no MDI
 tokenizer or renderer.
+
+The package README and PyPI metadata link to this page as the official Python
+API documentation.
