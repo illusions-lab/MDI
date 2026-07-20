@@ -3,19 +3,38 @@ name: Publish Swift Package
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: Prepare a release PR or publish its approved artifact
+        required: true
+        type: choice
+        options: [prepare, publish]
       version:
-        description: Complete SemVer version to publish (for example, 2.0.1)
+        description: Complete SemVer version (for example, 2.0.1)
         required: true
         type: string
+      prepare_run_id:
+        description: Required for publish; the successful prepare workflow run ID
+        required: false
+        type: string
+      force_retag:
+        description: "Recovery only: replace an existing tag with the approved main commit"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
+  actions: read
   contents: write
+  pull-requests: write
 
-concurrency: swift-release
+concurrency:
+  group: swift-release-${{ inputs.version }}-${{ inputs.action }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish MDI ${{ inputs.version }}
+  prepare:
+    if: inputs.action == 'prepare'
+    name: Prepare MDI ${{ inputs.version }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -46,8 +65,6 @@ jobs:
 
       - name: Archive the XCFramework
         id: artifact
-        env:
-          VERSION: ${{ inputs.version }}
         run: |
           ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" "$RUNNER_TEMP/MDICore.xcframework.zip"
           echo "checksum=$(swift package compute-checksum "$RUNNER_TEMP/MDICore.xcframework.zip")" >> "$GITHUB_OUTPUT"
@@ -58,19 +75,80 @@ jobs:
           CHECKSUM: ${{ steps.artifact.outputs.checksum }}
         run: scripts/write-swift-package-manifest.sh remote "https://github.com/${{ github.repository }}/releases/download/$VERSION/MDICore.xcframework.zip" "$CHECKSUM"
 
-      - name: Commit and tag the package release
+      - name: Upload the approved XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-xcframework-${{ inputs.version }}
+          path: ${{ runner.temp }}/MDICore.xcframework.zip
+          if-no-files-found: error
+
+      - name: Open the release manifest pull request
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
+          BRANCH="swift-release/$VERSION"
+          git switch -c "$BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Package.swift
           git commit -m "Release Swift package $VERSION"
-          git tag "$VERSION"
-          git push origin HEAD:main "$VERSION"
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "Release Swift package $VERSION" --body "Prepared by workflow run $GITHUB_RUN_ID. Merge after the required checks pass, then dispatch **Publish Swift Package** with action **publish** and prepare run ID $GITHUB_RUN_ID."
+
+  publish:
+    if: inputs.action == 'publish'
+    name: Publish MDI ${{ inputs.version }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate approved release inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          FORCE_RETAG: ${{ inputs.force_retag }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ -n "$PREPARE_RUN_ID" ]]
+          if git rev-parse --verify --quiet "refs/tags/$VERSION"; then
+            [[ "$FORCE_RETAG" == "true" ]]
+          fi
+
+      - name: Download the approved XCFramework
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+        run: gh run download "$PREPARE_RUN_ID" --name "swift-xcframework-$VERSION" --dir "$RUNNER_TEMP/release"
+
+      - name: Verify the committed release manifest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          ARCHIVE="$RUNNER_TEMP/release/MDICore.xcframework.zip"
+          CHECKSUM=$(swift package compute-checksum "$ARCHIVE")
+          scripts/write-swift-package-manifest.sh remote "https://github.com/${{ github.repository }}/releases/download/$VERSION/MDICore.xcframework.zip" "$CHECKSUM"
+          git diff --exit-code -- Package.swift
+
+      - name: Tag the approved main commit
+        env:
+          VERSION: ${{ inputs.version }}
+          FORCE_RETAG: ${{ inputs.force_retag }}
+        run: |
+          if [[ "$FORCE_RETAG" == "true" ]]; then
+            git tag -f "$VERSION"
+            git push --force origin "refs/tags/$VERSION"
+          else
+            git tag "$VERSION"
+            git push origin "$VERSION"
+          fi
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "$VERSION" "$RUNNER_TEMP/MDICore.xcframework.zip#MDICore.xcframework.zip" --title "MDI $VERSION" --generate-notes
+        run: gh release create "$VERSION" "$RUNNER_TEMP/release/MDICore.xcframework.zip#MDICore.xcframework.zip" --title "MDI $VERSION" --generate-notes
