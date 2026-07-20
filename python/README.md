@@ -74,6 +74,20 @@ Prebuilt wheels are published for macOS (Intel and Apple Silicon), Linux x64,
 and Windows x64. A source distribution is also available for other platforms
 with a supported Rust toolchain.
 
+## Development
+
+The binding is tested against a locally built native extension. From this
+directory, use Python 3.10 or newer:
+
+```bash
+python -m pip install -e ".[test]"
+python -m pytest --cov=mdi --cov-branch
+```
+
+The test suite covers the public Python contract, including the versioned IR,
+UTF-8 byte spans, diagnostics, all text exports, archive structure, type
+boundaries, and the stable API surface.
+
 ## License
 
 [MIT](https://github.com/illusions-lab/MDI/blob/main/LICENSE)

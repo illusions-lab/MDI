@@ -98,3 +98,36 @@ jobs:
           flags: rust
           name: rust
           fail_ci_if_error: true
+
+  python:
+    name: Python binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the native extension and install test tools
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip maturin
+          python -m pip install -e "./python[test]"
+
+      - name: Test Python binding coverage
+        run: |
+          . .venv/bin/activate
+          python -m pytest python/tests --cov=mdi --cov-branch --cov-report=term-missing --cov-report=xml:python/coverage.xml
+
+      - name: Upload Python coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./python/coverage.xml
+          flags: python
+          name: python
+          fail_ci_if_error: true

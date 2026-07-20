@@ -1,6 +1,6 @@
 [project]
 name = "illusion-markdown"
-version = "2.0.2"
+version = "2.0.3"
 description = "Python bindings for illusion Markdown (MDI), backed by the Rust core."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,6 +29,21 @@ Homepage = "https://github.com/illusions-lab/MDI"
 Documentation = "https://mdi.illusions.app/bindings/python/"
 Repository = "https://github.com/illusions-lab/MDI"
 Issues = "https://github.com/illusions-lab/MDI/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9", "pytest-cov>=6.0,<7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["src/mdi"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
 
 [tool.maturin]
 manifest-path = "Cargo.toml"
