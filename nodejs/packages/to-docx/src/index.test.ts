@@ -103,7 +103,54 @@ describe("DOCX print defaults", () => {
 });
 
 describe("mdiToDocx edge cases", () => {
-  it("keeps supported GFM list, table, and inline content", async () => {
+	it("maps landscape, footer dash page numbers, and ordinary first-line indentation", async () => {
+		const zip = await JSZip.loadAsync(
+			await mdiToDocx(parse("indented paragraph"), {
+				typesetting: { writingMode: "horizontal", textIndentEm: 1 },
+				pagination: {
+					pageSize: "A4",
+					landscape: true,
+					charactersPerLine: 40,
+					linesPerPage: 30,
+					margins: { top: 10, bottom: 10, left: 10, right: 10 },
+					pageNumbers: { enabled: true, format: "dash", position: "bottom-left" },
+				},
+			})
+		);
+		const document = await zip.file("word/document.xml")!.async("string");
+		const footer = await zip.file("word/footer1.xml")!.async("string");
+		expect(document).toContain('w:w="16838"');
+		expect(document).toContain('w:h="11906"');
+		expect(document).toContain("w:firstLine=");
+		expect(footer).toContain("— ");
+		expect(footer).toContain(" —");
+	});
+
+	it("serializes breaks, blank/page-break blocks, unlabelled images, and only defined footnotes", async () => {
+		const tree = parse("before") as Root;
+		tree.children = [
+			{ type: "paragraph", children: [
+				{ type: "text", value: "before" },
+				{ type: "break" },
+				{ type: "emphasis", children: [{ type: "text", value: "em" }] },
+				{ type: "strong", children: [{ type: "text", value: "strong" }] },
+				{ type: "image", url: "image.png", alt: null },
+				{ type: "footnoteReference", identifier: "missing", label: "missing" },
+			] } as Root["children"][number],
+			{ type: "mdiBlank" } as Root["children"][number],
+			{ type: "mdiPagebreak" } as Root["children"][number],
+		];
+		const zip = await JSZip.loadAsync(await mdiToDocx(tree));
+		const document = await zip.file("word/document.xml")!.async("string");
+		expect(document).toContain("[Image]");
+		expect(document).toContain("w:br");
+		expect(document).toContain("w:i");
+		expect(document).toContain("w:b");
+		expect(document).toContain("w:type=\"page\"");
+		expect(document).not.toContain("missing");
+	});
+
+	it("keeps supported GFM list, table, and inline content", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToDocx(
         parse(

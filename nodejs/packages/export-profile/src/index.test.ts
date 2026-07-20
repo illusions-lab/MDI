@@ -80,4 +80,33 @@ describe("export profiles", () => {
       parseExportProfileJson('{"pagination":{"margins":[]}}')
     ).toThrow("pagination.margins must be an object");
   });
+  it("rejects every invalid structured profile option", () => {
+    expect(() => resolveExportProfile(null as never)).toThrow(
+      "Export profile must be an object"
+    );
+    expect(() => resolveExportProfile({ typesetting: [] as never })).toThrow(
+      "typesetting must be an object"
+    );
+    expect(() => resolveExportProfile({ metadata: { author: 1 } as never })).toThrow(
+      "metadata.author must be a string"
+    );
+    expect(() => resolveExportProfile({ typesetting: { fontFamily: 1 as never } })).toThrow(
+      "fontFamily must be a string"
+    );
+    expect(() => resolveExportProfile({ epub: { coverPath: 1 as never } })).toThrow(
+      "coverPath must be a string"
+    );
+    expect(() => resolveExportProfile({ typesetting: { writingMode: "sideways" as never } })).toThrow(
+      "writingMode must be vertical or horizontal"
+    );
+    expect(() => resolveExportProfile({ epub: { chapterSplitLevel: "h4" as never } })).toThrow(
+      "chapterSplitLevel must be h1, h2, h3, or none"
+    );
+    expect(() => resolveExportProfile({ pagination: { pageNumbers: { format: "roman" as never } } })).toThrow(
+      "Unsupported page number format"
+    );
+    expect(() => resolveExportProfile({ pagination: { pageNumbers: { position: "middle" as never } } })).toThrow(
+      "Unsupported page number position"
+    );
+  });
 });

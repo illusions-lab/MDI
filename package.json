@@ -13,7 +13,7 @@
     "docs:build": "pnpm run build && pnpm --filter docs build",
     "build": "turbo run build",
     "test": "turbo run test",
-    "test:coverage": "turbo run test -- --coverage --coverage.reporter=lcov",
+    "test:coverage": "node nodejs/scripts/check-node-coverage.mjs",
     "typecheck": "turbo run typecheck",
     "changeset": "changeset",
     "version": "changeset version",

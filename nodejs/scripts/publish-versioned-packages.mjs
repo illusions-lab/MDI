@@ -1,10 +1,14 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { globSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
-const root = new URL("..", import.meta.url).pathname;
-const manifests = globSync(join(root, "packages", "*", "package.json"));
+// Packages stay in nodejs/, while the pnpm workspace moved to the repository
+// root. Keep those two locations explicit: publishing a package must build the
+// root workspace, not an obsolete nodejs/package.json.
+const packagesRoot = resolve(new URL("..", import.meta.url).pathname);
+const repositoryRoot = resolve(packagesRoot, "..");
+const manifests = globSync(join(packagesRoot, "packages", "*", "package.json"));
 const pending = [];
 const releasePackages = [];
 const dryRun = process.argv.includes("--dry-run");
@@ -20,7 +24,7 @@ for (const manifestPath of manifests) {
       "npm",
       ["view", `${manifest.name}@${manifest.version}`, "version"],
       {
-        cwd: root,
+        cwd: packagesRoot,
         stdio: "ignore",
       }
     );
@@ -30,7 +34,10 @@ for (const manifestPath of manifests) {
 }
 
 if (pending.length > 0 && !dryRun) {
-  execFileSync("pnpm", ["run", "build"], { cwd: root, stdio: "inherit" });
+  execFileSync("pnpm", ["run", "build"], {
+    cwd: repositoryRoot,
+    stdio: "inherit",
+  });
   for (const { manifestPath } of pending) {
     // npm CLI detects GitHub Actions OIDC and exchanges it for a short-lived
     // publish credential. Do not replace this with pnpm publish: trusted

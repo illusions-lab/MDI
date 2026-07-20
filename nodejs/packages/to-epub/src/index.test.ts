@@ -107,7 +107,7 @@ describe("mdiToEpub edge cases", () => {
     expect(chapter).not.toMatch(/\sdata-footnote-ref(?=\s|>)/);
   });
 
-  it("writes cover, profile metadata, vertical progression, styles, and heading chapters", async () => {
+	it("writes cover, profile metadata, vertical progression, styles, and heading chapters", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToEpub(parse("# One\n\ntext\n\n# Two\n\nmore"), {
         profile: {
@@ -142,5 +142,42 @@ describe("mdiToEpub edge cases", () => {
     expect(css).toContain("font-family:Noto Serif JP");
     expect(css).toContain("text-indent:2em");
     expect(css).toContain("writing-mode:vertical-rl");
-  });
+	});
+
+	it("uses front matter metadata, an explicit no-split profile, and safe horizontal CSS", async () => {
+		const zip = await JSZip.loadAsync(
+			await mdiToEpub(
+				parse(
+					"---\ntitle: Front matter title\nlang: en\ndate: 2026-07-21\n---\nfirst\n\n[[pagebreak]]\n\nsecond"
+				),
+				{
+					profile: {
+						typesetting: { writingMode: "horizontal", fontFamily: "{}<>;", textIndentEm: 0 },
+						epub: { chapterSplitLevel: "none" },
+					},
+				}
+			)
+		);
+		const opf = await zip.file("OEBPS/package.opf")!.async("string");
+		const css = await zip.file("OEBPS/style.css")!.async("string");
+		expect(opf).toContain("<dc:title>Front matter title</dc:title>");
+		expect(opf).toContain("<dc:language>en</dc:language>");
+		expect(opf).toContain("<dc:date>2026-07-21</dc:date>");
+		expect(opf).not.toContain("page-progression-direction");
+		expect(css).toContain("font-family:serif");
+		expect(Object.keys(zip.files).filter((name) => name.startsWith("OEBPS/chapter-"))).toEqual([
+			"OEBPS/chapter-1.xhtml",
+		]);
+	});
+
+	it("packages JPEG covers", async () => {
+		const zip = await JSZip.loadAsync(
+			await mdiToEpub(parse("[[pagebreak]]\n\n[[pagebreak]]\n\n# One\n\nbody"), {
+				cover: { data: new Uint8Array([0xff, 0xd8, 0xff]), mediaType: "image/jpeg" },
+			})
+		);
+		const opf = await zip.file("OEBPS/package.opf")!.async("string");
+		expect(zip.file("OEBPS/cover.jpg")).toBeTruthy();
+		expect(opf).toContain('href="cover.jpg" media-type="image/jpeg"');
+	});
 });

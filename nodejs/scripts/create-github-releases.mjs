@@ -13,8 +13,9 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(fileURLToPath(import.meta.url), "../..");
-const packagesDir = path.join(root, "packages");
+const packagesRoot = path.resolve(fileURLToPath(import.meta.url), "../..");
+const repositoryRoot = path.resolve(packagesRoot, "..");
+const packagesDir = path.join(packagesRoot, "packages");
 
 const raw = process.env.PUBLISHED_PACKAGES;
 if (!raw) {
@@ -58,7 +59,7 @@ for (const entry of published) {
 
 	const exists = (() => {
 		try {
-			execFileSync("gh", ["release", "view", tag], { cwd: root, stdio: "ignore" });
+			execFileSync("gh", ["release", "view", tag], { cwd: repositoryRoot, stdio: "ignore" });
 			return true;
 		} catch {
 			return false;
@@ -68,14 +69,14 @@ for (const entry of published) {
 	if (!exists) {
 		console.log(`Creating GitHub Release ${tag}...`);
 		execFileSync("gh", ["release", "create", tag, "--title", tag, "--notes", notes], {
-			cwd: root,
+			cwd: repositoryRoot,
 			stdio: "inherit",
 		});
 	}
 
 	console.log(`Uploading tarball for ${tag}...`);
 	execFileSync("gh", ["release", "upload", tag, tarballPath, "--clobber"], {
-		cwd: root,
+		cwd: repositoryRoot,
 		stdio: "inherit",
 	});
 }

@@ -26,6 +26,23 @@ describe("mdiToHtml edge cases", () => {
 		expect(html).not.toContain("writing-mode:");
 	});
 
+	it("keeps an explicit non-vertical front matter document horizontal", () => {
+		const html = mdiToHtml(parse("---\ntitle: Horizontal\nlang: en\nwriting-mode: horizontal\n---\ntext"));
+		expect(html).toContain('<html lang="en">');
+		expect(html).toContain("<title>Horizontal</title>");
+		expect(html).not.toContain("writing-mode:");
+	});
+
+	it("defaults the language when only other front matter fields are present", () => {
+		const tree = parse("text");
+		// Consumers may construct the MDAST directly rather than using remark;
+		// retain the documented Japanese fallback for that valid shape too.
+		tree.data = { frontmatter: { title: "Untagged" } } as unknown as typeof tree.data;
+		const html = mdiToHtml(tree);
+		expect(html).toContain('<html lang="ja">');
+		expect(html).toContain("<title>Untagged</title>");
+	});
+
 	it("escapes HTML-special title and language values", () => {
 		const html = mdiToHtml(parse('---\ntitle: "A < B & \\"quoted\\""\nlang: "ja<&\\""\n---\ntext'));
 		expect(html).toContain('<html lang="ja&lt;&amp;&quot;">');

@@ -1,0 +1,70 @@
+name: Release Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - android/**
+      - mdi-android-jni/**
+      - mdi-core/**
+      - .github/workflows/release-android.yml
+  workflow_dispatch:
+
+# The Android package is a Kotlin/JNI distribution. It is published to GitHub
+# Packages with the short-lived GITHUB_TOKEN; it is not a crates.io artifact.
+concurrency: release-android-${{ github.ref }}
+
+jobs:
+  github-packages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and cargo-ndk
+        run: |
+          sdkmanager --install 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          cargo install cargo-ndk --locked
+
+      - name: Publish a new Android version only
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^VERSION_NAME=//p' android/gradle.properties)
+          tag="mdi-android@${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+            echo "Android version ${version} is already published; skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build, test, and publish to GitHub Packages
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./android/scripts/build-native.sh
+          cd android
+          ./scripts/run-gradle.sh :mdi-android:check :mdi-android:publishReleasePublicationToGitHubPackagesRepository
+
+      - name: Tag the published Android artifact
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          git tag "mdi-android@${{ steps.version.outputs.version }}"
+          git push origin "mdi-android@${{ steps.version.outputs.version }}"

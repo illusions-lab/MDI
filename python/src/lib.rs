@@ -9,7 +9,6 @@ create_exception!(mdi._native, MdiRenderError, pyo3::exceptions::PyException);
 fn parse_json(source: &str) -> String {
     mdi_core::parse_json(source)
 }
-
 #[pyfunction]
 fn render_html(source: &str) -> String {
     mdi_core::render_html(source)

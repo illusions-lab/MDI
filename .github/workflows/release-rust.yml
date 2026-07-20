@@ -1,0 +1,54 @@
+name: Release Rust
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - mdi-core/**
+      - .github/workflows/release-rust.yml
+  workflow_dispatch:
+
+# Publishing is deliberately limited to the canonical crate. The JNI crate is
+# an Android implementation detail (`publish = false`), and Swift/Python are
+# not releaseable implementations in this repository.
+concurrency: release-rust-${{ github.ref }}
+
+jobs:
+  crates-io:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    defaults:
+      run:
+        working-directory: mdi-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify the crate that will be published
+        run: cargo package --locked
+
+      # crates.io must have this repository configured as a trusted publisher.
+      # Cargo exchanges GitHub's OIDC token; no long-lived registry token is
+      # stored in this workflow.
+      - name: Publish the manifest version when it is new
+        id: publish
+        shell: bash
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if cargo info "mdi-core@${version}" >/dev/null 2>&1; then
+            echo "mdi-core@${version} is already on crates.io; skipping."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          else
+            cargo publish --locked
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag the published crate
+        if: steps.publish.outputs.published == 'true'
+        run: |
+          git tag "mdi-core@${{ steps.publish.outputs.version }}"
+          git push origin "mdi-core@${{ steps.publish.outputs.version }}"

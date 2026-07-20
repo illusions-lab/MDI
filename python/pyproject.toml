@@ -46,6 +46,6 @@ fail_under = 95
 show_missing = true
 
 [tool.maturin]
-manifest-path = "Cargo.toml"
 module-name = "mdi._native"
+manifest-path = "Cargo.toml"
 python-source = "src"

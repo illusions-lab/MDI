@@ -1,9 +1,13 @@
 plugins {
     id("com.android.library")
     id("jacoco")
+    id("maven-publish")
     kotlin("android")
     kotlin("plugin.serialization")
 }
+
+group = "app.illusions"
+version = providers.gradleProperty("VERSION_NAME").getOrElse("0.0.0-SNAPSHOT")
 
 android {
     namespace = "app.illusions.mdi"
@@ -24,6 +28,12 @@ android {
     buildTypes {
         debug {
             enableUnitTestCoverage = true
+        }
+    }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
         }
     }
 }
@@ -101,4 +111,43 @@ tasks.register<JacocoCoverageVerification>("verifyDebugUnitTestCoverage") {
 
 tasks.named("check").configure {
     dependsOn("verifyDebugUnitTestCoverage")
+}
+
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            groupId = project.group.toString()
+            artifactId = "mdi-android"
+            version = project.version.toString()
+            afterEvaluate {
+                from(components["release"])
+            }
+            pom {
+                name.set("MDI Android")
+                description.set("Kotlin/JNI bindings for illusion Markdown (MDI)")
+                url.set("https://github.com/illusions-lab/MDI")
+                licenses {
+                    license {
+                        name.set("MIT")
+                        url.set("https://opensource.org/license/mit")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/illusions-lab/MDI.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/illusions-lab/MDI.git")
+                    url.set("https://github.com/illusions-lab/MDI")
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/illusions-lab/MDI")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }

@@ -42,6 +42,13 @@ describe("Rust MDI JavaScript binding", () => {
 	it("rejects non-string input at the host boundary", () => {
 		expect(() => parse(null as never)).toThrow("source must be a string");
 		expect(() => renderHtml({} as never)).toThrow("source must be a string");
+		expect(() => renderEpub(null as never)).toThrow("source must be a string");
+		expect(() => renderDocx(null as never)).toThrow("source must be a string");
+		expect(() => serializeMdi(null as never)).toThrow("source must be a string");
+		expect(() => renderText(null as never)).toThrow("source must be a string");
+		expect(() => renderTextFormat("text", "txt", null as never)).toThrow(
+			"source and indentPrefix must be strings",
+		);
 		expect(() => renderTextFormat("text", "invalid" as never)).toThrow("Unsupported text format");
 	});
 

@@ -45,10 +45,21 @@ jobs:
           name: android
           fail_ci_if_error: true
 
+      # GitHub-hosted runners expose /dev/kvm as root:kvm.  Give the emulator
+      # process access before it starts: software acceleration (`-accel off`)
+      # is too slow for this API 35 image and times out during boot.
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run x86_64 instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: cd android && ./scripts/run-gradle.sh :mdi-android:connectedDebugAndroidTest
