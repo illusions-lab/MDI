@@ -5,7 +5,7 @@
 MDI は、標準 Markdown（CommonMark / GFM）の記法をすべて継承したうえで、ルビ・縦中横・傍点・割注など、プレーンな Markdown では表現しにくい日本語組版の要素を、HTML タグなしの簡潔な記法で書けるようにしたフォーマットです。見た目の制御は CSS に委ね、原稿には**意味だけを書く**——という Markdown 本来の思想を、日本語組版の世界に持ち込むことを目指しています。
 
 - 仕様書: [SYNTAX.md](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
-- リポジトリ: [illusions-lab/MDI](https://github.com/illusions-lab/MDI)（仕様はパブリックドメイン / Unlicense）
+- リポジトリ: [illusions-lab/MDI](https://github.com/illusions-lab/MDI)（仕様を含め MIT ライセンス）
 - MDI 1.0 の仕様は [`spec/v1.0`](https://github.com/illusions-lab/MDI/tree/spec/v1.0) ブランチに保存されています
 
 ---
@@ -187,7 +187,7 @@ MDI 2.0 仕様と並行して、公式ツール群を開発しています。
 
 ## さいごに
 
-MDI の仕様はパブリックドメイン（Unlicense）で公開しています。エディタ、静的サイトジェネレータ、変換ツール——どんなソフトウェアでも、許諾なしに自由に実装できます。
+MDI の仕様を含むプロジェクト全体は MIT ライセンスで公開しています。エディタ、静的サイトジェネレータ、変換ツールにも利用・実装できます。
 
 日本語で物語を書くすべての人に、「組版を記述できる原稿フォーマット」を。
 

@@ -5,7 +5,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/illusions-lab/MDI"
+    "url": "git+https://github.com/illusions-lab/MDI.git",
+    "directory": "nodejs/packages/export-profile"
   },
   "type": "module",
   "main": "./dist/index.js",

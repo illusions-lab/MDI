@@ -31,23 +31,28 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # npm trusted publishing requires Node >= 22.14 and npm >= 11.5.1.
+          node-version: 24
           cache: pnpm
           cache-dependency-path: nodejs/pnpm-lock.yaml
           registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
 
+      - run: npm install --global npm@^11.5.1
+
       - name: Calculate next patch versions
         id: versions
         run: node scripts/compute-release-versions.mjs
+        env:
+          # A manual recovery run with no base SHA safely releases no packages.
+          RELEASE_BASE_SHA: ${{ github.event.before || github.sha }}
 
       - name: Publish next patch versions
         id: publish
         run: node scripts/publish-versioned-packages.mjs
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          RELEASE_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
 
       - name: Create GitHub Releases with downloadable tarballs
         if: steps.publish.outputs.published == 'true'
