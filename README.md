@@ -70,6 +70,7 @@ The language toolkits below call this same parser instead of reimplementing the 
 
 [![CI](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/ci.yml/CI?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/illusions-lab/MDI/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/illusions-lab/MDI/docs.yml/Docs?branch=main&style=for-the-badge&logo=readthedocs&logoColor=white&label=Docs)](https://github.com/illusions-lab/MDI/actions/workflows/docs.yml)
+[![codecov](https://codecov.io/gh/illusions-lab/MDI/graph/badge.svg?token=J6GJZW744R)](https://codecov.io/gh/illusions-lab/MDI)
 [![npm version](https://img.shields.io/npm/v/%40illusions-lab%2Fmdi?style=for-the-badge&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@illusions-lab/mdi)
 [![License](https://img.shields.io/github/license/illusions-lab/MDI?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](./LICENSE)
 
