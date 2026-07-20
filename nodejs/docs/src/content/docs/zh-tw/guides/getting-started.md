@@ -1,156 +1,171 @@
 ---
 title: 快速上手
-description: 使用 Rust 核心解析完整的 .mdi 文件，並輸出 HTML、PDF、EPUB、DOCX 或純文字。
+description: 安裝 CLI 與 JavaScript 套件，把一份真正的 .mdi 檔案轉成 HTML、PDF 與純文字。
 ---
 
-**illusion Markdown（MDI）** 是為日文小說排版設計的 Markdown 方言。
-`@illusions-lab/mdi` 是主要 JavaScript API：它把完整原始碼交給 Rust
-`mdi-core`，並以同一份文件 IR 支援解析、驗證、正規化及各種輸出。
+**先備知識：** [什麼是 MDI？](/zh-tw/learn/what-is-mdi/) 與[核心概念](/zh-tw/learn/core-concepts/) ―— 本頁假設你已經知道 IR、span、診斷是什麼。也需要 [Node.js](https://nodejs.org) 20 以上版本。
 
-本工具鏈實作 **MDI 2.0**
-（[規範](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)）。
+本頁實作的是 **MDI 2.0**，其規範性、人類可讀的定義是 [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)。以下每個指令與程式碼都可以直接複製貼上執行 ―— 全都對應本專案實際發布的套件，沒有任何空想成分。
 
-## 最快的方式：CLI
+## 1. 寫一份 `.mdi` 檔案
+
+建立 `novel.mdi`：
+
+```mdi
+---
+mdi: "2.0"
+title: 雪女
+author: 小泉八雲
+lang: ja
+writing-mode: vertical
+---
+
+# 第一章
+
+{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。
+彼は[[em:決して]]忘れないと誓った。[[br]]
+その日は大安[[warichu:六曜の一つで吉日とされる]]であった。
+```
+
+## 2. 用 CLI 轉換
+
+全域安裝 CLI：
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
 ```
 
+執行它：
+
 ```bash
 mdi build novel.mdi --to html
-mdi build novel.mdi --to pdf
-mdi build novel.mdi --to epub -o dist/novel.epub
-mdi build novel.mdi --to docx
-mdi build novel.mdi --to txt
-mdi build novel.mdi --to txt-ruby
-mdi build novel.mdi --to narou
-mdi build novel.mdi --to kakuyomu
-mdi build novel.mdi --to aozora
-mdi build novel.mdi --to txt-all
 ```
 
-若省略 `-o`，輸出檔會寫在輸入檔旁，並使用輸出格式的副檔名
-（例如 `novel.mdi` → `novel.pdf`）。
+```text
+Written /path/to/novel.html
+```
 
-`txt` 會輸出基本純文字；`txt-ruby` 以 `{base|reading}` 保留 ruby。
-`narou`、`kakuyomu` 與 `aozora` 分別使用對應投稿平台的標記格式；
-`txt-all` 則一次輸出全部五種文字格式，且不會彼此覆寫。
+完整的指令形式，直接取自 CLI 自己的用法訊息：
 
-:::note
-PDF 使用 Chromium 作為排版引擎。Rust 產生 HTML 與列印 CSS、控制隔離的
-Chromium process，並透過 Chrome DevTools Protocol 取得 PDF。Chromium 負責
-日文直書、ruby、縱中橫、傍點、字型 shaping 與分頁，但不解析 MDI。
-:::
+```text
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+```
 
-## JavaScript API
+| 旗標 | 意義 |
+| --- | --- |
+| `--to <format>` | 必要。上述格式之一。 |
+| `-o <path>` | 選用。輸出路徑。省略時，輸出檔會寫在輸入檔旁，使用該格式的副檔名 —— `novel.mdi --to pdf` 會寫出 `novel.pdf`；`--to txt-ruby` 會寫出 `novel_ruby.txt`（CLI 把文字變體命名為 `<stem>_<variant>.txt`，純 `txt` 則沒有後綴）。 |
+| `--config <path>` | 選用。指向[匯出設定檔](/zh-tw/ecosystem/export-profiles/) JSON 檔的路徑，控制頁面大小、字型、邊界與文字縮排設定。 |
 
-安裝主要套件：
+試試每一種輸出格式：
+
+```bash
+mdi build novel.mdi --to html                          # novel.html
+mdi build novel.mdi --to pdf                            # novel.pdf
+mdi build novel.mdi --to epub -o dist/novel.epub        # dist/novel.epub
+mdi build novel.mdi --to docx                           # novel.docx
+mdi build novel.mdi --to txt                            # novel.txt      ―— ruby 會被捨棄
+mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―— ruby 保留為 {base|reading}
+mdi build novel.mdi --to narou                          # novel_narou.txt   ―— 小説家になろう 記法
+mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―— カクヨム 記法
+mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―— 青空文庫 記法，以 Shift_JIS 編碼
+mdi build novel.mdi --to txt-all                        # 一次寫出全部六種文字檔；不接受 -o
+```
+
+### 每種格式實際會發生什麼事
+
+- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`、EPUB、DOCX** 全都**直接由 Rust 核心**渲染（`@illusions-lab/mdi` 的 `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―— CLI 中間不會重新剖析或重新詮釋任何東西。
+- **PDF** 會把同一份 Rust 渲染出的 HTML 交給本機安裝的 Chromium 系瀏覽器，由它負責分頁並呼叫 `printToPDF`。Chromium 完全不會收到 `.mdi` 原始碼，也不做任何語法判斷。如果找不到 Chromium 系瀏覽器，指令會失敗並顯示指名缺少哪個相依項目的錯誤 —— 指定特定執行檔的方式請見[渲染模型](/zh-tw/core/rendering/)。
+- **`aozora`** 輸出時會以 **Shift_JIS** 編碼，符合青空文庫自己投稿工具的期待格式；其他每種文字變體都以 UTF-8 寫出。
+
+### 出錯時會怎樣
+
+CLI 不會印出 stack trace。任何失敗都只會在 stderr 寫**一行**，並以結束碼 `1` 結束程序：
+
+```bash
+mdi build missing.mdi --to html
+```
+
+```text
+ENOENT: no such file or directory, open 'missing.mdi'
+```
+
+```bash
+mdi build novel.mdi --to svg
+```
+
+```text
+Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+```
+
+無法識別的 `--to` 值（或任何其他格式錯誤的引數列）都會印出上面的用法訊息，而不是嘗試猜測你的意圖。
+
+## 3. 用 JavaScript 剖析與渲染
+
+如果你是在打造應用程式而不是呼叫 CLI，安裝主要套件：
 
 ```bash
 npm install @illusions-lab/mdi
 ```
 
-`parse` 接收完整的 UTF-8 `.mdi` 原始碼，回傳文件 IR 與 diagnostics。宿主端
-不需要先執行 Markdown parser，也不應先切割或改寫輸入。
-
 ```js
-import { readFile } from 'node:fs/promises';
-import { parse } from '@illusions-lab/mdi';
+import { readFile } from "node:fs/promises";
+import { parse, renderHtml } from "@illusions-lab/mdi";
 
-const source = await readFile('novel.mdi', 'utf8');
-const { document, diagnostics } = await parse(source);
+const source = await readFile("novel.mdi", "utf8");
 
-for (const diagnostic of diagnostics) {
-	console.warn(
-		`${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`,
-	);
-}
+const { document, diagnostics, syntaxVersion, irVersion } = parse(source);
+console.log(syntaxVersion, irVersion); // "2.0" "1.0"
+console.log(diagnostics);              // 這份檔案是 [] ―— 沒什麼好警告的
+console.log(document.frontmatter.entries);
+// [{ key: "mdi", value: "2.0" }, { key: "title", value: "雪女" }, ...]
+
+const html = renderHtml(source);
 ```
 
-一般的格式錯誤不會讓整次解析失敗。Rust 會依規範產生可用的文件樹，並以具有
-穩定代碼、嚴重程度及 UTF-8 byte span 的 diagnostic 說明問題。
-
-解析結果會聲明 MDI 語法版本與 IR schema 版本。IR 中的 CommonMark、GFM、
-front matter 與 MDI nodes 位於同一棵樹中；所有語言綁定看到的是同一份語義。
-
-## 產生輸出
-
-所有 renderer 都直接消費 `parse` 回傳的 Rust 文件 IR：
+`parse` 完全不需要宿主端的 Markdown parser ―— CommonMark、GFM、front matter、MDI 全部在單一次 `parse` 呼叫裡決定。一般的格式錯誤會回傳可用的文件加上（通常是空的）診斷；`try`/`catch` 留給程式設計錯誤使用，例如傳入非字串：
 
 ```js
-import { writeFile } from 'node:fs/promises';
-import {
-	renderDocx,
-	renderEpub,
-	renderHtml,
-	renderPdf,
-	renderText,
-	serializeMdi,
-} from '@illusions-lab/mdi';
-
-const html = await renderHtml(document);
-const plainText = await renderText(document, 'plain');
-const normalizedMdi = await serializeMdi(document);
-const epub = await renderEpub(document);
-const docx = await renderDocx(document);
-const pdf = await renderPdf(document);
-
-await Promise.all([
-	writeFile('novel.html', html),
-	writeFile('novel.txt', plainText),
-	writeFile('novel.normalized.mdi', normalizedMdi),
-	writeFile('novel.epub', epub),
-	writeFile('novel.docx', docx),
-	writeFile('novel.pdf', pdf),
-]);
+parse(42); // 丟出 TypeError: source must be a string
 ```
 
-HTML、TXT、EPUB、DOCX 與標準化 MDI 由 Rust 直接產生。PDF 也由 Rust API
-協調，只把最終排版交給 Chromium。不同輸出不會各自重新解讀原始語法。
+每個匯出函式（`renderEpub`、`renderDocx`、`renderText`、`renderTextFormat`、`serializeMdi`）的完整簽章與範例請見 [Bindings: JavaScript / TypeScript](/zh-tw/bindings/javascript/)。
 
-## Front matter
+## 4. Front matter 解說
 
-`.mdi` 文件可以使用 YAML front matter：
+`novel.mdi` 開頭的 front matter 區塊是普通的 YAML，在同一次 `parse()` 呼叫中被剖析：
 
 ```yaml
 ---
 mdi: "2.0"
-title: 吾輩は猫である
-author: 夏目漱石
+title: 雪女
+author: 小泉八雲
 lang: ja
-writing-mode: vertical # 或 horizontal（預設）
-page-progression: rtl  # 預設值跟隨 writing-mode
+writing-mode: vertical
 ---
 ```
 
-`parse` 會在同一次 Rust 解析中處理 front matter，套用規範預設值，並保留原始
-順序與未知 keys。Renderer 從文件 IR 讀取 metadata：HTML 使用 `<title>`、
-`lang` 與 `writing-mode`；EPUB 使用 OPF metadata；DOCX 使用文件屬性與直書
-section layout。
+- `mdi` 聲明文件所針對的語法版本。省略時，剖析器會假設自己所支援的最新版本。若聲明的版本*新於*剖析器支援的版本，會得到一個 `mdi.version.unsupported` 警告診斷 ―— 剖析仍會以盡力而為的方式繼續進行（見[診斷](/zh-tw/core/diagnostics/)）。
+- `writing-mode: vertical` 會改變 `renderHtml` 的排版方式（在根元素加上 `writing-mode: vertical-rl`），這也是縱中橫與傍點之所以存在的原因 ―— 兩者都是直排排版的裝置，在橫排下也能優雅地退化。
+- 鍵的順序與未知的鍵都會保留在 `document.frontmatter.entries` 裡；renderer 對不認識的鍵不會報錯，只會忽略。
 
-## 與 remark/unified 整合
+## 5. 選用：接上 `unified`/`remark` 管線
 
-Remark 是選用的生態系 adapter，不是 MDI parser。先用
-`@illusions-lab/mdi` 解析完整原始碼，再把 Rust 文件 IR 映射成 mdast：
-
-```bash
-npm install @illusions-lab/mdi @illusions-lab/mdi-remark unified
-```
+除非你已經有一套期待 `mdast` 節點的 `unified` 管線（例如 Astro、某個靜態網站產生器、以 `remark` 為基礎的檢查工具），否則可以跳過這一節。`@illusions-lab/mdi-remark` 是一個**adapter**，不是第二個剖析器 ―— 它呼叫的是同一個 Rust `parse()`，只是把結果重新整形成 `mdast`：
 
 ```js
-import { unified } from 'unified';
-import { parse } from '@illusions-lab/mdi';
-import { toMdast } from '@illusions-lab/mdi-remark';
+import { unified } from "unified";
+import remarkMdi from "@illusions-lab/mdi-remark";
+import remarkStringify from "remark-stringify";
 
-const { document, diagnostics } = await parse(source);
-const mdast = toMdast(document);
-const transformed = await unified()
-	.use(myRemarkPlugin)
-	.run(mdast);
+const processor = unified().use(remarkMdi).use(remarkStringify);
+const tree = processor.parse(await readFile("novel.mdi", "utf8"));
 ```
 
-Adapter 只在 Rust IR 與 mdast 之間轉換資料。它不包含 tokenizer、grammar
-table 或 fallback parser，也不能改變 MDI 的邊界判定。若要再輸出 MDI，應先
-把 mdast 映射回文件 IR，再交給 Rust 的 `serializeMdi` 或其他 renderer。
+哪些東西能正確往返轉換、哪些不行的完整細節，請見 [Remark / mdast adapter](/zh-tw/ecosystem/remark/)。
 
-套件的責任邊界與完整契約見[架構](/zh-tw/guides/architecture/)。
+## 下一步
+
+- [完整語法參考](/zh-tw/syntax/reference/) ―— 逐一解說上面 `novel.mdi` 用到的每個構文。
+- [Rust 權威架構](/zh-tw/core/architecture/) ―— 「一份文法、一份實作」背後的所有權規則。
+- [匯出設定檔](/zh-tw/ecosystem/export-profiles/) ―— 用 `--config` 控制頁面大小、字型、邊界。

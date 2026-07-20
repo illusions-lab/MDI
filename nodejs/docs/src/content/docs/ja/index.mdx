@@ -1,38 +1,43 @@
 ---
 title: MDI
-description: Rust で動く illusion Markdown (MDI) ツール群 — 全プラットフォームで単一のパーサと一貫した出力を提供します。
+description: 幻想 Markdown（MDI）のための Rust-powered tooling。
 template: splash
 hero:
-  tagline: illusion Markdown (MDI) を単一の Rust パーサで解析し、HTML・PDF・EPUB・DOCX・テキストへ一貫して出力します。
+  tagline: ルビ、縦中横、傍点、割注、縦書きを Rust で一度だけ解析し、HTML、PDF、EPUB、DOCX、text へ一貫して出力します。
   actions:
-    - text: はじめに
+    - text: はじめる
       link: /ja/guides/getting-started/
       icon: right-arrow
-    - text: MDI 2.0 仕様書
-      link: https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md
-      icon: external
+    - text: MDI とは？
+      link: /ja/learn/what-is-mdi/
+      icon: open-book
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
 
-<CardGrid stagger>
-	<Card title="唯一の信頼できる実装" icon="seti:rust">
-		`mdi-core` が CommonMark、GFM、フロントマター、すべての MDI 構文を
-		バージョン付き文書 IR に解析します。全バインディングとレンダラーが
-		同じ構文判断を共有します。
-	</Card>
-	<Card title="本物の日本語組版" icon="translate">
-		ルビ・縦中横・傍点・割注・字間調整・縦書き — 後処理ハックではなく、
-		第一級の構文として解析されます。[ライブ・ショーケース](/ja/syntax/showcase/)
-		をご覧ください。このサイト自体が MDI のパーサで MDI を描画しています。
-	</Card>
-	<Card title="薄い言語インターフェース" icon="puzzle">
-		JavaScript、Python、Swift は別の tokenizer を持たず、同じ Rust API
-		を公開します。unified で mdast が必要な場合は remark adapter を使えます。
-	</Card>
-	<Card title="CLI 同梱" icon="seti:shell">
-		`mdi build novel.mdi --to pdf` — 原稿を Rust 制御の Chromium PDF
-		パイプラインへ渡す 1 コマンドです。
-	</Card>
+<Code code={`{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。\n彼は[[em:決して]]忘れないと誓った。`} lang="mdi" title="novel.mdi" />
+
+<CardGrid>
+  <Card title="一つの grammar、一つの実装" icon="seti:rust">`mdi-core` が CommonMark、GFM、front matter、MDI を一回で versioned document IR にします。ほかの言語に第二の parser はありません。 [Architecture](/ja/core/architecture/)</Card>
+  <Card title="日本語組版を第一級に" icon="translate">ルビ、縦中横、傍点、割注、kern、page break、縦書きに実例と出力があります。 [構文リファレンス](/ja/syntax/reference/)</Card>
+  <Card title="一つの source から五種類の出力" icon="document">HTML、5種類の TXT、EPUB、DOCX、Chromium による PDF はすべて現在実装済みです。 [出力形式](/ja/ecosystem/outputs/)</Card>
+  <Card title="正直な language interface" icon="puzzle">JavaScript/TypeScript、Rust、Python（`pip install illusion-markdown`）は実装済みです。Swift は **Planned** です。 [Bindings](/ja/bindings/javascript/)</Card>
 </CardGrid>
+
+## 30 秒で試す
+
+```bash
+npm install --global @illusions-lab/mdi-cli
+echo '{雪女|ゆき.おんな}が現れた。第^12^話のことである。' > novel.mdi
+mdi build novel.mdi --to html
+```
+
+```ts
+import { parse, renderHtml } from "@illusions-lab/mdi";
+const source = "{雪女|ゆき.おんな}が現れた。第^12^話のことである。";
+const { document, diagnostics } = parse(source);
+const html = renderHtml(source);
+```
+
+PDF/EPUB/DOCX と export profile を含む手順は [Getting Started](/ja/guides/getting-started/) にあります。
