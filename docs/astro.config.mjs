@@ -73,6 +73,7 @@ export default defineConfig({
 		],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/illusions-lab/MDI' },
+				{ icon: 'x.com', label: 'X', href: 'https://x.com/illusionsapp' },
 			],
 			defaultLocale: 'root',
 			locales: {
@@ -82,6 +83,7 @@ export default defineConfig({
 			},
 			customCss: ['@illusions-lab/mdi-to-hast/mdi.css', './src/styles/docs.css'],
 			components: {
+				Header: './src/components/Header.astro',
 				ThemeProvider: './src/components/ForcedDarkTheme.astro',
 				ThemeSelect: './src/components/Empty.astro',
 			},

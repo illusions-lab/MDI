@@ -1,0 +1,76 @@
+---
+import LanguageSelect from 'virtual:starlight/components/LanguageSelect';
+import Search from 'virtual:starlight/components/Search';
+import SiteTitle from 'virtual:starlight/components/SiteTitle';
+import SocialIcons from 'virtual:starlight/components/SocialIcons';
+import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
+import config from 'virtual:starlight/user-config';
+
+const shouldRenderSearch =
+	config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
+---
+
+<div class="header">
+	<div class="title-wrapper sl-flex">
+		<SiteTitle />
+		<a class="illusions-link" href="https://www.illusions.app/">illusions</a>
+	</div>
+	<div class="sl-flex print:hidden">
+		{shouldRenderSearch && <Search />}
+	</div>
+	<div class="sl-hidden md:sl-flex print:hidden right-group">
+		<div class="sl-flex social-icons">
+			<SocialIcons />
+		</div>
+		<ThemeSelect />
+		<LanguageSelect />
+	</div>
+</div>
+
+<style>
+	@layer starlight.core {
+		.header {
+			display: flex;
+			gap: var(--sl-nav-gap);
+			justify-content: space-between;
+			align-items: center;
+			height: 100%;
+		}
+
+		.title-wrapper,
+		.right-group,
+		.social-icons {
+			gap: 1rem;
+			align-items: center;
+		}
+
+		.title-wrapper {
+			overflow: clip;
+			padding: 0.25rem;
+			margin: -0.25rem;
+			min-width: 0;
+		}
+
+		.illusions-link {
+			color: var(--sl-color-gray-2);
+			font-size: var(--sl-text-sm);
+			white-space: nowrap;
+		}
+
+		.illusions-link:hover {
+			color: var(--sl-color-white);
+		}
+
+		.social-icons::after {
+			content: '';
+			height: 2rem;
+			border-inline-end: 1px solid var(--sl-color-gray-5);
+		}
+
+		@media (max-width: 32rem) {
+			.illusions-link {
+				display: none;
+			}
+		}
+	}
+</style>
