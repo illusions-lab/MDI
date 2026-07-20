@@ -1,0 +1,16 @@
+{
+	"rust-analyzer.linkedProjects": ["mdi-core/Cargo.toml"],
+	"search.exclude": {
+		"**/node_modules": true,
+		"**/dist": true,
+		"**/.turbo": true,
+		"mdi-core/target": true,
+		"nodejs/pnpm-lock.yaml": true
+	},
+	"files.watcherExclude": {
+		"**/node_modules/**": true,
+		"**/dist/**": true,
+		"**/.turbo/**": true,
+		"mdi-core/target/**": true
+	}
+}

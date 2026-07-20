@@ -177,7 +177,7 @@ MDI 固有の記法は導入せず、GFM / Pandoc の脚注記法をそのまま
 
 MDI 2.0 仕様と並行して、公式ツール群を開発しています。
 
-- **[mdi-js](https://github.com/illusions-lab/mdi-js)** — Node.js 向けパーサとコンバータ群。unified / remark エコシステムの上に構築され、`.mdi` から HTML・PDF・EPUB・DOCX・TXT（5 フレーバー）への変換を提供予定です。
+- **[MDI](https://github.com/illusions-lab/MDI)** — Node.js 向けパーサとコンバータ群。unified / remark エコシステムの上に構築され、`.mdi` から HTML・PDF・EPUB・DOCX・TXT（5 フレーバー）への変換を提供予定です。
 - **[milkdown-mdi](https://github.com/illusions-lab/milkdown-mdi)** — Milkdown エディタ向けプラグイン。MDI 記法の WYSIWYG 編集と縦書き表示を提供予定です。
 - **[illusions](https://github.com/Iktahana/illusions)** — MDI をネイティブフォーマットとして採用する日本語小説執筆アプリ。
 
