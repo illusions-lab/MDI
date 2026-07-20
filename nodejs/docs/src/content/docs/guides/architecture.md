@@ -27,6 +27,13 @@ Rust only.
 The human-readable [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md),
 the Rust parser, and shared conformance fixtures define the public contract.
 
+:::caution Current implementation status
+This page describes the product contract. The current Rust surface is listed
+in [Rust Core API status](/core/rust-api/); the Node CLI and output packages
+still use a transitional TypeScript mdast/HAST path. That path is not a second
+syntax authority.
+:::
+
 ## Why Rust parses the whole document
 
 MDI boundaries depend on Markdown context:
@@ -57,8 +64,9 @@ MDI-looking text literal.
 
 ## Renderers
 
-Canonical MDI, text flavors, HTML, EPUB, and DOCX are generated in Rust from
-the same IR.
+The product contract places canonical MDI, text flavors, HTML, EPUB, and DOCX
+rendering in Rust from the same IR. The current Node output packages are the
+transitional implementation; see [outputs](/ecosystem/outputs/) for status.
 
 PDF uses Chromium deliberately. Rust renders HTML and print CSS, starts an
 isolated Chromium process, communicates over the Chrome DevTools Protocol,

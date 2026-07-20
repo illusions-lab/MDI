@@ -16,25 +16,26 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-<CardGrid stagger>
+<CardGrid>
 	<Card title="One source of truth" icon="seti:rust">
 		`mdi-core` parses CommonMark, GFM, front matter, and every MDI
-		construct into one versioned document IR. Every binding and renderer
-		observes the same syntax decisions.
+		construct into one versioned document IR. The current Rust core API and
+		its migration boundary are documented explicitly.
 	</Card>
 	<Card title="Japanese typography, for real" icon="translate">
 		Ruby (ルビ), tate-chu-yoko (縦中横), boten (傍点), warichu
-		(割注), kerning, and vertical writing — parsed as first-class syntax,
-		not post-processing hacks. See the [live showcase](/syntax/showcase/):
-		this site renders MDI with its own parser.
+		(割注), kerning, and vertical writing are documented as first-class
+		syntax. See the [live showcase](/syntax/showcase/), which is a
+		document-build example rather than a syntax authority.
 	</Card>
 	<Card title="Thin language interfaces" icon="puzzle">
-		JavaScript, Python, and Swift expose the same Rust API without carrying
-		another tokenizer. A remark adapter is available when a unified pipeline
+		JavaScript / TypeScript is the current binding surface. Python and Swift
+		are Planned; remark is available as an adapter when a unified pipeline
 		needs mdast.
 	</Card>
 	<Card title="CLI included" icon="seti:shell">
 		`mdi build novel.mdi --to pdf` — one command from manuscript to a
-		Rust-controlled Chromium PDF pipeline.
+		current Node PDF pipeline; the Rust-native boundary is documented with
+		its implementation status.
 	</Card>
 </CardGrid>

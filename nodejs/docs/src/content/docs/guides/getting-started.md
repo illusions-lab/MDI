@@ -1,11 +1,12 @@
 ---
 title: Getting Started
-description: Parse a complete MDI document with Rust and render it to HTML, PDF, EPUB, DOCX, or plain text.
+description: Parse MDI with the current Rust-backed JavaScript surface and use the shipped CLI outputs.
 ---
 
-MDI is a Markdown dialect for Japanese novel typesetting. Its parser and
-renderers live in Rust; the CLI and JavaScript package are interfaces to the
-same `mdi-core` engine.
+MDI is a Markdown dialect for Japanese novel typesetting. `mdi-core` is the
+syntax authority. The current JavaScript package exposes the Rust parse
+surface, while the CLI and output packages still use the repository's
+transitional TypeScript ecosystem path; see the [architecture status](/core/architecture/).
 
 This toolchain implements **MDI 2.0**, whose normative human-readable
 definition is the
@@ -43,10 +44,10 @@ Japanese publishing notations. `txt-all` writes all text variants without
 overwriting one with another.
 
 :::note
-PDF layout is performed by Chromium, but Rust owns the operation end to end.
-It renders HTML and print CSS, starts an isolated Chromium process, calls
-`printToPDF` over the Chrome DevTools Protocol, and returns the PDF bytes.
-Chromium never parses MDI or decides document semantics.
+PDF layout is performed by Chromium in the current Node output package.
+Chromium never parses MDI or decides document semantics. The Rust-native PDF
+operation described by the architecture contract is not yet a public API in
+the current crate.
 :::
 
 ## JavaScript
@@ -72,45 +73,20 @@ console.log(result.document);
 console.log(result.diagnostics);
 ```
 
-`mdi-core` parses front matter, CommonMark, GFM, and MDI extensions together.
-JavaScript does not pre-tokenize the source or run a separate Markdown parser.
+The Rust parse surface returns a versioned IR and diagnostics. The Remark
+adapter maps this Rust result to mdast; it does not register an MDI micromark
+parser or decide MDI syntax.
 Every source-backed node has a half-open UTF-8 byte span, and recoverable
 problems are reported as diagnostics with stable codes and source spans.
 
 Ordinary malformed syntax returns a usable document plus diagnostics. Reserve
 `try`/`catch` for programming errors and unavailable system resources.
 
-## Render the document
+## Output status
 
-Parse once and pass the returned document to any renderer:
-
-```js
-import {
-  parse,
-  renderHtml,
-  renderText,
-  renderEpub,
-  renderDocx,
-  renderPdf,
-} from '@illusions-lab/mdi';
-
-const { document, diagnostics } = parse(source);
-
-const html = renderHtml(document);
-const text = renderText(document, 'plain');
-const epub = renderEpub(document);
-const docx = renderDocx(document);
-const pdf = await renderPdf(document);
-```
-
-HTML and text return strings. EPUB, DOCX, and PDF return byte arrays. Export
-profiles can be supplied to the renderer calls to select metadata, typography,
-page geometry, fonts, and format-specific options.
-
-All deterministic rendering semantics are implemented in Rust. PDF is the one
-format that additionally needs an available Chromium executable. Browser
-WebAssembly cannot launch Chromium, so browser applications request PDF from a
-server or desktop host running the same Rust API.
+`@illusions-lab/mdi` also provides Rust-backed `renderHtml(source)` and
+`serializeMdi(source)`. Rust-native TXT, EPUB, DOCX, and PDF APIs remain
+separate milestones; Chromium only performs PDF layout and never parses MDI.
 
 ## Front matter
 
@@ -135,25 +111,20 @@ properties, writing direction, and page progression.
 ## Remark and unified
 
 Remark is optional. Use it only when an application needs existing unified
-plugins. `@illusions-lab/mdi-remark` converts between the Rust document IR and
-mdast; it is not an MDI parser.
+plugins. The current `@illusions-lab/mdi-remark` package is the Node adapter
+path; it is not an MDI parser authority. See [Remark / mdast adapter](/ecosystem/remark/).
 
 ```js
-import { parse, renderHtml } from '@illusions-lab/mdi';
-import { toMdast, fromMdast } from '@illusions-lab/mdi-remark';
+import { unified } from 'unified';
+import remarkMdi from '@illusions-lab/mdi-remark';
 
-const parsed = parse(source);
-const tree = toMdast(parsed.document);
-
-// Run unified plugins over `tree` here.
-
-const converted = fromMdast(tree);
-const html = renderHtml(converted.document);
+// Register the adapter in a unified pipeline when mdast plugins are needed.
+const processor = unified().use(remarkMdi);
 ```
 
-The adapter contains no tokenizer, grammar rules, or syntax fallback. When an
-mdast tree is converted back, Rust validates it and creates the document IR
-used by serializers and renderers.
+The adapter is compatibility infrastructure. The Rust-authoritative whole
+document contract and its migration status are documented in [Remark / mdast
+adapter](/ecosystem/remark/).
 
 See [Architecture](/guides/architecture/) for the complete ownership and
 wire-contract rules.

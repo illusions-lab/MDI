@@ -7,6 +7,10 @@ description: Rust 是 MDI 唯一的可執行語法權威；各語言套件只提
 GFM、front matter 與 MDI，產生有明確版本、與程式語言無關的文件 IR。JavaScript、
 Python、Swift 等套件只負責把同一套 Rust 實作接到各自的生態系。
 
+:::caution 目前實作狀態
+以上是產品契約目標。目前 Rust API 請看[Rust Core API 狀態](/zh-tw/core/rust-api/)。Node CLI 與輸出 package 仍有過渡中的 TypeScript mdast/HAST 路徑，但它們不是另一個語法權威。
+:::
+
 ## 語法權威
 
 MDI 有三項互相補足的事實來源：
