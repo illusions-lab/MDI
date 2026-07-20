@@ -30,6 +30,9 @@ body {
 	background:
 		radial-gradient(ellipse 75% 36% at 50% -12%, rgba(255, 255, 255, 0.08), transparent 72%),
 		linear-gradient(180deg, #101011 0, #060606 30rem);
+	background-attachment: fixed;
+	background-position: center top;
+	background-repeat: no-repeat;
 	color: var(--sl-color-white);
 	font-family: var(--sl-font);
 	text-rendering: optimizeLegibility;
