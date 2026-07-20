@@ -25,6 +25,9 @@ const packages = [
 	'cli',
 ];
 
+const siteUrl = 'https://mdi.illusions.app';
+const gaMeasurementId = 'G-DENP46LBX6';
+
 const apiPlugins = [];
 const apiSidebar = [];
 for (const dir of packages) {
@@ -45,24 +48,52 @@ for (const dir of packages) {
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://mdi.illusions.app',
+	site: siteUrl,
 	markdown: {
 		remarkPlugins: [remarkMdi],
 		remarkRehype: { handlers: mdiHandlers },
 	},
 	integrations: [
-		astroExpressiveCode(),
+		// The site is deliberately dark-only. Supplying just one theme prevents
+		// syntax-highlighted code from following the operating system preference.
+		astroExpressiveCode({ themes: ['github-dark'] }),
 		// `remarkMdi` owns the Markdown parser for .md files. MDX needs its
 		// standard parser so imports and JSX components remain executable.
 		mdx({ extendMarkdownConfig: false }),
 		starlight({
 			title: 'MDI',
+			titleDelimiter: '|',
 			favicon: '/illusions-kanji.svg',
 			description:
 				'Rust-authoritative tooling for illusion Markdown (MDI), with thin language bindings and shared renderers.',
 			head: [
-			{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
-			{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#111827' } },
+				{
+					tag: 'script',
+					attrs: { async: true, src: `https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}` },
+				},
+				{
+					tag: 'script',
+					content: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${gaMeasurementId}');`,
+				},
+				{
+					tag: 'script',
+					attrs: { type: 'application/ld+json' },
+					content: JSON.stringify({
+						'@context': 'https://schema.org',
+						'@type': 'WebSite',
+						name: 'MDI',
+						url: siteUrl,
+						description:
+							'Rust-authoritative tooling for illusion Markdown (MDI), with thin language bindings and shared renderers.',
+						inLanguage: ['en', 'ja', 'zh-TW'],
+					}),
+				},
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
 			{
 				tag: 'link',
 				attrs: {
