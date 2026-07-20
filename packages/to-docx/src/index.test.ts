@@ -87,6 +87,19 @@ describe("DOCX print defaults", () => {
     expect(document).toContain('<w:footnoteReference w:id="1"/>');
     expect(footnotes).toContain("縦書きの脚注");
   });
+
+  it("sizes vertical heading ruby from its heading run to prevent overlap", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(
+        parse("---\nwriting-mode: vertical\n---\n# {鏡背|きょうはい}の雪")
+      )
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    expect(document).toContain('<w:pStyle w:val="Heading1"/>');
+    expect(document).toContain(
+      '<w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="20"/><w:hpsRaise w:val="32"/><w:hpsBaseText w:val="40"/>'
+    );
+  });
 });
 
 describe("mdiToDocx edge cases", () => {
