@@ -1,0 +1,76 @@
+name: Publish Swift Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Complete SemVer version to publish (for example, 2.0.1)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency: swift-release
+
+jobs:
+  publish:
+    name: Publish MDI ${{ inputs.version }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          ! git rev-parse --verify --quiet "refs/tags/$VERSION"
+
+      - name: Build the Apple XCFramework
+        run: scripts/package-swift-xcframework.sh "$RUNNER_TEMP/mdi-swift"
+
+      - name: Test against the local XCFramework
+        run: |
+          mkdir -p swift/Artifacts
+          ditto "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" swift/Artifacts/MDICore.xcframework
+          scripts/write-swift-package-manifest.sh local "swift/Artifacts/MDICore.xcframework"
+          swift test
+
+      - name: Archive the XCFramework
+        id: artifact
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" "$RUNNER_TEMP/MDICore.xcframework.zip"
+          echo "checksum=$(swift package compute-checksum "$RUNNER_TEMP/MDICore.xcframework.zip")" >> "$GITHUB_OUTPUT"
+
+      - name: Write the release manifest
+        env:
+          VERSION: ${{ inputs.version }}
+          CHECKSUM: ${{ steps.artifact.outputs.checksum }}
+        run: scripts/write-swift-package-manifest.sh remote "https://github.com/${{ github.repository }}/releases/download/$VERSION/MDICore.xcframework.zip" "$CHECKSUM"
+
+      - name: Commit and tag the package release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "Release Swift package $VERSION"
+          git tag "$VERSION"
+          git push origin HEAD:main "$VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release create "$VERSION" "$RUNNER_TEMP/MDICore.xcframework.zip#MDICore.xcframework.zip" --title "MDI $VERSION" --generate-notes

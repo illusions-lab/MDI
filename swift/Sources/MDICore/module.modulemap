@@ -1,0 +1,4 @@
+module MDICore [system] {
+  header "include/mdi_core.h"
+  export *
+}

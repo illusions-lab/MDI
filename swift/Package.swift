@@ -2,11 +2,14 @@
 import PackageDescription
 
 let package = Package(
-	name: "MDI",
+	name: "IllusionMarkdown",
+	platforms: [.macOS(.v13)],
 	products: [
 		.library(name: "MDI", targets: ["MDI"]),
 	],
 	targets: [
-		.target(name: "MDI"),
+		.systemLibrary(name: "MDICore", path: "Sources/MDICore"),
+		.target(name: "MDI", dependencies: ["MDICore"]),
+		.testTarget(name: "MDITests", dependencies: ["MDI"]),
 	]
 )
