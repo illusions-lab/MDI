@@ -37,7 +37,7 @@ and literal fallback are all decided in Rust.
 
 ## Documentation
 
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
 - [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
 - [Rust core API](https://mdi.illusions.app/core/rust-api/)
 - [Source repository](https://github.com/illusions-lab/MDI)

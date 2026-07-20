@@ -8,7 +8,7 @@
     "url": "git+https://github.com/illusions-lab/MDI.git",
     "directory": "nodejs/packages/mdi"
   },
-  "homepage": "https://mdi.illusions.app/",
+  "homepage": "https://mdi.illusions.app/bindings/javascript/",
   "bugs": "https://github.com/illusions-lab/MDI/issues",
   "type": "module",
   "main": "./dist/index.js",

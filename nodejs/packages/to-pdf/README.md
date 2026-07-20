@@ -39,4 +39,4 @@ source and cannot make syntax or semantic-rendering decisions.
 - [Rendering and Chromium boundary](https://mdi.illusions.app/core/rendering/)
 - [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-pdf/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

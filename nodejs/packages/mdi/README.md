@@ -93,4 +93,4 @@ executable syntax authority is `mdi-core`.
 - [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
 - [Document IR and diagnostics](https://mdi.illusions.app/core/document-ir/)
 - [Rendering model](https://mdi.illusions.app/core/rendering/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

@@ -48,6 +48,6 @@ solely for print layout. `--config` currently configures PDF and text output.
 
 - [CLI guide](https://mdi.illusions.app/bindings/cli/)
 - [Export profiles](https://mdi.illusions.app/guides/export-profiles/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
 
 Part of the [MDI repository](https://github.com/illusions-lab/MDI). MIT licensed.

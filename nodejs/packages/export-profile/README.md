@@ -31,4 +31,4 @@ syntax and document semantics.
 
 - [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/export-profile/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

@@ -30,4 +30,4 @@ The MDI CLI uses that Rust route directly.
 - [Output model](https://mdi.illusions.app/ecosystem/outputs/)
 - [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-docx/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

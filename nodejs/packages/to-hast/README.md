@@ -28,4 +28,4 @@ pipeline already owns an mdast tree.
 
 - [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
 - [API reference](https://mdi.illusions.app/api/to-hast/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

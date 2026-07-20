@@ -26,4 +26,4 @@ That route parses and renders in Rust, and is what the MDI CLI uses.
 
 - [HTML and output model](https://mdi.illusions.app/ecosystem/outputs/)
 - [API reference](https://mdi.illusions.app/api/to-html/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

@@ -46,4 +46,4 @@ for ownership and wire-contract details.
 
 - [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
 - [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
-- [MDI documentation](https://mdi.illusions.app/)
+- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
