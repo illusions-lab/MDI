@@ -5,6 +5,12 @@
   Ruby, tate-chu-yoko, boten, warichu, vertical writing, and more.
 </p>
 
+<p align="center">
+  <a href="https://mdi.illusions.app/">
+    <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Read the MDI documentation" />
+  </a>
+</p>
+
 ## What is MDI?
 
 **illusion Markdown (MDI)** is Markdown for Japanese publishing. It preserves the Markdown you already know while adding the typography that Japanese prose needs: ruby readings, tate-chu-yoko, boten, warichu, vertical writing, and page-aware output.
@@ -32,12 +38,6 @@ The language toolkits below call this same parser instead of reimplementing the 
 | Python | [`python/`](./python) | <a href="https://mdi.illusions.app/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python documentation" /></a> |
 | Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift documentation" /></a> |
 | Android / Kotlin | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
-
-<p align="center">
-  <a href="https://mdi.illusions.app/">
-    <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Read the MDI documentation" />
-  </a>
-</p>
 
 [MDI 2.0 specification](./SYNTAX.md) · [日本語 README](./README.ja.md)
 
