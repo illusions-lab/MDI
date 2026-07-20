@@ -43,7 +43,7 @@ let package = Package(
     targets: [
         $binary_target,
         .target(name: "MDI", dependencies: ["MDICore"], path: "swift/Sources/MDI"),
-        .testTarget(name: "MDITests", dependencies: ["MDI"], path: "swift/Tests/MDITests"),
+        .testTarget(name: "MDITests", dependencies: ["MDI", "MDICore"], path: "swift/Tests/MDITests"),
     ]
 )
 EOF

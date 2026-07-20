@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import MDICore
 @testable import MDI
 
 final class MDITests: XCTestCase {
@@ -84,5 +85,44 @@ final class MDITests: XCTestCase {
     func testErrorsExposeTheirMessage() {
         XCTAssertEqual(MDIError.core("core failed").errorDescription, "core failed")
         XCTAssertEqual(MDIError.invalidWireFormat("bad wire").errorDescription, "bad wire")
+    }
+
+    func testRejectsMalformedNativeParsePayloads() {
+        XCTAssertThrowsError(try MDI.parseResult(from: Data("not JSON".utf8))) { error in
+            guard case let .invalidWireFormat(message) = error as? MDIError else {
+                return XCTFail("expected an invalid wire-format error")
+            }
+            XCTAssertTrue(message.contains("invalid parse JSON"))
+        }
+
+        let unsupported = """
+        {"irVersion":"999.0","syntaxVersion":"2.0","capabilities":{"mdi":true,"commonMark":true,"gfm":true,"frontMatter":true,"sourceSpans":false},"document":{},"diagnostics":[]}
+        """
+        XCTAssertThrowsError(try MDI.parseResult(from: Data(unsupported.utf8))) { error in
+            XCTAssertEqual(error as? MDIError, .invalidWireFormat("Unsupported MDI IR version: 999.0"))
+        }
+    }
+
+    func testRejectsMalformedNativeStringAndBufferPayloads() {
+        XCTAssertThrowsError(try MDI.string(from: Data([0xff]))) { error in
+            XCTAssertEqual(error as? MDIError, .invalidWireFormat("MDI core returned non-UTF-8 string data"))
+        }
+
+        let invalid = mdi_ffi_result(
+            value: mdi_ffi_buffer(data: nil, len: 1),
+            error: mdi_ffi_buffer(data: nil, len: 0)
+        )
+        XCTAssertThrowsError(try MDI.data(from: invalid)) { error in
+            XCTAssertEqual(error as? MDIError, .invalidWireFormat("MDI core returned an invalid buffer"))
+        }
+    }
+
+    func testForwardsRustCoreErrors() {
+        XCTAssertThrowsError(try MDI.call(bytes: [0xff], operation: mdi_parse_json)) { error in
+            guard case let .core(message) = error as? MDIError else {
+                return XCTFail("expected a core error")
+            }
+            XCTAssertFalse(message.isEmpty)
+        }
     }
 }

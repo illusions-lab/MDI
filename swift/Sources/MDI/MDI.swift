@@ -84,7 +84,10 @@ public struct MDIParseResult: Codable, Equatable, Sendable {
 /// Swift interface to the Rust-owned MDI parser and renderers.
 public enum MDI {
     public static func parse(_ source: String) throws -> MDIParseResult {
-        let data = try call(source, operation: mdi_parse_json)
+        try parseResult(from: call(source, operation: mdi_parse_json))
+    }
+
+    static func parseResult(from data: Data) throws -> MDIParseResult {
         let result: MDIParseResult
         do { result = try JSONDecoder().decode(MDIParseResult.self, from: data) }
         catch { throw MDIError.invalidWireFormat("MDI core returned invalid parse JSON: \(error.localizedDescription)") }
@@ -100,17 +103,27 @@ public enum MDI {
     public static func renderEPUB(_ source: String) throws -> Data { try call(source, operation: mdi_render_epub) }
     public static func renderDOCX(_ source: String) throws -> Data { try call(source, operation: mdi_render_docx) }
 
-    private static func stringCall(_ source: String, operation: MDIFFIOperation) throws -> String {
-        let data = try call(source, operation: operation)
+    static func string(from data: Data) throws -> String {
         guard let value = String(data: data, encoding: .utf8) else {
             throw MDIError.invalidWireFormat("MDI core returned non-UTF-8 string data")
         }
         return value
     }
 
-    private static func call(_ source: String, operation: MDIFFIOperation) throws -> Data {
-        let bytes = Array(source.utf8)
+    private static func stringCall(_ source: String, operation: MDIFFIOperation) throws -> String {
+        try string(from: call(source, operation: operation))
+    }
+
+    static func call(_ source: String, operation: MDIFFIOperation) throws -> Data {
+        try call(bytes: Array(source.utf8), operation: operation)
+    }
+
+    static func call(bytes: [UInt8], operation: MDIFFIOperation) throws -> Data {
         let result = bytes.withUnsafeBufferPointer { operation($0.baseAddress, $0.count) }
+        return try data(from: result)
+    }
+
+    static func data(from result: mdi_ffi_result) throws -> Data {
         defer { mdi_free_buffer(result.value); mdi_free_buffer(result.error) }
         if result.error.len > 0 {
             let message = String(data: Data(bytes: result.error.data!, count: result.error.len), encoding: .utf8) ?? "Unknown MDI core error"
@@ -123,4 +136,4 @@ public enum MDI {
     }
 }
 
-private typealias MDIFFIOperation = @convention(c) (UnsafePointer<UInt8>?, Int) -> mdi_ffi_result
+typealias MDIFFIOperation = @convention(c) (UnsafePointer<UInt8>?, Int) -> mdi_ffi_result

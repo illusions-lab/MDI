@@ -10,6 +10,6 @@ let package = Package(
 	targets: [
 		.systemLibrary(name: "MDICore", path: "Sources/MDICore"),
 		.target(name: "MDI", dependencies: ["MDICore"]),
-		.testTarget(name: "MDITests", dependencies: ["MDI"]),
+		.testTarget(name: "MDITests", dependencies: ["MDI", "MDICore"]),
 	]
 )
