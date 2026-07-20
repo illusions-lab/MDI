@@ -12,6 +12,10 @@ hero:
       link: /ja/learn/what-is-mdi/
       icon: open-book
       variant: minimal
+    - text: MDI 2.0 仕様
+      link: https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md
+      icon: external
+      variant: minimal
 ---
 
 import { Card, CardGrid, Code } from '@astrojs/starlight/components';
@@ -19,10 +23,10 @@ import { Card, CardGrid, Code } from '@astrojs/starlight/components';
 <Code code={`{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。\n彼は[[em:決して]]忘れないと誓った。`} lang="mdi" title="novel.mdi" />
 
 <CardGrid>
-  <Card title="一つの grammar、一つの実装" icon="seti:rust">`mdi-core` が CommonMark、GFM、front matter、MDI を一回で versioned document IR にします。ほかの言語に第二の parser はありません。 [Architecture](/ja/core/architecture/)</Card>
-  <Card title="日本語組版を第一級に" icon="translate">ルビ、縦中横、傍点、割注、kern、page break、縦書きに実例と出力があります。 [構文リファレンス](/ja/syntax/reference/)</Card>
-  <Card title="一つの source から五種類の出力" icon="document">HTML、5種類の TXT、EPUB、DOCX、Chromium による PDF はすべて現在実装済みです。 [出力形式](/ja/ecosystem/outputs/)</Card>
-  <Card title="すべての主要プラットフォームに対応" icon="puzzle">Rust、Node.js、Swift、Kotlin、Python はすべて利用可能で、同じ Rust core を呼び出します。 [Bindings](/ja/bindings/javascript/)</Card>
+  <Card title="一つの grammar、一つの実装" icon="seti:rust">`mdi-core` が CommonMark、GFM、front matter、すべての MDI 構文を一回で versioned document IR にします。ほかの言語やツールに第二の parser はありません。 [Rust を正とするアーキテクチャ](/ja/core/architecture/)</Card>
+  <Card title="日本語組版を第一級に" icon="translate">ルビ、縦中横、傍点、割注、kern、page break、縦書きはすべて第一級の構文です。各構文に実例、解析済み IR、出力があります。 [構文リファレンス](/ja/syntax/reference/) と [ライブショーケース](/ja/syntax/showcase/) を参照してください。</Card>
+  <Card title="一つの source から五種類の出力" icon="document">`renderHtml`、`renderTextFormat`（小説家になろう・青空文庫を含む 5 形式）、`renderEpub`、`renderDocx`、Chromium による Rust PDF は、すべて現在実装済みです。 [出力形式](/ja/ecosystem/outputs/)</Card>
+  <Card title="薄く正直な言語インターフェース" icon="puzzle">Rust、Node.js、Swift、Kotlin、Python はすべて同じ Rust core を基盤にして現在利用できます。環境別の設定と API は [Bindings](/ja/bindings/javascript/) を参照してください。</Card>
 </CardGrid>
 
 ## 30 秒で試す
@@ -35,9 +39,10 @@ mdi build novel.mdi --to html
 
 ```ts
 import { parse, renderHtml } from "@illusions-lab/mdi";
+// またはコードから:
 const source = "{雪女|ゆき.おんな}が現れた。第^12^話のことである。";
-const { document, diagnostics } = parse(source);
-const html = renderHtml(source);
+const { document, diagnostics } = parse(source); // versioned IR + diagnostics
+const html = renderHtml(source);                 // <ruby>...<span class="mdi-tcy">12</span>...
 ```
 
 PDF/EPUB/DOCX と export profile を含む手順は [Getting Started](/ja/guides/getting-started/) にあります。

@@ -3,11 +3,11 @@ title: Document IR
 description: 每個 MDI renderer 與 binding 消費的精確、已版本化 tree，含真實 JSON。
 ---
 
-**先備知識：**[核心概念](/zh-tw/learn/core-concepts/#2-the-document-ir-intermediate-representation)。
+**先備知識：**[核心概念](/zh-tw/learn/core-concepts/#2-文件-ir中間表示法)。
 
 ## 外層
 
-任何 binding 的 `parse()` 都回傳下列形狀。目前 `irVersion` 為 `"1.0"`，`syntaxVersion` 為 `"2.0"`；兩者獨立，理由請見[核心概念](/zh-tw/learn/core-concepts/#2-the-document-ir-intermediate-representation)。
+任何 binding 的 `parse()` 都回傳下列形狀。目前 `irVersion` 為 `"1.0"`，`syntaxVersion` 為 `"2.0"`；兩者獨立，理由請見[核心概念](/zh-tw/learn/core-concepts/#2-文件-ir中間表示法)。
 
 ```json
 {"irVersion":"1.0","syntaxVersion":"2.0","capabilities":{"mdi":true,"commonMark":true,"gfm":true,"frontMatter":true,"sourceSpans":true},"document":{"span":{"startByte":0,"endByte":0},"children":[]},"diagnostics":[]}

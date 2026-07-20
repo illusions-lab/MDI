@@ -19,7 +19,7 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 - `parse_output(source: &str) -> ParseOutput` — 為 `parse_document` 加上 versioned envelope（`irVersion`、`syntaxVersion`、`capabilities`、`document`、`diagnostics`）。
 - `parse_json(source: &str) -> String` — `parse_output` 序列化為 JSON，是每個 binding 跨越的實際 FFI boundary。
 - `parse_inlines(source: &str) -> Vec<Inline>` — 僅解析 MDI inline syntax，忽略 block structure；供內部與 focused inline-only test 使用。
-- `parse_mdi_syntax(source: &str) -> MdiSyntaxDocument` — **deprecated compatibility helper**；回傳[Document IR](/zh-tw/core/document-ir/#the-transitional-mdisyntaxdocument-shape)描述的舊、簡單 `MdiSyntaxDocument`。新程式使用 `parse_document` 或 `parse_output`。
+- `parse_mdi_syntax(source: &str) -> MdiSyntaxDocument` — **deprecated compatibility helper**；回傳[Document IR](/zh-tw/core/document-ir/#過渡期的-mdisyntaxdocument-形狀)描述的舊、簡單 `MdiSyntaxDocument`。新程式使用 `parse_document` 或 `parse_output`。
 
 ## Serialization
 
@@ -32,7 +32,7 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 - `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — 五種 TXT flavor。`TextFormat` 為 `Plain | Ruby | Narou | Kakuyomu | Aozora`，透過 `TextFormat::parse` 解析 binding-facing 字串 `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`。
 - `render_epub(source: &str) -> Result<Vec<u8>, String>` / `render_epub_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 EPUB 3 archive。
 - `render_docx(source: &str) -> Result<Vec<u8>, String>` / `render_docx_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 DOCX archive。
-- `render_pdf(source: &str, options: &PdfOptions) -> Result<Vec<u8>, String>` — Rust-rendered HTML 交給 local Chromium layout。見[轉譯模型](/zh-tw/core/rendering/#the-chromiumpdf-boundary)。
+- `render_pdf(source: &str, options: &PdfOptions) -> Result<Vec<u8>, String>` — Rust-rendered HTML 交給 local Chromium layout。見[轉譯模型](/zh-tw/core/rendering/#chromiumpdf-邊界)。
 - `find_chromium() -> Option<PathBuf>` — `PdfOptions.chromium_path` 為 `None` 時 best-effort 搜尋本機 Chromium-family executable。
 
 ## Public data types

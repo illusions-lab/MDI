@@ -56,7 +56,7 @@ Written /home/you/novel.html
 | `aozora` | `novel_aozora.txt`，**Shift_JIS encoding** | 青空文庫 annotation 記法 |
 | `txt-all` | 寫入以上六個 text files；拒絕 `-o` | — |
 
-HTML、每個 text format、EPUB、DOCX 都由 Rust core **直接**轉譯，CLI 不會在 `renderX(source)` 與 `fs.writeFile` 間重新解析或改變含義。PDF 唯一多一步：將同一份 Rust HTML 交給 `@illusions-lab/mdi-to-pdf`，其啟動本機 Chromium-family browser；Chromium 永遠不接收 `.mdi` source，見[轉譯模型](/zh-tw/core/rendering/#the-chromiumpdf-boundary)。
+HTML、每個 text format、EPUB、DOCX 都由 Rust core **直接**轉譯，CLI 不會在 `renderX(source)` 與 `fs.writeFile` 間重新解析或改變含義。PDF 唯一多一步：將同一份 Rust HTML 交給 `@illusions-lab/mdi-to-pdf`，其啟動本機 Chromium-family browser；Chromium 永遠不接收 `.mdi` source，見[轉譯模型](/zh-tw/core/rendering/#chromiumpdf-邊界)。
 
 ## Text formats
 
@@ -66,7 +66,7 @@ mdi build novel.mdi --to aozora
 mdi build novel.mdi --to txt-all
 ```
 
-`txt-all` 每個 file 印一行，共六行。每個 MDI construct 的精確 mapping 見[TXT export flavors](/zh-tw/syntax/reference/#txt-export-flavors)。
+`txt-all` 每個 file 印一行，共六行。每個 MDI construct 的精確 mapping 見[TXT export flavors](/zh-tw/syntax/reference/#txt-匯出風格)。
 
 ## 使用 export profile
 
@@ -86,7 +86,7 @@ CLI 絕不印 stack trace。任何失敗都只寫 **一行** stderr 並以 statu
 
 ## 目前實作狀態
 
-所有 format 均真實存在，直接由表中 Rust functions 支援；不再透過另一套 JavaScript renderer 或 `remark`/`micromark` pass。EPUB/DOCX 尚未套用除 front matter 外的 export-profile 設定；PDF 要求執行 CLI 的機器已安裝 Chromium-family browser，詳見[轉譯模型](/zh-tw/core/rendering/#the-chromiumpdf-boundary)。
+所有 format 均真實存在，直接由表中 Rust functions 支援；不再透過另一套 JavaScript renderer 或 `remark`/`micromark` pass。EPUB/DOCX 尚未套用除 front matter 外的 export-profile 設定；PDF 要求執行 CLI 的機器已安裝 Chromium-family browser，詳見[轉譯模型](/zh-tw/core/rendering/#chromiumpdf-邊界)。
 
 ## 此綁定不做什麼
 

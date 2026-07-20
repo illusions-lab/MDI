@@ -3,7 +3,7 @@ title: 診斷與 UTF-8 source spans
 description: MDI 目前會發出的每個 diagnostic code，以及 byte span 的精確含義。
 ---
 
-**先備知識：**[核心概念](/zh-tw/learn/core-concepts/#4-diagnostics-are-data-not-exceptions)。
+**先備知識：**[核心概念](/zh-tw/learn/core-concepts/#4-診斷是資料不是例外)。
 
 ## 形狀
 

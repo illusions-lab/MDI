@@ -5,7 +5,7 @@ description: The five ideas — grammar, IR, spans, diagnostics, capabilities �
 
 **Prerequisites:** [What is MDI?](/learn/what-is-mdi/)
 
-Every MDI interface — the Rust crate, the JavaScript package, the Python package, the CLI, and eventually Swift — shares the same five ideas. Learn them once here; every later page on this site (and every binding's own docs) assumes you already know what these words mean.
+Every MDI interface — the Rust crate, the JavaScript package, the Python package, the CLI, and Swift — shares the same five ideas. Learn them once here; every later page on this site (and every binding's own docs) assumes you already know what these words mean.
 
 ## 1. One grammar, one implementation
 

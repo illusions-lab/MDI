@@ -31,6 +31,7 @@ dependencies: [
 ```swift
 let result = try MDI.parse("# 見出し\n\n{東京|とうきょう}で第^12^話")
 print(result.irVersion)          // "1.0"
+print(result.capabilities.mdi)   // true
 print(result.diagnostics)
 ```
 
@@ -48,6 +49,19 @@ let docx: Data = try MDI.renderDOCX("# Chapter")
 
 EPUB と DOCX は ZIP ベースの `Data` を返すため、対応する拡張子でファイルへ書き出してください。
 
-## エラーとリリース
+## エラー
 
 すべての API は `MDIError` を throw します。`core` は Rust core の失敗、`invalidWireFormat` は無効または未対応の native response を表します。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 90% の line coverage を要求し、Codecov へ送信します。PAT や別リポジトリは必要ありません。
+
+```swift
+do {
+    let html = try MDI.renderHTML(source)
+    print(html)
+} catch let error as MDIError {
+    print(error.localizedDescription)
+}
+```
+
+## 開発とリリース
+
+リポジトリの `swift/Package.swift` はローカル開発用パッケージです。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 90% の line-coverage gate を適用し、レポートを Codecov に送信します。release workflow は manifest 用の pull request を作成し、その PR がマージされた後に承認済み artifact を公開します。GitHub Actions 組み込みの token を使うため、PAT や別リポジトリは不要です。

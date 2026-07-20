@@ -21,14 +21,14 @@ description: 同一份 IR 如何成為 HTML、TXT、EPUB、DOCX 與 PDF，以及
 
 ## TXT（五種）
 
-`renderTextFormat(source, format, indentPrefix)` 的 `format` 為 `txt`、`txt-ruby`、`narou`、`kakuyomu` 或 `aozora`。每個 construct 的映射見[完整 syntax reference：TXT export flavors](/zh-tw/syntax/reference/#txt-export-flavors)。`indentPrefix` 是 caller 指定、加到每段前的字串（通常來自 [export profile](/zh-tw/ecosystem/export-profiles/) 的全形空白）；Rust 不替使用者決定縮排政策。
+`renderTextFormat(source, format, indentPrefix)` 的 `format` 為 `txt`、`txt-ruby`、`narou`、`kakuyomu` 或 `aozora`。每個 construct 的映射見[完整 syntax reference：TXT export flavors](/zh-tw/syntax/reference/#txt-匯出風格)。`indentPrefix` 是 caller 指定、加到每段前的字串（通常來自 [export profile](/zh-tw/ecosystem/export-profiles/) 的全形空白）；Rust 不替使用者決定縮排政策。
 
 ## EPUB 與 DOCX：baseline 的具體含義
 
 `renderEpub`/`renderDocx` 不使用外部工具：Rust 自行寫入 ZIP container、XHTML/OOXML markup 與 CSS。
 
 - **EPUB** 會在每個 `<h1>` 與每個 `[[pagebreak]]` 分章；metadata（`title`、`author`、`lang`、`identifier`）來自 front matter，缺省為 `Untitled`/`urn:mdi:document`。`writing-mode: vertical` 在 OPF spine 設 `page-progression-direction="rtl"`，並在 body 設 vertical CSS。
-- **DOCX** 目前是純文字段落；ruby、boten 等 MDI typography 會 flatten 成 base text，與 `render_text` 相同。`[[pagebreak]]` 產生原生 OOXML `<w:br w:type="page"/>`。尚無 ruby run、boten character style 或 page geometry；請見 [Rust Core API](/zh-tw/core/rust-api/#not-yet-implemented)。
+- **DOCX** 目前是純文字段落；ruby、boten 等 MDI typography 會 flatten 成 base text，與 `render_text` 相同。`[[pagebreak]]` 產生原生 OOXML `<w:br w:type="page"/>`。尚無 ruby run、boten character style 或 page geometry；請見 [Rust Core API](/zh-tw/core/rust-api/#尚未實作)。
 - 兩者尚未消費 [export profile](/zh-tw/ecosystem/export-profiles/) 的 cover、chapter-split level 或 page geometry；這些是**待加入的 Rust API options**。CLI 的 `--config` 現只送到 PDF 與 text renderer。
 
 ## Chromium/PDF 邊界

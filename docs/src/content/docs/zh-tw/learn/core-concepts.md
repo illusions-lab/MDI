@@ -5,7 +5,7 @@ description: 文法、IR、span、診斷、capabilities ―― 每個 MDI 接口
 
 **先備知識：** [什麼是 MDI？](/zh-tw/learn/what-is-mdi/)
 
-不論是 Rust crate、JavaScript 套件、Python 套件、CLI，還是未來的 Swift，每個 MDI 接口都共享同一組五個概念。在這裡學一次就好 ―— 本站其他每一頁（以及各 binding 自己的文件）都假設你已經懂這些詞的意思。
+不論是 Rust crate、JavaScript 套件、Python 套件、Swift 套件、Android/Kotlin 綁定或 CLI，每個 MDI 介面都共享同一組五個概念。在這裡學一次就好 ―— 本站其他每一頁（以及各 binding 自己的文件）都假設你已經懂這些詞的意思。
 
 ## 1. 一份文法，一份實作
 

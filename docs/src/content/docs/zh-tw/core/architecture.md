@@ -74,7 +74,7 @@ MDI 不能在另一棵已解析 Markdown tree 上疊一層獨立解析，因為 
 | --- | --- |
 | `mdi-core`：一次 Rust parse 完整處理 CommonMark + GFM + front matter + MDI | **已實作。**請見 [Rust Core API](/zh-tw/core/rust-api/)。 |
 | Rust 原生 `renderHtml`/`renderText`/`renderEpub`/`renderDocx` | **已實作**（baseline）。媒體、細緻 DOCX typography、完整 export-profile/pagination parity 是既有 API 的後續延伸。 |
-| Rust 協調 Chromium 的 PDF | **已實作。**請見[轉譯模型](/zh-tw/core/rendering/#the-chromiumpdf-boundary)。 |
+| Rust 協調 Chromium 的 PDF | **已實作。**請見[轉譯模型](/zh-tw/core/rendering/#chromiumpdf-邊界)。 |
 | `@illusions-lab/mdi`（JavaScript/WASM） | **已實作**，每項操作直接呼叫 Rust。 |
 | `@illusions-lab/mdi-remark`（mdast adapter） | **已實作**，但僅單向 MDI → mdast。 |
 | `@illusions-lab/mdi-cli` | **已實作**，除最後 Chromium print 外每格式皆直接呼叫 Rust。 |

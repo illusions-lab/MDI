@@ -37,7 +37,11 @@ import { parse, renderHtml, renderText, renderTextFormat, renderEpub, renderDocx
 type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora";
 ```
 
-`parse(source)` 回傳 `MdiSyntaxParseResult`（含 `irVersion`、`syntaxVersion`、`capabilities`、`document`、`diagnostics`）；`renderHtml`、`renderText`、`renderTextFormat`、`serializeMdi` 回傳字串，`renderEpub`/`renderDocx` 回傳 `Uint8Array`。`parseMdiSyntax` 是 deprecated `parse` alias。每個 function 接收**完整** source 並各自解析；JavaScript API 今日沒有「parse 一次、重複 render」call，因此大型文件多格式 render 有真實的重複 parse 成本。
+`parseMdiSyntax` 是 deprecated `parse` alias。每個 function 接收**完整** source 並各自解析；JavaScript API 今日沒有「parse 一次、重複 render」call，因此大型文件多格式 render 有真實的重複 parse 成本。
+
+## 輸入與輸出型別
+
+`parse(source)` 回傳 `MdiSyntaxParseResult`，包括 `irVersion: "1.0"`、`syntaxVersion: "2.0"`、`capabilities`（`mdi`、`commonMark`、`gfm`、`frontMatter`、`sourceSpans`）、`document: MdiDocument` 和 `diagnostics: MdiDiagnostic[]`。`renderHtml`、`renderText`、`renderTextFormat`、`serializeMdi` 回傳普通字串；`renderEpub`／`renderDocx` 回傳 `Uint8Array`，應以 `fs.writeFile` 寫入檔案或在瀏覽器交給 `Blob`，不可當 UTF-8 文字解碼。
 
 ## Diagnostics 與 error handling
 
@@ -45,11 +49,11 @@ type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora";
 
 ## IR version 與 UTF-8 byte spans
 
-`MDI_IR_VERSION` 今日為 `"1.0"`。`parse` 會拒絕 WASM 回傳的不同版本，避免 version-skew 被靜默誤讀。`document` 每個 span 都是 UTF-8 **byte** offset，不是 JavaScript string index；轉換方法見[診斷與 UTF-8 source spans](/zh-tw/core/diagnostics/#spans-precisely)。
+`MDI_IR_VERSION` 今日為 `"1.0"`。`parse` 會拒絕 WASM 回傳的不同版本，避免 version-skew 被靜默誤讀。`document` 每個 span 都是 UTF-8 **byte** offset，不是 JavaScript string index；轉換方法見[診斷與 UTF-8 source spans](/zh-tw/core/diagnostics/#spans精確來說)。
 
 ## 目前實作狀態
 
-上述每個 function 都真實存在並直接呼叫 Rust，沒有 stub。`renderEpub`/`renderDocx` 是[轉譯模型](/zh-tw/core/rendering/#epub-and-docx-what-baseline-means-concretely)所述 baseline（尚無 export-profile cover/chapter-split 支援）；此 package 沒有 PDF function，因 WASM 不能 launch process。
+上述每個 function 都真實存在並直接呼叫 Rust，沒有 stub。`renderEpub`/`renderDocx` 是[轉譯模型](/zh-tw/core/rendering/#epub-與-docxbaseline-的具體含義)所述 baseline（尚無 export-profile cover/chapter-split 支援）；此 package 沒有 PDF function，因 WASM 不能 launch process。
 
 ## 此綁定不做什麼
 

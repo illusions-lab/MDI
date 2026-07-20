@@ -39,13 +39,25 @@ MDI の境界は Markdown の文脈に依存します。
 
 二段階解析ではこの境界を再現して食い違う危険があります。binding は文字列・バイト列・エラー・オブジェクト形状を変換してよい一方、独自の文法や renderer 意味論を追加してはいけません。
 
+## binding に許されること
+
+binding は各言語らしい入出力へ変換できます。たとえば EPUB/DOCX のバイト列を JavaScript の `Uint8Array`、Python の `bytes`、Swift の `Data` として返すこと、エラーを各言語の例外へ変換すること、結果をキャッシュすることは可能です。しかし MDI の tokenization、delimiter の fallback、node の意味、renderer の解釈を独自実装してはいけません。差異が出た場合は仕様ではなくバグです。
+
+## 適合性チェックリスト
+
+- ソースは一度だけ `mdi-core` に渡し、独自 parser を持たない。
+- IR version を確認し、未知の形を推測して読まない。
+- span を文字 index ではなく UTF-8 byte offset として保持する。
+- diagnostics を読み、通常の構文 fallback を独自に「修正」しない。
+- renderer の出力を加工する場合も、MDI の意味論とは別の層に保つ。
+
 ## 実装状況
 
 | 層 | 状態 |
 | --- | --- |
 | `mdi-core` の完全な一回解析 | **実装済み** |
 | Rust の HTML / TXT / EPUB / DOCX renderer | **実装済み**（baseline） |
-| Chromium を Rust が起動する PDF | **実装済み**。 [レンダリング](/ja/core/rendering/#the-chromiumpdf-boundary) |
+| Chromium を Rust が起動する PDF | **実装済み**。 [レンダリング](/ja/core/rendering/) |
 | JavaScript/WASM、CLI、remark adapter | **実装済み** |
 | Python PyO3 binding | **実装済み**。PyPI: `illusion-markdown` |
 | Swift binding | **実装済み**。 [Swift](/ja/bindings/swift/) |

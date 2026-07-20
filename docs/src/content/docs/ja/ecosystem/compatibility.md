@@ -24,7 +24,21 @@ HTML element/class 構造は同一です。spec-parity が必要なら `mdi-to-h
 | JS `parseMdiSyntax` | `parse` | 現在は direct alias |
 | Rust `parse_mdi_syntax` | `parse_document` / `parse_output` | span/front matter/通常 Markdown node のない旧 `MdiSyntaxDocument` |
 
-`irVersion` は wire protocol version として扱い、未知の値を推測して読まないでください。span は UTF-8 byte offset です。Remark は Rust の tree を mdast にする real adapter ですが、編集済み mdast を stringify する際に Rust の recommended-form normalization はまだ適用しません。
+## IR version の扱い
+
+`irVersion` は見た目の文字列ではなく wire protocol version として扱い、未知の値を推測して読まないでください。`@illusions-lab/mdi` の `parse()` 自身も、対応しない version なら `Unsupported MDI IR version` を throw します。JSON wire format を直接使う新しい integration でも同じ確認を行ってください。
+
+## 文字 index ではなく byte span
+
+すべての span は UTF-8 byte offset です。host language の文字 index としてそのまま扱わず、明示的に変換してください。JavaScript の変換例は [Diagnostics](/ja/core/diagnostics/#span) を、Python の注意点は [Python binding](/ja/bindings/python/) を参照してください。Swift を含むすべての binding で同じ注意が必要です。
+
+## Remark adapter は現在一方向
+
+`@illusions-lab/mdi-remark` は実際の Rust 出力を `mdast` に解析する adapter です。ただし編集済み `mdast` を `.mdi` text に戻す際には、Rust の recommended-form normalization（たとえば `《《...》》` を `[[em:...]]` にする処理）はまだ適用しません。詳しくは [Remark / mdast adapter](/ja/ecosystem/remark/) を参照してください。
+
+## ドキュメントのビルドについて
+
+このサイト内の Markdown/MDI 例は `astro.config.mjs` により `@illusions-lab/mdi-remark` で描画されます。専用の別 parser ではありません。サイトの例が CLI や JavaScript package と異なる結果になれば、それは意図した差ではなく報告すべきバグです。
 
 ## 次へ
 

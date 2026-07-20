@@ -32,7 +32,7 @@ Treat `irVersion` as a wire-protocol version, not a cosmetic string — reject a
 
 ## Byte spans, not character indexes
 
-Every span in the IR is a UTF-8 byte offset. Do not reinterpret it as a host-language character index without an explicit conversion — see [Diagnostics and UTF-8 source spans](/core/diagnostics/#spans-precisely) for the exact JavaScript conversion helper, [Bindings: Python](/bindings/python/#ir-version-and-utf-8-byte-spans) for the Python equivalent, and the same caution applies to any future Swift binding.
+Every span in the IR is a UTF-8 byte offset. Do not reinterpret it as a host-language character index without an explicit conversion — see [Diagnostics and UTF-8 source spans](/core/diagnostics/#spans-precisely) for the exact JavaScript conversion helper, [Bindings: Python](/bindings/python/#ir-version-and-utf-8-byte-spans) for the Python equivalent, and the same caution applies to Swift bindings.
 
 ## Remark adapter: one-way today
 

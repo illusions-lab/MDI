@@ -31,12 +31,13 @@ dependencies: [
 ```swift
 let result = try MDI.parse("# 見出し\n\n{東京|とうきょう}で第^12^話")
 print(result.irVersion)          // "1.0"
+print(result.capabilities.mdi)   // true
 print(result.diagnostics)
 ```
 
 `result.document` 是無損的 `MDIJSONValue` 樹；可用 `.object`、`.array`、`.string`、`.number`、`.bool`、`.null` pattern matching 取用節點。`MDISourceSpan` 使用 UTF-8 byte offset。
 
-## 轉譯
+## 轉譯與序列化
 
 ```swift
 let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
@@ -48,6 +49,19 @@ let docx: Data = try MDI.renderDOCX("# Chapter")
 
 EPUB 與 DOCX 回傳 ZIP 格式的 `Data`，請以對應副檔名寫入檔案。
 
-## 錯誤與發布
+## 錯誤
 
-所有 API 都會拋出 `MDIError`：`core` 表示 Rust core 的失敗，`invalidWireFormat` 表示無效或不支援的 native 回應。CI 會建置 XCFramework、跑 XCTest，並對 `swift/Sources/MDI` 強制 90% line coverage、上傳 Codecov；發版只使用 GitHub Actions 內建 token，不需要 PAT 或獨立倉庫。
+所有公開 API 都可能拋出 `MDIError`：`MDIError.core` 表示 Rust core 回傳的失敗，`MDIError.invalidWireFormat` 表示無效或不支援的 native 回應。
+
+```swift
+do {
+    let html = try MDI.renderHTML(source)
+    print(html)
+} catch let error as MDIError {
+    print(error.localizedDescription)
+}
+```
+
+## 開發與發布
+
+repository 的 `swift/Package.swift` 是本機開發用 package。CI 會建置 XCFramework、跑 XCTest，並對 `swift/Sources/MDI` 強制 90% line coverage、上傳 Codecov。release workflow 會建立 manifest pull request；該 PR 合併後才發布核准的 artifact。它使用 GitHub Actions 內建 token，不需要 PAT 或第二個 repository。
