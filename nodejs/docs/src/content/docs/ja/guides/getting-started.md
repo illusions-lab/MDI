@@ -163,4 +163,4 @@ MDI として再出力する場合は、mdast を文書 IR に戻してから、
 `serializeMdi` または各 renderer に渡します。
 
 パッケージの責務と完全な契約については、
-[アーキテクチャ](/MDI/ja/guides/architecture/)を参照してください。
+[アーキテクチャ](/ja/guides/architecture/)を参照してください。

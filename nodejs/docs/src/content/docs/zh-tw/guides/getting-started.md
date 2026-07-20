@@ -153,4 +153,4 @@ Adapter 只在 Rust IR 與 mdast 之間轉換資料。它不包含 tokenizer、g
 table 或 fallback parser，也不能改變 MDI 的邊界判定。若要再輸出 MDI，應先
 把 mdast 映射回文件 IR，再交給 Rust 的 `serializeMdi` 或其他 renderer。
 
-套件的責任邊界與完整契約見[架構](/MDI/zh-tw/guides/architecture/)。
+套件的責任邊界與完整契約見[架構](/zh-tw/guides/architecture/)。

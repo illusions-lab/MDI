@@ -155,5 +155,5 @@ The adapter contains no tokenizer, grammar rules, or syntax fallback. When an
 mdast tree is converted back, Rust validates it and creates the document IR
 used by serializers and renderers.
 
-See [Architecture](/MDI/guides/architecture/) for the complete ownership and
+See [Architecture](/guides/architecture/) for the complete ownership and
 wire-contract rules.
