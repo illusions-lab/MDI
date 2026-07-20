@@ -39,7 +39,7 @@ jobs:
           files: ./nodejs/**/coverage/lcov.info
           flags: nodejs
           name: nodejs
-          fail_ci_if_error: true
+          fail_ci_if_error: false
 
   rust-native:
     name: Rust (${{ matrix.platform }})
@@ -91,4 +91,4 @@ jobs:
           files: ./mdi-core/lcov.info
           flags: rust
           name: rust
-          fail_ci_if_error: true
+          fail_ci_if_error: false
