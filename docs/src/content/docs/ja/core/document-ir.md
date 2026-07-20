@@ -1,67 +1,47 @@
 ---
-title: Document IR
-description: すべての renderer と binding が読む、バージョン付きの文書木。
+title: ドキュメント IR
+description: MDI の解析結果を表すバージョン付きの文書中間表現
 ---
 
-**前提:** [コア概念](/ja/learn/core-concepts/#2-the-document-ir-intermediate-representation)。
+MDI の解析結果は、出力形式に依存しない文書 IR として返る。各バインディングはこの IR を基本として、言語に対応したデータ構造へ変換する。
 
-## Envelope
+## 解析結果の外側の構造
 
-`parse()` は次を返します。`irVersion` は `"1.0"`、`syntaxVersion` は `"2.0"` で、独立したバージョンです。
+`parse_output` および各バインディングの `parse` は、文書本体に加えてバージョン、機能、診断情報を返す。
 
 ```json
-{"irVersion":"1.0","syntaxVersion":"2.0","capabilities":{"mdi":true,"commonMark":true,"gfm":true,"frontMatter":true,"sourceSpans":true},"document":{"span":{"startByte":0,"endByte":0},"children":[]},"diagnostics":[]}
+{
+  "syntaxVersion": "2.0",
+  "irVersion": "1.0",
+  "capabilities": { "mdi": true, "commonMark": true },
+  "document": { "children": [] },
+  "diagnostics": []
+}
 ```
 
-現在 capability はすべて `true` ですが、consumer は値を固定せず確認してください。
+`irVersion` はデータ形式の互換性を表す。IR を保存・転送する利用側は、未対応のバージョンを推測して読み込んではならない。
 
-## `Document`
+## Document
 
-```ts
-interface MdiDocument { span: MdiSourceSpan; frontmatter?: MdiFrontmatter; children: MdiNode[] }
-interface MdiFrontmatter { span: MdiSourceSpan; raw: string; entries: Array<{ key: string; value: unknown }> }
-```
+`Document` は文書のルートノードである。front matter、ブロックノード、ソース位置を保持する。ブロックノードには、見出し、段落、引用、リスト、コードブロック、表、改ページなどがある。
 
-`frontmatter` は `children` 内の node ではなく sibling です。可視コンテンツを走査する際には含まれません。
+段落などのインライン要素には、テキスト、強調、リンク、コード、ルビ、縦中横、傍点、割注、字間調整、改行などが含まれる。CommonMark / GFM の要素と MDI 固有の要素は同じ文書ツリーに格納される。
 
-## Node 一覧
+## front matter
 
-通常の CommonMark/GFM node は `paragraph`、`heading`、`blockquote`、`list`、`code`、`inlineCode`、`table`、`link`、`image`、`emphasis`、`strong`、`delete`、`text`、footnote などです。
+front matter は `document.frontmatter` に保持される。キーの順序と未知のキーも保持されるため、レンダラーが認識しない独自メタデータを文書に含められる。
 
-| `type` | 追加 field | 記法 |
-| --- | --- | --- |
-| `ruby` | `base`, `ruby` | `{base\|reading}` |
-| `tcy` | `value` | `^text^` |
-| `break` | — | `[[br]]` |
-| `em` | `mark`, `children` | `[[em:text]]` / `《《text》》` |
-| `noBreak` / `warichu` | `children` | 各 macro |
-| `kern` | `amount`, `children` | `[[kern:<amount>:text]]` |
-| `blank` | — | lone `\` line、`<br>`、`[[blank]]` |
-| `pagebreak` | `variant` | `[[pagebreak]]` |
-| `paragraph` | `indent?`, `bottom?` | `[[indent:N]]` / `[[bottom]]` |
+代表的な MDI 関連キーは `mdi`、`lang`、`writing-mode`、`page-progression` である。各キーの意味は[構文リファレンス](/ja/syntax/reference/)を参照のこと。
 
-```ts
-type MdiRubyReading = { type: "group"; value: string } | { type: "split"; value: string[] };
-```
+## ソース位置
 
-`{雪女|ゆき.おんな}` は `base: "雪女"` と `ruby: { type: "split", value: ["ゆき", "おんな"] }` の `ruby` node になります。
+ソース由来のノードには `span` が付く。`span` は UTF-8 バイト列上の半開区間であり、文字数や UTF-16 インデックスではない。詳細は[診断とソース位置](/ja/core/diagnostics/)を参照のこと。
 
-## Span
+## 旧 API
 
-`startByte` / `endByte` は元ソースへの半開 UTF-8 byte range です。host 言語の文字 index に変換する方法は [Diagnostic](/ja/core/diagnostics/) を参照してください。
+`MdiSyntaxDocument` とその関連型は、MDI 固有の構文だけを表現していた旧 API である。新規実装では CommonMark / GFM と front matter を含む `Document` および `ParseOutput` を使用する。
 
-## 旧 `MdiSyntaxDocument`
+## 次のステップ
 
-deprecated な `parse_mdi_syntax` / `parseMdiSyntax` は別の、より単純な形を返します。
-
-```ts
-interface MdiSyntaxDocument { blocks: Array<{ type: "paragraph"; inlines: MdiInline[]; indent: number | null; bottom: number | null } | { type: "blank" } | { type: "pagebreak"; variant: "left" | "right" | null }> }
-```
-
-これは span、front matter、通常 Markdown node を持たず、MDI 構文だけを扱う互換用 API です。新規コードは `parse()` / `parse_document()` の `Document` を使ってください。
-
-## 次へ
-
-- [Diagnostic](/ja/core/diagnostics/)
-- [Rust Core API](/ja/core/rust-api/)
-- [構文リファレンス](/ja/syntax/reference/)
+- [コア概念](/ja/learn/core-concepts/) — IR の位置付けを確認する。
+- [Rust Core API の提供状況](/ja/core/rust-api/) — API を確認する。

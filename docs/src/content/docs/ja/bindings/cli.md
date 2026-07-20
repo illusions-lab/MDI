@@ -1,47 +1,60 @@
 ---
 title: CLI
-description: "@illusions-lab/mdi-cli の install、format、flag、実際の挙動。"
+description: "@illusions-lab/mdi-cli を使って .mdi ファイルを変換する"
 ---
 
-**前提:** [Getting Started](/ja/guides/getting-started/)。
+`@illusions-lab/mdi-cli` は、`.mdi` ファイルを HTML、PDF、EPUB、DOCX、テキストへ変換するコマンドラインツールである。構文解析と出力生成には Rust コアを使用する。
 
-`.mdi` を code なしに HTML、PDF、EPUB、DOCX、TXT に変換するには `mdi build` を使います。CLI は同じ Rust function を呼び、extension 選択と file write 以外に renderer を持ちません。
-
-## Install
+## インストール
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
 ```
 
+Node.js 20 以降が必要である。PDF を生成する場合は Chromium 系ブラウザも必要になる。
+
+## 基本構文
+
 ```text
 mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
 ```
 
-| Flag | 必須 | 意味 |
+| 引数・オプション | 必須 | 説明 |
 | --- | --- | --- |
-| `<input.mdi>` | Yes | UTF-8 source path |
-| `--to` | Yes | 下記の format |
-| `-o` | No | 出力 path。`txt-all` とは併用不可 |
-| `--config` | No | [export profile](/ja/ecosystem/export-profiles/) JSON |
+| `<input.mdi>` | はい | UTF-8 の入力ファイル。 |
+| `--to <format>` | はい | 出力形式。 |
+| `-o <output>` | いいえ | 出力パス。`txt-all` と併用できない。 |
+| `--config <path>` | いいえ | [エクスポートプロファイル](/ja/ecosystem/export-profiles/)の JSON ファイル。 |
 
 ```bash
-echo '{東京|とうきょう}は雨だった。' > novel.mdi
 mdi build novel.mdi --to html
+mdi build novel.mdi --to epub -o dist/novel.epub
+mdi build novel.mdi --to pdf --config print.json
 ```
 
-| `--to` | default path | Rust renderer |
+## 出力形式
+
+| `--to` | 既定の出力名 | 内容 |
 | --- | --- | --- |
-| `html` / `pdf` / `epub` / `docx` | `.html` / `.pdf` / `.epub` / `.docx` | HTML / HTML + Chromium / EPUB / DOCX |
-| `txt` | `.txt` | ruby を捨てる text |
-| `txt-ruby` | `_ruby.txt` | ruby を維持 |
-| `narou` / `kakuyomu` / `aozora` | respective suffix | 投稿規約 text。aozora は Shift_JIS |
-| `txt-all` | 6 text file | `-o` は reject |
+| `html` | `.html` | スタイルを含む HTML。 |
+| `pdf` | `.pdf` | Rust 生成の HTML を Chromium で PDF 化する。 |
+| `epub` | `.epub` | EPUB 3。 |
+| `docx` | `.docx` | DOCX。 |
+| `txt` | `.txt` | ルビを除くプレーンテキスト。 |
+| `txt-ruby` | `_ruby.txt` | ルビを保持するテキスト。 |
+| `narou` / `kakuyomu` / `aozora` | 形式に対応する接尾辞 | 各投稿先向けテキスト。`aozora` は Shift_JIS。 |
+| `txt-all` | 6 種類のテキストファイル | `-o` は指定できない。 |
 
-PDF 以外は Rust core が直接 render します。PDF は Rust HTML を local Chromium が layout します。Chromium は `.mdi` を見ません。`--config` は現在 PDF geometry/font と text indentation に効き、EPUB/DOCX は front matter metadata のみを読みます。
+HTML、テキスト、EPUB、DOCX は Rust コアが直接生成する。PDF では Chromium をページレイアウト専用に使用するため、Chromium が MDI 構文を解析することはない。
 
-failure は stderr 一行と exit `1`、success は `Written <path>` と exit `0` です。全 format は実装済みです。EPUB/DOCX の profile 対応、watch/server/editor、glob/batch input は未対応です。
+## 終了状態と制限
 
-## 次へ
+成功時は `Written <path>` を出力して終了コード `0` を返す。失敗時はエラーを標準エラー出力へ表示し、終了コード `1` を返す。
 
-- [Export profile](/ja/ecosystem/export-profiles/)
-- [レンダリングモデル](/ja/core/rendering/)
+`--config` は現在、PDF のページ設定・フォントと、テキストの字下げに適用される。EPUB と DOCX は front matter のメタデータを利用するが、エクスポートプロファイルの全項目には未対応である。
+
+## 次のステップ
+
+- [はじめに](/ja/guides/getting-started/) — 最初の変換を実行する。
+- [エクスポートプロファイル](/ja/ecosystem/export-profiles/) — 出力設定を指定する。
+- [レンダリングモデル](/ja/core/rendering/) — PDF 出力の構成を確認する。

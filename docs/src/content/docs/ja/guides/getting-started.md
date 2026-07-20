@@ -1,15 +1,13 @@
 ---
 title: はじめに
-description: CLI と JavaScript パッケージをインストールし、実際の .mdi ファイルを HTML・PDF・テキストに変換します。
+description: MDI ファイルを作成し、CLI または JavaScript API で出力する
 ---
 
-**前提知識:** [MDI とは？](/ja/learn/what-is-mdi/) と [コア概念](/ja/learn/core-concepts/) ―― IR・span・診断が何かを既に知っている前提です。[Node.js](https://nodejs.org) 20 以降も必要です。
+このガイドでは、`.mdi` ファイルを作成し、HTML、PDF、EPUB、DOCX、テキストへ出力する。CLI と JavaScript / TypeScript の利用には Node.js 20 以降が必要である。PDF を出力する場合は Chromium 系ブラウザも必要になる。
 
-このページは **MDI 2.0** を実装しています。規範的な人間向け仕様は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) です。以下のすべてのコマンドとコードはそのままコピーして実行できます ―― このリポジトリから実際に公開されているパッケージに対して動くもので、架空のものはありません。
+## 1. 原稿を作成する
 
-## 1. `.mdi` ファイルを書く
-
-`novel.mdi` を作成します。
+次の内容で `novel.mdi` を作成する。
 
 ```mdi
 ---
@@ -27,145 +25,114 @@ writing-mode: vertical
 その日は大安[[warichu:六曜の一つで吉日とされる]]であった。
 ```
 
+front matter は YAML 形式で記述する。`writing-mode: vertical` を指定すると、HTML 出力は縦書き用のレイアウトを使用する。記法の詳細は[構文リファレンス](/ja/syntax/reference/)を参照のこと。
+
 ## 2. CLI で変換する
 
-CLI をグローバルにインストールします。
+CLI をインストールする。
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
 ```
 
-実行します。
+HTML を出力する。
 
 ```bash
 mdi build novel.mdi --to html
 ```
 
-```text
-Written /path/to/novel.html
-```
-
-CLI 自身の使用方法メッセージそのままの、完全なコマンド形式です。
+コマンドの形式は次のとおりである。
 
 ```text
 mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
 ```
 
-| フラグ | 意味 |
+| オプション | 必須 | 説明 |
+| --- | --- | --- |
+| `<input.mdi>` | はい | 入力する UTF-8 の MDI ファイル。 |
+| `--to <format>` | はい | 出力形式。 |
+| `-o <path>` | いいえ | 出力先。省略時は入力ファイルと同じ場所に出力する。 |
+| `--config <path>` | いいえ | エクスポートプロファイルの JSON ファイル。 |
+
+### 出力例
+
+```bash
+mdi build novel.mdi --to html
+mdi build novel.mdi --to pdf --config print.json
+mdi build novel.mdi --to epub -o dist/novel.epub
+mdi build novel.mdi --to docx
+mdi build novel.mdi --to txt-ruby
+mdi build novel.mdi --to narou
+mdi build novel.mdi --to kakuyomu
+mdi build novel.mdi --to aozora
+```
+
+| 形式 | 内容 |
 | --- | --- |
-| `--to <format>` | 必須。上記のいずれかの形式。 |
-| `-o <path>` | 省略可。出力パス。指定しない場合、入力ファイルのそばに形式の拡張子で保存されます ―― `novel.mdi --to pdf` は `novel.pdf` を、`--to txt-ruby` は `novel_ruby.txt` を書き出します（CLI はテキストの各バリアントを `<stem>_<variant>.txt` と命名し、プレーンな `txt` にはサフィックスがありません）。 |
-| `--config <path>` | 省略可。ページサイズ、フォント、マージン、テキストの字下げを制御する[エクスポート・プロファイル](/ja/ecosystem/export-profiles/) JSON ファイルへのパス。 |
+| `html` | スタイルを含む HTML。 |
+| `pdf` | Rust が生成した HTML を Chromium でページレイアウトした PDF。 |
+| `epub` / `docx` | EPUB 3 / DOCX。 |
+| `txt` | ルビを除いたプレーンテキスト。 |
+| `txt-ruby` | ルビ記法を保持したテキスト。 |
+| `narou` / `kakuyomu` / `aozora` | 各投稿先向けのテキスト。`aozora` は Shift_JIS で出力する。 |
+| `txt-all` | すべてのテキスト形式を出力する。`-o` は指定できない。 |
 
-すべての出力形式を試してみます。
+HTML、テキスト、EPUB、DOCX は Rust コアが直接出力する。PDF では Chromium をページレイアウトのためだけに使用し、MDI ソースを Chromium に渡すことはない。
 
-```bash
-mdi build novel.mdi --to html                          # novel.html
-mdi build novel.mdi --to pdf                            # novel.pdf
-mdi build novel.mdi --to epub -o dist/novel.epub        # dist/novel.epub
-mdi build novel.mdi --to docx                           # novel.docx
-mdi build novel.mdi --to txt                            # novel.txt      ―― ルビは破棄
-mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―― ルビは {base|reading} として保持
-mdi build novel.mdi --to narou                          # novel_narou.txt   ―― 小説家になろうの記法
-mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―― カクヨムの記法
-mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―― 青空文庫の記法、Shift_JIS でエンコード
-mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
-```
+## 3. JavaScript / TypeScript から利用する
 
-### 各形式で実際に何が起きるか
-
-- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`、EPUB、DOCX** はすべて **Rust コアが直接**描画します（`@illusions-lab/mdi` の `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―― CLI はその間で何も再解析・再解釈しません。
-- **PDF** は同じ Rust 描画の HTML を、ローカルにインストールされた Chromium 系ブラウザに渡し、そのブラウザがページ分割と `printToPDF` の呼び出しを行います。Chromium は `.mdi` ソースを一切受け取らず、構文上の判断もしません。Chromium 系ブラウザが見つからない場合、コマンドは不足している依存関係を名指しするエラーで失敗します ―― 特定の実行ファイルを指す方法は [レンダリングモデル](/ja/core/rendering/) を参照してください。
-- **`aozora`** は書き出し時に **Shift_JIS** でエンコードされます。青空文庫自身の投稿ツールが期待する形式に合わせたものです。他のテキストバリアントはすべて UTF-8 で書き出されます。
-
-### 何か問題が起きたとき
-
-CLI はスタックトレースを表示しません。エラーは stderr へ**1行**書き出され、プロセスは終了コード `1` で終了します。
-
-```bash
-mdi build missing.mdi --to html
-```
-
-```text
-ENOENT: no such file or directory, open 'missing.mdi'
-```
-
-```bash
-mdi build novel.mdi --to svg
-```
-
-```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
-```
-
-認識できない `--to` の値（や、その他の不正な引数列）は、意味を推測しようとせず、上記の使用方法を表示して終了コード `1` を返します。
-
-## 3. JavaScript から解析・描画する
-
-CLI に頼らずアプリケーションを構築する場合は、主要パッケージをインストールします。
+アプリケーションにパッケージを追加する。
 
 ```bash
 npm install @illusions-lab/mdi
 ```
 
-```js
+```ts
 import { readFile } from "node:fs/promises";
 import { parse, renderHtml } from "@illusions-lab/mdi";
 
 const source = await readFile("novel.mdi", "utf8");
+const result = parse(source);
 
-const { document, diagnostics, syntaxVersion, irVersion } = parse(source);
-console.log(syntaxVersion, irVersion); // "2.0" "1.0"
-console.log(diagnostics);              // このファイルには [] ―― 警告すべきものはない
-console.log(document.frontmatter.entries);
-// [{ key: "mdi", value: "2.0" }, { key: "title", value: "雪女" }, ...]
+console.log(result.syntaxVersion, result.irVersion);
+console.log(result.diagnostics);
 
 const html = renderHtml(source);
 ```
 
-`parse` はホスト側の Markdown parser を一切必要としません ―― CommonMark、GFM、フロントマター、MDI はすべて1回の `parse` 呼び出しの中で決定されます。通常の不正な構文は利用可能な文書と（大抵は空の）診断を返します。`try`/`catch` はプログラミングエラー、例えば文字列でない値を渡した場合のためにとっておきます。
+`parse()` は文書 IR と診断情報を返す。通常の構文上の問題は、例外ではなく診断情報またはリテラルテキストとして扱われる。引数の型が不正な場合は例外となる。
 
-```js
-parse(42); // TypeError: source must be a string を投げる
+`renderEpub()` と `renderDocx()` は `Uint8Array` を返す。利用可能な API とエラー処理は[JavaScript / TypeScript](/ja/bindings/javascript/)を参照のこと。
+
+## 4. 出力設定を指定する
+
+PDF のページサイズ、フォント、余白や、テキストの字下げはエクスポートプロファイルで設定する。
+
+```json
+{
+  "typesetting": { "fontFamily": "Noto Serif JP" },
+  "pagination": { "pageSize": "A4" }
+}
 ```
 
-すべてのエクスポート関数（`renderEpub`、`renderDocx`、`renderText`、`renderTextFormat`、`serializeMdi`）の完全なシグネチャと例は [Bindings: JavaScript / TypeScript](/ja/bindings/javascript/) を参照してください。
-
-## 4. フロントマターの解説
-
-`novel.mdi` の先頭のフロントマターブロックは、同じ `parse()` 呼び出しの中で解析される通常の YAML です。
-
-```yaml
----
-mdi: "2.0"
-title: 雪女
-author: 小泉八雲
-lang: ja
-writing-mode: vertical
----
+```bash
+mdi build novel.mdi --to pdf --config print.json
 ```
 
-- `mdi` は文書が対象とする構文バージョンを宣言します。省略すると、パーサーは自身が対応する最新バージョンを前提とします。パーサーが対応するより*新しい*バージョンを宣言すると、`mdi.version.unsupported` という警告診断が出ます ―― 解析はベストエフォートで続行されます（[診断](/ja/core/diagnostics/)参照）。
-- `writing-mode: vertical` は `renderHtml` のレイアウト方法を変えます（ルート要素に `writing-mode: vertical-rl`）。これが、縦中横や傍点がそもそも存在する理由です ―― どちらも縦書き特有の組版デバイスであり、横書きでも自然に劣化して動作します。
-- キーの順序と未知のキーは `document.frontmatter.entries` に保持されます。レンダラーは認識しないキーがあってもエラーにせず無視します。
+設定項目と出力形式ごとの対応状況は[エクスポートプロファイル](/ja/ecosystem/export-profiles/)を参照のこと。
 
-## 5. 任意: `unified`/`remark` パイプラインへの組み込み
+## トラブルシューティング
 
-すでに `mdast` ノードを期待する `unified` パイプライン（Astro、静的サイトジェネレーター、`remark` ベースの lint ツールなど）がある場合以外は、この節は読み飛ばしてかまいません。`@illusions-lab/mdi-remark` は**アダプター**であり第二のパーサーではありません ―― 同じ Rust の `parse()` を呼び出し、その結果を `mdast` へ整形し直すだけです。
+### PDF の生成に失敗する
 
-```js
-import { unified } from "unified";
-import remarkMdi from "@illusions-lab/mdi-remark";
-import remarkStringify from "remark-stringify";
+Chromium 系ブラウザが利用可能か確認する。PDF 出力では Chromium が必要である。詳細は[レンダリングモデル](/ja/core/rendering/)を参照のこと。
 
-const processor = unified().use(remarkMdi).use(remarkStringify);
-const tree = processor.parse(await readFile("novel.mdi", "utf8"));
-```
+### コマンドが失敗する
 
-何が正しくラウンドトリップし、何がしないかを含む詳細は [Remark / mdast アダプター](/ja/ecosystem/remark/) にあります。
+CLI はエラーを標準エラー出力に表示し、終了コード `1` で終了する。入力パス、`--to` の値、出力先の書き込み権限を確認する。
 
 ## 次のステップ
 
-- [完全構文リファレンス](/ja/syntax/reference/) ―― 上の `novel.mdi` で使ったすべての構文を1つずつ解説します。
-- [Rust 主導アーキテクチャ](/ja/core/architecture/) ―― 「文法は1つ、実装も1つ」の背後にある所有権規則。
-- [エクスポート・プロファイル](/ja/ecosystem/export-profiles/) ―― `--config` でページサイズ、フォント、マージンを制御します。
+- [CLI](/ja/bindings/cli/) — オプションと出力ファイル名を確認する。
+- [JavaScript / TypeScript](/ja/bindings/javascript/) — API を利用する。
+- [構文リファレンス](/ja/syntax/reference/) — 組版記法を確認する。

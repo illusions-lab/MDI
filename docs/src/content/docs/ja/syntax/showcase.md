@@ -1,16 +1,9 @@
 ---
-title: ライブ・ショーケース
-description: MDI 2.0 の全構文を、このサイト自身が Rust mdi-core で解析し、ライブ描画します。
+title: 構文ショーケース
+description: MDI 2.0 の主要な記法と表示例
 ---
 
-以下の例はすべて**このドキュメントサイト自身が描画しています**。ページの
-Markdown ソース全体を `@illusions-lab/mdi` から Rust の `mdi-core` に渡して
-解析し、文書 IR から HTML を生成して MDI のスタイルシートを適用しています。
-表示されている内容が、renderer の実際の出力です。
-
-構文の正式な定義は
-[MDI 2.0 仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
-にあります。このページはデモであり、規範ではありません。
+このページでは、主要な MDI 記法を実際の表示とともに紹介する。例はこのドキュメントサイトで `mdi-core` により解析・描画されている。規範的な仕様は [MDI 2.0 仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) を参照のこと。
 
 ## ルビ
 

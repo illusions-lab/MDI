@@ -1,26 +1,26 @@
 ---
 title: Python
-description: PyPI の illusion-markdown による実装済み PyO3 binding。
+description: PyO3 による Python バインディング
 ---
 
-**前提:** [Getting Started](/ja/guides/getting-started/)、[Document IR](/ja/core/document-ir/)。
+`illusion-markdown` は、PyO3 / maturin を利用して `mdi-core` を呼び出す Python パッケージである。Python 側に独自の MDI パーサーはない。
 
-`illusion-markdown` は PyO3/maturin native extension として同じ `mdi-core` を呼びます。Python 側に独自 grammar はありません。
-
-## Install
+## インストール
 
 ```bash
 pip install illusion-markdown
 ```
 
-PyPI distribution 名は `illusion-markdown`、import 名は `mdi` です。Python 3.10+。macOS、Linux x64、Windows x64 の wheel があり、その他では Rust toolchain を必要とする source distribution に fallback します。
+配布名は `illusion-markdown`、import 名は `mdi` である。Python 3.10 以降に対応する。macOS、Linux x64、Windows x64 向けの wheel を提供し、それ以外の環境では Rust ツールチェーンを必要とするソース配布版が使用される場合がある。
 
-## 最小例
+## 基本例
 
 ```python
 import mdi
+
 source = "# {東京|とうきょう}の夜\n\n第^12^話\n"
 result = mdi.parse(source)
+
 print(result["document"]["children"][0]["type"])
 open("book.html", "w", encoding="utf-8").write(mdi.render_html(source))
 ```
@@ -28,7 +28,6 @@ open("book.html", "w", encoding="utf-8").write(mdi.render_html(source))
 ## API
 
 ```python
-mdi.MDI_SPEC_VERSION; mdi.MDI_IR_VERSION; mdi.TextFormat; mdi.MdiRenderError
 mdi.parse(source: str) -> dict
 mdi.render_html(source: str) -> str
 mdi.render_text(source: str) -> str
@@ -36,16 +35,17 @@ mdi.render_text_format(source: str, format, indent_prefix: str = "") -> str
 mdi.render_epub(source: str) -> bytes
 mdi.render_docx(source: str) -> bytes
 mdi.serialize_mdi(source: str) -> str
-mdi.parse_mdi_syntax  # deprecated alias
 ```
 
-`parse` は typed class ではなく camelCase JSON dict を返します。例えば `result["document"]["children"][0]["type"]` です。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX rendering failure は `mdi.MdiRenderError` です。不正記法は例外ではなく literal fallback と diagnostics で扱います。
+`parse()` は camelCase のキーを持つ辞書として文書 IR を返す。`MDI_SPEC_VERSION`、`MDI_IR_VERSION`、`TextFormat`、`MdiRenderError` も公開する。`parse_mdi_syntax` は互換性のために残されている非推奨 API である。
 
-## 現在の制限
+文字列以外の入力は `TypeError`、未知のテキスト形式は `ValueError`、EPUB / DOCX の生成に失敗した場合は `mdi.MdiRenderError` となる。通常の構文上の問題は例外ではなく、診断またはリテラルテキストとして扱われる。
 
-Python binding は **実装済み** です。PDF renderer はまだ export されていません（WASM のような原理的制限ではなく、現在の API の gap）。EPUB/DOCX は baseline で export profile をまだ読みません。span は UTF-8 byte offset です。
+## 制限事項
 
-## 次へ
+PDF レンダラーは Python API から公開していない。EPUB と DOCX は基本出力に対応するが、エクスポートプロファイルの全項目には未対応である。ソース位置は UTF-8 のバイトオフセットである。
 
-- [Rust Core API](/ja/core/rust-api/)
-- [出力形式](/ja/ecosystem/outputs/)
+## 次のステップ
+
+- [ドキュメント IR](/ja/core/document-ir/) — 解析結果の構造を確認する。
+- [出力形式](/ja/ecosystem/outputs/) — 各形式の違いを確認する。

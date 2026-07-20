@@ -1,32 +1,32 @@
 ---
-title: Migration と compatibility
-description: SYNTAX.md と現在の実装との差分、および deprecated API。
+title: 互換性と移行
+description: 仕様・スタイルシートの差異と非推奨 API
 ---
 
-MDI 2.0 syntax の規範は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) です。このページは実装との差分を明示します。
+MDI 2.0 の人間向けの構文仕様は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) である。このページでは、既存パッケージとの互換性に関する注意点を示す。
 
-## Stylesheet parity
+## スタイルシートの差異
 
-`mdi-to-hast` の stylesheet は `SYNTAX.md` と一致します。一方 `mdi-core` の `render_html` embedded stylesheet（CLI `--to html` と direct `renderHtml()` が出荷する CSS）には三つの差があります。
+`mdi-to-hast` のスタイルシートは `SYNTAX.md` の例に近い。一方、`mdi-core` の `render_html` が埋め込むスタイルシートには、次の差異がある。
 
-| selector | SYNTAX.md / mdi-to-hast | mdi-core | 影響 |
-| --- | --- | --- | --- |
-| `.mdi-em` | emphasis position、`-webkit-`、`rt` suppression | これらなし | ruby の reading に boten が重なる可能性 |
-| `.mdi-warichu` | 2行 wrap 用 inline-block CSS | `font-size: .6em` のみ | 2行近似がない |
-| `.mdi-blank` | `min-block-size: 1lh` | `min-height: 1em` | vertical writing で意図した space にならない |
+| セレクター | 影響 |
+| --- | --- |
+| `.mdi-em` | ルビの読み仮名に傍点が重なる場合がある。 |
+| `.mdi-warichu` | 2 行組の割注を近似するスタイルがない。 |
+| `.mdi-blank` | 縦書き時の空白段落の高さが意図どおりにならない場合がある。 |
 
-HTML element/class 構造は同一です。spec-parity が必要なら `mdi-to-hast` stylesheet を使ってください。
+HTML 要素とクラス名の構造は共通である。仕様に近いスタイルが必要な場合は `mdi-to-hast` のスタイルシートを使用する。
 
-## Deprecated APIs
+## 非推奨 API
 
-| Deprecated | 代替 | 理由 |
+| 非推奨 API | 代替 | 理由 |
 | --- | --- | --- |
-| JS `parseMdiSyntax` | `parse` | 現在は direct alias |
-| Rust `parse_mdi_syntax` | `parse_document` / `parse_output` | span/front matter/通常 Markdown node のない旧 `MdiSyntaxDocument` |
+| JavaScript の `parseMdiSyntax` | `parse` | 完全な文書 IR を返す API へ移行するため。 |
+| Rust の `parse_mdi_syntax` | `parse_document` または `parse_output` | front matter、通常の Markdown ノード、ソース位置を含む新しい IR を使用するため。 |
 
-`irVersion` は wire protocol version として扱い、未知の値を推測して読まないでください。span は UTF-8 byte offset です。Remark は Rust の tree を mdast にする real adapter ですが、編集済み mdast を stringify する際に Rust の recommended-form normalization はまだ適用しません。
+IR を外部で扱う場合は `irVersion` を確認する。未知のバージョンの構造を推測して処理してはならない。ソース位置は UTF-8 のバイトオフセットである。
 
-## 次へ
+## 次のステップ
 
-- [Rust Core API](/ja/core/rust-api/#not-yet-implemented)
-- [構文リファレンス](/ja/syntax/reference/)
+- [Rust Core API の提供状況](/ja/core/rust-api/) — 現行 API を確認する。
+- [構文リファレンス](/ja/syntax/reference/) — 記法を確認する。

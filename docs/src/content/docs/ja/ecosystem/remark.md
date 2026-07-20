@@ -1,32 +1,39 @@
 ---
-title: Remark / mdast adapter
-description: "@illusions-lab/mdi-remark が Rust の Document IR を mdast に渡す方法。"
+title: Remark / mdast アダプター
+description: Rust コアで解析した MDI を unified / mdast パイプラインへ渡す
 ---
 
-**前提:** [JavaScript binding](/ja/bindings/javascript/)。`@illusions-lab/mdi-remark` は unified user 向けの adapter で、独自 parser ではありません。`Parser` を `@illusions-lab/mdi` の real Rust `parse()` と IR→mdast 変換で置き換えます。
+`@illusions-lab/mdi-remark` は、unified を利用するアプリケーション向けのアダプターである。独自の MDI パーサーは持たず、`@illusions-lab/mdi` が Rust コアで生成した文書 IR を mdast へ変換する。
+
+## 使用例
 
 ```ts
 import { unified } from "unified";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkStringify from "remark-stringify";
+
 const processor = unified().use(remarkMdi).use(remarkStringify);
 const tree = processor.parse("{雪女|ゆき.おんな}が現れた。");
 ```
 
-| Rust IR | mdast |
+## MDI ノードと mdast ノード
+
+| Rust の文書 IR | mdast |
 | --- | --- |
-| `ruby`, `tcy`, `break`, `em` | `mdiRuby`, `mdiTcy`, `mdiBreak`, `mdiEm` |
-| `noBreak`, `warichu`, `kern` | `mdiNoBreak`, `mdiWarichu`, `mdiKern` |
-| `blank`, `pagebreak` | `mdiBlank`, `mdiPagebreak` |
-| paragraph `indent`/`bottom` | `data.mdiIndent` / `data.mdiBottom` |
+| `ruby`、`tcy`、`break`、`em` | `mdiRuby`、`mdiTcy`、`mdiBreak`、`mdiEm` |
+| `noBreak`、`warichu`、`kern` | `mdiNoBreak`、`mdiWarichu`、`mdiKern` |
+| `blank`、`pagebreak` | `mdiBlank`、`mdiPagebreak` |
+| 段落の `indent` / `bottom` | `data.mdiIndent` / `data.mdiBottom` |
 
-普通の Markdown/GFM node はそのまま mdast shape になります。front matter は `tree.data.frontmatter` に structured data（default `mdi: "2.0"`、`lang: "ja"`、horizontal writing 等）として置かれます。malformed YAML は throw せず default に fallback します。
+通常の Markdown / GFM ノードは通常の mdast 構造として返る。front matter は `tree.data.frontmatter` に構造化データとして格納される。不正な YAML は例外を発生させず、既定値へフォールバックする。
 
-## 現在の状況: one-way の注意
+## 変換時の注意
 
-`.mdi` → mdast parsing は実装済みで Rust-backed です。編集後 mdast の `.mdi` stringify も `mdiToMarkdown()` でできますが、Rust `serialize_mdi` の recommended-form normalization はまだ通りません。例えば `《《...》》` を自動で `[[em:...]]` にする保証はありません。
+`.mdi` から mdast への変換は Rust コアを利用する。編集後の mdast を `.mdi` へ文字列化する場合は `mdiToMarkdown()` を使用できるが、Rust の `serialize_mdi()` が行う推奨形式への正規化は適用されない。
 
-## 次へ
+たとえば、互換記法の `《《...》》` が `[[em:...]]` へ自動変換されることは保証されない。正規化が必要な場合は、生成した MDI を Rust の `serialize_mdi()` に渡す。
 
-- [JavaScript binding](/ja/bindings/javascript/)
-- [Compatibility](/ja/ecosystem/compatibility/)
+## 次のステップ
+
+- [JavaScript / TypeScript](/ja/bindings/javascript/) — 基本 API を確認する。
+- [互換性と移行](/ja/ecosystem/compatibility/) — 互換性に関する注意点を確認する。

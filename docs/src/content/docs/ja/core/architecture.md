@@ -1,58 +1,43 @@
 ---
-title: Rust を正とするアーキテクチャ
-description: 実行可能な文法は一つ、バージョン付き IR も一つです。
+title: Rust 主導のアーキテクチャ
+description: MDI の構文と文書 IR を一つの Rust コアで管理する理由
 ---
 
-**前提:** [コア概念](/ja/learn/core-concepts/)。
+## 基本方針
 
-## ルール
+MDI の構文を解釈する正規実装は Rust 製の `mdi-core` である。CLI、JavaScript、Python、Swift、Android / Kotlin の各インターフェースは、`mdi-core` の結果を利用する。各環境が独自の構文解析器を持つことはない。
 
-`mdi-core` 以外の binding、adapter、editor、renderer は MDI 文法の第二実装を持ってはいけません。トークナイザ、WASM 非ロード時の正規表現フォールバック、言語ごとの手書き実装のいずれも不可です。すべての `.mdi` は Rust の一回の解析で CommonMark、GFM、front matter、MDI を同じ木へ変換します。
-
-## 二つの権威
-
-1. [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) は人が読む規範仕様です。
-2. `mdi-core` はその唯一の実行可能な実装です。
-3. 共有 conformance fixture が両者の検証可能な契約です。
-
-## 全体像
+## 処理の全体像
 
 ```text
-.mdi source → mdi-core (Rust) → versioned Document IR
-                              ├→ Rust: HTML / TXT / EPUB / DOCX / PDF
-                              ├→ Node.js / Python / Swift / Kotlin（実装済み）
-                              └→ remark/mdast adapter (実装済み)
-HTML + print CSS → Chromium → PDF
+UTF-8 の .mdi ソース
+        ↓
+mdi-core（CommonMark / GFM / front matter / MDI を解析）
+        ↓
+バージョン付き文書 IR と診断情報
+        ↓
+各言語バインディング・CLI・レンダラー
 ```
 
-Rust、Node.js、Swift、Kotlin、Python はいずれもこの同じ Rust core を呼びます。具体的な API は [Bindings](/ja/bindings/javascript/) を参照してください。
+文書 IR は解析結果の共通形式である。HTML、テキスト、EPUB、DOCX はこの IR を基に出力される。PDF は Rust が生成した HTML を Chromium でページレイアウトする。
 
-## なぜ一回の解析なのか
+## 一度だけ解析する理由
 
-MDI の境界は Markdown の文脈に依存します。
+MDI の記法は Markdown の文脈に依存する。たとえば同じ `^12^` でも、コードスパン内では文字列であり、通常の本文では縦中横になり得る。レンダラーやバインディングが部分的に再解析すると、環境ごとに解釈が分かれるおそれがある。
 
-```markdown
-`^12^`                 <!-- code span 内ではリテラル -->
-**第^12^話**            <!-- strong 内では tate-chu-yoko -->
-[[em:**重要**]]        <!-- MDI macro 内に Markdown -->
-```
+解析を 1 か所に集約することで、次を保証しやすくなる。
 
-二段階解析ではこの境界を再現して食い違う危険があります。binding は文字列・バイト列・エラー・オブジェクト形状を変換してよい一方、独自の文法や renderer 意味論を追加してはいけません。
+- 構文とフォールバック規則の一貫性
+- 診断コードとソース位置の一貫性
+- 異なる出力形式での意味の一貫性
+- IR バージョンによる互換性管理
 
-## 実装状況
+## 仕様と実装
 
-| 層 | 状態 |
-| --- | --- |
-| `mdi-core` の完全な一回解析 | **実装済み** |
-| Rust の HTML / TXT / EPUB / DOCX renderer | **実装済み**（baseline） |
-| Chromium を Rust が起動する PDF | **実装済み**。 [レンダリング](/ja/core/rendering/#the-chromiumpdf-boundary) |
-| JavaScript/WASM、CLI、remark adapter | **実装済み** |
-| Python PyO3 binding | **実装済み**。PyPI: `illusion-markdown` |
-| Swift binding | **実装済み**。 [Swift](/ja/bindings/swift/) |
-| Android / Kotlin binding | **実装済み**。 [Android / Kotlin](/ja/bindings/android/) |
+人が読む構文仕様は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) である。実際の構文判断は `mdi-core` が行う。両者に差異がある場合は、互換性ページの記載を確認し、必要に応じて仕様または実装を更新する。
 
-## 次へ
+## 次のステップ
 
-- [Document IR](/ja/core/document-ir/)
-- [Rust Core API](/ja/core/rust-api/)
-- [レンダリングモデル](/ja/core/rendering/)
+- [ドキュメント IR](/ja/core/document-ir/) — 解析結果の構造を確認する。
+- [診断とソース位置](/ja/core/diagnostics/) — 問題の通知方法を確認する。
+- [レンダリングモデル](/ja/core/rendering/) — 出力処理の境界を確認する。

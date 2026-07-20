@@ -1,34 +1,49 @@
 ---
-title: Export profile
-description: validated ExportProfile schema と、各出力形式の現在の対応状況。
+title: エクスポートプロファイル
+description: 出力時のページ設定、フォント、字下げを指定する JSON 設定
 ---
 
-**前提:** [Getting Started](/ja/guides/getting-started/)。profile は page size、font、margin、indentation などの**表示**を設定し、MDI syntax/意味は変えません。package は `@illusions-lab/mdi-export-profile` です。
+エクスポートプロファイルは、ページサイズ、フォント、余白、字下げなどの**表示設定**を指定する。MDI の構文や文書の意味を変更するものではない。パッケージは `@illusions-lab/mdi-export-profile` である。
 
-## Schema
+## 設定例
 
 ```json
-{"metadata":{"title":"The Last Station","author":"A Writer"},"typesetting":{"writingMode":"horizontal","fontFamily":"Noto Serif JP","textIndentEm":1},"pagination":{"pageSize":"A4","landscape":false,"charactersPerLine":40,"linesPerPage":34,"margins":{"top":25.4,"bottom":25.4,"left":25.4,"right":25.4}},"epub":{"chapterSplitLevel":"h1","coverPath":"cover.png"},"text":{"fullwidthSpaceIndent":true,"indentCount":1}}
+{
+  "metadata": { "title": "The Last Station", "author": "A Writer" },
+  "typesetting": {
+    "writingMode": "horizontal",
+    "fontFamily": "Noto Serif JP",
+    "textIndentEm": 1
+  },
+  "pagination": {
+    "pageSize": "A4",
+    "landscape": false,
+    "charactersPerLine": 40,
+    "linesPerPage": 34,
+    "margins": { "top": 25.4, "bottom": 25.4, "left": 25.4, "right": 25.4 }
+  },
+  "text": { "fullwidthSpaceIndent": true, "indentCount": 1 }
+}
 ```
 
-全 field は optional で、`resolveExportProfile({})` は default を返します。主な validation は、`writingMode` が `horizontal|vertical`、`textIndentEm` が 0–4、`pageSize` が exported `PAGE_DIMENSIONS` key、characters/line が 10–60、lines/page が 10–50、margin が 0–50 mm、chapter split が `h1|h2|h3|none`、text indent が 1–4 です。不正値は clamp/ignore せず field 名を含む `Error` になります。
+すべての項目は任意であり、未指定の項目には既定値が適用される。不正な値は補正されず、対象フィールド名を含むエラーとなる。
 
 ```bash
 mdi build novel.mdi --to pdf --config novel.export.json -o novel.pdf
 ```
 
-`resolvePrintProfile(profile, sourceWritingMode)` は document writing mode を default にし、vertical では default landscape を `true` にします。
+`writingMode` は `horizontal` または `vertical`、`textIndentEm` は 0〜4、`pageSize` は `PAGE_DIMENSIONS` のキーを指定する。余白の単位は mm である。
 
-## Format support today
+## 出力形式ごとの対応状況
 
-| Setting | PDF | TXT | EPUB / DOCX |
+| 設定 | PDF | テキスト | EPUB / DOCX |
 | --- | --- | --- | --- |
-| geometry/font/page number | Yes | — | **Pending** |
-| front matter metadata/writing mode | Yes | — | Yes（profile からではない） |
-| full-width-space indent | Yes | Yes | **Pending** |
-| cover/chapter split | — | — | **Pending** |
+| ページ設定・フォント | 対応 | 非対応 | 未対応の項目あり |
+| front matter のメタデータ・書字方向 | 対応 | 非対応 | 対応（プロファイルからは未対応） |
+| 全角空白による字下げ | 対応 | 対応 | 未対応 |
+| カバー・章分割 | 非対応 | 非対応 | 未対応 |
 
-## 次へ
+## 次のステップ
 
-- [CLI](/ja/bindings/cli/)
-- [Rust Core API](/ja/core/rust-api/)
+- [CLI](/ja/bindings/cli/) — `--config` を指定して出力する。
+- [出力形式](/ja/ecosystem/outputs/) — 形式ごとの制限を確認する。

@@ -1,27 +1,33 @@
 ---
-title: HTML / TXT / EPUB / DOCX / PDF 出力
-description: 各出力の意味、renderer、layout の担当範囲。
+title: 出力形式
+description: HTML、テキスト、EPUB、DOCX、PDF の出力方法と用途
 ---
 
-**前提:** [レンダリングモデル](/ja/core/rendering/)。すべて同じ [Document IR](/ja/core/document-ir/) の変換であり、別の syntax layer ではありません。
+すべての出力は同じ文書 IR を基にする。出力形式ごとに別の MDI 構文やパーサーを使用することはない。
 
-| Format | package | 実体 |
+| 形式 | 利用箇所 | 生成方法 |
 | --- | --- | --- |
-| HTML | `@illusions-lab/mdi` | embedded `.mdi-*` CSS を含む standalone HTML |
-| TXT（5種） | `@illusions-lab/mdi` / CLI | plain、ruby-preserving、投稿サイト規約 text |
-| EPUB | `@illusions-lab/mdi` | Rust が zip する EPUB 3 archive |
-| DOCX | `@illusions-lab/mdi` | Rust が zip する OOXML document |
-| PDF | `@illusions-lab/mdi-to-pdf` | Rust HTML/print CSS を local Chromium が layout |
+| HTML | `@illusions-lab/mdi`、CLI | Rust コアがスタイルを含む HTML を生成する。 |
+| テキスト | `@illusions-lab/mdi`、CLI | Rust コアがプレーンテキストおよび投稿先向け形式を生成する。 |
+| EPUB | `@illusions-lab/mdi`、CLI | Rust コアが EPUB 3 アーカイブを生成する。 |
+| DOCX | `@illusions-lab/mdi`、CLI | Rust コアが DOCX を生成する。 |
+| PDF | CLI、`@illusions-lab/mdi-to-pdf` | Rust 生成の HTML を Chromium でページレイアウトする。 |
 
-PDF 以外の四形式は Rust 内で直接生成されます。CLI と JavaScript package に中間 JavaScript renderer はありません。PDF も native host の `render_pdf` / `find_chromium` を使い、Chromium は `.mdi` source ではなく完成 HTML/CSS だけを受け取ります。
+## テキスト形式
 
-## Legacy compatibility packages
+テキスト出力では、`txt`、`txt-ruby`、`narou`、`kakuyomu`、`aozora` を選択できる。`aozora` は Shift_JIS、それ以外は UTF-8 で出力する。複数のテキスト形式をまとめて出力するには CLI の `txt-all` を使用する。
 
-`mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` は published のままです。これは legacy mdast/HAST path 向けで、CLI `build` は使用しません。`mdi-to-hast` の CSS は Rust `render_html` embedded CSS より `SYNTAX.md` に近い点があり、詳細は [stylesheet parity](/ja/ecosystem/compatibility/#stylesheet-parity) を参照してください。
+## 互換性パッケージ
 
-EPUB/DOCX の cover、chapter split、page geometry/font の export-profile 対応は pending です。現在は front matter metadata のみを読みます。
+`mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` は既存利用者との互換性のために公開を継続している。CLI の `build` はこれらのパッケージを経由せず、Rust コアを利用する。
 
-## 次へ
+`mdi-to-hast` のスタイルシートには Rust コアの HTML 出力と差異がある。詳細は[互換性と移行](/ja/ecosystem/compatibility/)を参照のこと。
 
-- [レンダリングモデル](/ja/core/rendering/)
-- [Export profile](/ja/ecosystem/export-profiles/)
+## 制限事項
+
+EPUB / DOCX は基本出力に対応するが、エクスポートプロファイルのカバー、章分割、ページ設定、フォントには未対応の項目がある。
+
+## 次のステップ
+
+- [レンダリングモデル](/ja/core/rendering/) — PDF の処理境界を確認する。
+- [エクスポートプロファイル](/ja/ecosystem/export-profiles/) — PDF とテキストの設定を指定する。
