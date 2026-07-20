@@ -4056,6 +4056,21 @@ mod tests {
                 .starts_with(b"PK")
         );
 
+        assert!(
+            ffi_bytes(ffi::mdi_render_text(std::ptr::null(), 0))
+                .unwrap()
+                .is_empty()
+        );
+        let invalid_utf8 = [0xff];
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_html(
+                invalid_utf8.as_ptr(),
+                invalid_utf8.len()
+            ))
+            .unwrap_err(),
+            "MDI source must be valid UTF-8"
+        );
+
         assert_eq!(
             ffi_bytes(ffi::mdi_parse_json(std::ptr::null(), 1)).unwrap_err(),
             "MDI source pointer is null"
