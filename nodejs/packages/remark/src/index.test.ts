@@ -143,7 +143,7 @@ writing-mode: vertical
 
 	it("parses the kitchen-sink fixture", () => {
 		const fixture = readFileSync(
-			new URL("../../../examples/kitchen-sink.mdi", import.meta.url),
+			new URL("../../../../examples/kitchen-sink.mdi", import.meta.url),
 			"utf8",
 		);
 

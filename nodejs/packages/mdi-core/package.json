@@ -1,0 +1,22 @@
+{
+  "name": "@illusions-lab/mdi-core",
+  "version": "2.0.1",
+  "description": "wasm bindings for mdi-core, the language-neutral MDI 2.0 syntax core",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/illusions-lab/MDI.git",
+    "directory": "nodejs/packages/mdi-core"
+  },
+  "homepage": "https://illusions-lab.github.io/mdi-js/",
+  "bugs": "https://github.com/illusions-lab/MDI/issues",
+  "main": "./dist/mdi_core.js",
+  "types": "./dist/mdi_core.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "cd ../../../mdi-core && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target nodejs --out-dir ../nodejs/packages/mdi-core/dist -- --features wasm",
+    "test": "vitest run --passWithNoTests"
+  }
+}

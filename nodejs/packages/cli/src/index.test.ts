@@ -240,7 +240,7 @@ describe("vertical Kitchen Sink export artifacts", () => {
     const directory = await mkdtemp(join(tmpdir(), "mdi-cli-vertical-kitchen-"));
     try {
       const source = (await readFile(
-        new URL("../../../examples/kitchen-sink.mdi", import.meta.url),
+        new URL("../../../../examples/kitchen-sink.mdi", import.meta.url),
         "utf8"
       )).replace("writing-mode: horizontal", "writing-mode: vertical");
       const input = join(directory, "kitchen-sink.mdi");

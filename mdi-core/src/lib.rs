@@ -450,12 +450,19 @@ fn split_unescaped(value: &str, separator: char) -> Vec<&str> {
     parts
 }
 
+/// SYNTAX.md §13's delimiter set, plus `\\` itself — CommonMark treats
+/// backslash as ordinary escapable ASCII punctuation, and JS's
+/// `unescapeMdi`/`unescapeRubyText` follow suit (`\\` -> `\`), so the Rust
+/// core must too or `\\` is left as two literal characters instead of one.
+const ESCAPABLE_MDI: &str = "{}|^[]:《》\\";
+const ESCAPABLE_RUBY: &str = "{}|^[]:《》\\.";
+
 fn unescape_mdi(value: &str) -> String {
-    unescape(value, "{}|^[]:《》")
+    unescape(value, ESCAPABLE_MDI)
 }
 
 fn unescape_ruby(value: &str) -> String {
-    unescape(value, "{}|^[]:《》.")
+    unescape(value, ESCAPABLE_RUBY)
 }
 
 fn unescape(value: &str, allowed: &str) -> String {
@@ -481,12 +488,123 @@ fn unescape(value: &str, allowed: &str) -> String {
 }
 
 fn is_escapable(character: char) -> bool {
-    "{}|^[]:《》".contains(character)
+    ESCAPABLE_MDI.contains(character)
 }
 
 fn push_text(out: &mut Vec<Inline>, text: &mut String) {
     if !text.is_empty() {
         out.push(Inline::Text(std::mem::take(text)));
+    }
+}
+
+/// A single `[[indent:N]]` / `[[bottom]]` / `[[pagebreak…]]` token's source,
+/// classified the same way as `mdast-util-mdi`'s `parseBlockMacro` (from
+/// which this was ported): trims the token source once, then matches the
+/// fixed pagebreak/bottom spellings before falling back to the generic
+/// `name:digits` form. Kept separate from `pending_block`/`pagebreak`
+/// above, which classify whole *lines* mid-scan rather than one already
+/// isolated token.
+#[cfg_attr(not(feature = "wasm"), allow(dead_code))]
+enum BlockMacroClass {
+    Indent(u32),
+    Bottom(u32),
+    Pagebreak(Option<PagebreakVariant>),
+    Literal,
+}
+
+#[cfg_attr(not(feature = "wasm"), allow(dead_code))]
+fn classify_block_macro(source: &str) -> BlockMacroClass {
+    let value = source.trim();
+    match value {
+        "[[pagebreak:right]]" => return BlockMacroClass::Pagebreak(Some(PagebreakVariant::Right)),
+        "[[pagebreak:left]]" => return BlockMacroClass::Pagebreak(Some(PagebreakVariant::Left)),
+        "[[pagebreak]]" => return BlockMacroClass::Pagebreak(None),
+        "[[bottom]]" => return BlockMacroClass::Bottom(0),
+        _ => {}
+    }
+    if let Some(inner) = value.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]")) {
+        if let Some((kind, amount)) = inner.split_once(':') {
+            let valid_amount =
+                !amount.is_empty() && !amount.starts_with('0') && amount.bytes().all(|b| b.is_ascii_digit());
+            if valid_amount {
+                if let Ok(amount) = amount.parse::<u32>() {
+                    match kind {
+                        "indent" => return BlockMacroClass::Indent(amount),
+                        "bottom" => return BlockMacroClass::Bottom(amount),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    BlockMacroClass::Literal
+}
+
+/// wasm-bindgen bindings exposing the pure semantic-resolution functions
+/// consumed by `mdast-util-mdi`'s `fromMarkdown` handlers (ruby split/group
+/// resolution, block-macro classification, MDI escape stripping). The
+/// micromark-level tokenizers stay JS-only: they're interleaved
+/// character-by-character with CommonMark's own tokenizer, which isn't
+/// something this crate's line/span-oriented grammar models.
+#[cfg(feature = "wasm")]
+mod wasm {
+    use super::{classify_block_macro, split_ruby, unescape_mdi, unescape_ruby, BlockMacroClass, PagebreakVariant, RubyReading};
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen(js_name = unescapeMdi)]
+    pub fn wasm_unescape_mdi(value: &str) -> String {
+        unescape_mdi(value)
+    }
+
+    #[wasm_bindgen(js_name = unescapeRubyText)]
+    pub fn wasm_unescape_ruby(value: &str) -> String {
+        unescape_ruby(value)
+    }
+
+    /// Mirrors `resolveRuby(base, rawRuby): string | string[]`.
+    #[wasm_bindgen(js_name = resolveRuby)]
+    pub fn wasm_resolve_ruby(base: &str, raw_ruby: &str) -> JsValue {
+        match split_ruby(base, raw_ruby) {
+            RubyReading::Group(value) => JsValue::from_str(&value),
+            RubyReading::Split(parts) => {
+                let array = js_sys::Array::new();
+                for part in parts {
+                    array.push(&JsValue::from_str(&part));
+                }
+                array.into()
+            }
+        }
+    }
+
+    #[wasm_bindgen(js_name = blockMacroKind)]
+    pub fn wasm_block_macro_kind(source: &str) -> String {
+        match classify_block_macro(source) {
+            BlockMacroClass::Indent(_) => "indent",
+            BlockMacroClass::Bottom(_) => "bottom",
+            BlockMacroClass::Pagebreak(_) => "pagebreak",
+            BlockMacroClass::Literal => "literal",
+        }
+        .to_owned()
+    }
+
+    /// -1 when the token has no amount (pagebreak / literal).
+    #[wasm_bindgen(js_name = blockMacroAmount)]
+    pub fn wasm_block_macro_amount(source: &str) -> i32 {
+        match classify_block_macro(source) {
+            BlockMacroClass::Indent(amount) | BlockMacroClass::Bottom(amount) => amount as i32,
+            BlockMacroClass::Pagebreak(_) | BlockMacroClass::Literal => -1,
+        }
+    }
+
+    /// `"left"` / `"right"` / `""` (no variant, including non-pagebreak kinds).
+    #[wasm_bindgen(js_name = blockMacroVariant)]
+    pub fn wasm_block_macro_variant(source: &str) -> String {
+        match classify_block_macro(source) {
+            BlockMacroClass::Pagebreak(Some(PagebreakVariant::Left)) => "left",
+            BlockMacroClass::Pagebreak(Some(PagebreakVariant::Right)) => "right",
+            _ => "",
+        }
+        .to_owned()
     }
 }
 
@@ -579,6 +697,14 @@ mod tests {
             vec![Inline::Text(
                 "{東京|とうきょう} ^12^ [[br]] 《《文字》》".into()
             )]
+        );
+    }
+
+    #[test]
+    fn unescapes_backslash_itself_but_leaves_non_escapable_pairs_alone() {
+        assert_eq!(
+            parse_inlines(r"\\ \n \a \0 \-"),
+            vec![Inline::Text(r"\ \n \a \0 \-".into())]
         );
     }
 

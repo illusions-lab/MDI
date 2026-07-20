@@ -8,8 +8,16 @@ repository = "https://github.com/illusions-lab/MDI"
 keywords = ["markdown", "mdi", "ruby", "typesetting"]
 categories = ["parser-implementations", "text-processing"]
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 unicode-segmentation = "1.12.0"
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
 [lints.rust]
 unsafe_code = "forbid"

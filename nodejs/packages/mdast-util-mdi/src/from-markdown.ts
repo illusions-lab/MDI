@@ -1,5 +1,6 @@
 import type { Extension as FromMarkdownExtension } from "mdast-util-from-markdown";
 import type { Paragraph, Parent, Root } from "mdast";
+import { blockMacroAmount, blockMacroKind, blockMacroVariant, resolveRuby as coreResolveRuby, unescapeRubyText as coreUnescapeRubyText } from "@illusions-lab/mdi-core";
 import type { MdiEm, MdiKern, MdiNoBreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
 import { unescapeMdi } from "./unescape.js";
 import { graphemes } from "./graphemes.js";
@@ -88,11 +89,11 @@ export function mdiFromMarkdown(): FromMarkdownExtension {
 			},
 			mdiRubyBase(token) {
 				const node = this.stack[this.stack.length - 1] as MdiRuby;
-				node.base = unescapeRubyText(this.sliceSerialize(token));
+				node.base = coreUnescapeRubyText(this.sliceSerialize(token));
 			},
 			mdiRubyText(token) {
 				const node = this.stack[this.stack.length - 1] as MdiRuby;
-				node.ruby = resolveRuby(node.base, this.sliceSerialize(token));
+				node.ruby = coreResolveRuby(node.base, this.sliceSerialize(token)) as string | string[];
 			},
 			mdiRuby(token) {
 				this.exit(token);
@@ -123,15 +124,18 @@ type PendingBlockMacro = {
 
 type ParsedBlockMacro = PendingBlockMacro | { kind: "pagebreak"; variant?: "right" | "left" } | { kind: "literal"; source: string };
 
+/** Delegates classification to `mdi-core`; only the JS-side shape (discriminated union vs. three flat calls) differs. */
 function parseBlockMacro(source: string): ParsedBlockMacro {
 	const value = source.trim();
-	if (value === "[[pagebreak:right]]") return { kind: "pagebreak", variant: "right" };
-	if (value === "[[pagebreak:left]]") return { kind: "pagebreak", variant: "left" };
-	if (value === "[[pagebreak]]") return { kind: "pagebreak" };
-	if (value === "[[bottom]]") return { kind: "bottom", amount: 0, source: value };
-	const match = /^\[\[(indent|bottom):(\d+)\]\]$/.exec(value);
-	if (!match || !/^[1-9][0-9]*$/.test(match[2]!)) return { kind: "literal", source: value };
-	return { kind: match[1] as "indent" | "bottom", amount: Number(match[2]), source: value };
+	const kind = blockMacroKind(value);
+	if (kind === "pagebreak") {
+		const variant = blockMacroVariant(value);
+		return variant === "left" || variant === "right" ? { kind: "pagebreak", variant } : { kind: "pagebreak" };
+	}
+	if (kind === "indent" || kind === "bottom") {
+		return { kind, amount: blockMacroAmount(value), source: value };
+	}
+	return { kind: "literal", source: value };
 }
 
 function resolveBlockMacros(tree: Root): Root {
@@ -199,56 +203,6 @@ function bareColon(value: string, start = 0): number {
 	return -1;
 }
 
-/**
- * Split-ruby dot segments must line up 1:1 with the base's grapheme
- * clusters, with no empty segment — otherwise fall back to group ruby
- * (dots removed), per SYNTAX.md §2 "Edge Cases".
- *
- * `rawRuby` is the still-escaped source slice: splitting on "." has to
- * happen before unescaping, so an escaped `\.` (a literal dot inside a
- * reading, SYNTAX.md §2: "To include a literal |, ., {, or } inside ruby
- * syntax, escape it with \") doesn't get mistaken for a segment separator.
- */
-function resolveRuby(base: string, rawRuby: string): string | string[] {
-	const segments = splitUnescapedDots(rawRuby);
-	if (!segments) {
-		return unescapeRubyText(rawRuby);
-	}
-
-	const unescaped = segments.map(unescapeRubyText);
-	const baseChars = graphemes(base);
-	const isValidSplit = unescaped.length === baseChars.length && unescaped.every((segment) => segment.length > 0);
-
-	return isValidSplit ? unescaped : unescaped.join("");
-}
-
-/** Splits on bare "." only; returns undefined if there's no bare "." at all. */
-function splitUnescapedDots(value: string): string[] | undefined {
-	const segments: string[] = [];
-	let current = "";
-	let sawDot = false;
-	for (let index = 0; index < value.length; index++) {
-		const char = value[index];
-		if (char === "\\" && index + 1 < value.length) {
-			current += char + value[index + 1];
-			index++;
-		} else if (char === ".") {
-			segments.push(current);
-			current = "";
-			sawDot = true;
-		} else {
-			current += char;
-		}
-	}
-	segments.push(current);
-	return sawDot ? segments : undefined;
-}
-
-/**
- * Ruby's escape set is SYNTAX.md §13's usual nine characters plus "." —
- * "." is only escapable *within ruby syntax* (§2), not a general MDI
- * delimiter, so this is deliberately separate from unescapeMdi().
- */
-function unescapeRubyText(value: string): string {
-	return value.replace(/\\([{}|^[\]:《》\\.])/g, "$1");
-}
+// Split-vs-group ruby resolution (SYNTAX.md §2 "Edge Cases") and ruby-text
+// unescaping (the nine §13 delimiters plus ".") now live in mdi-core,
+// imported above as coreResolveRuby / coreUnescapeRubyText.
