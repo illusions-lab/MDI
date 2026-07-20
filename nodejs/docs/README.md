@@ -1,8 +1,8 @@
 # docs
 
-The mdi-js documentation site — [Astro Starlight](https://starlight.astro.build), published to https://illusions-lab.github.io/mdi-js/ by `.github/workflows/docs.yml` on push to `main`.
+The MDI Node.js tooling documentation site — [Astro Starlight](https://starlight.astro.build), published to https://illusions-lab.github.io/MDI/ by `.github/workflows/docs.yml` on push to `main`.
 
-mdi-js のドキュメントサイトです。`main` への push 時に GitHub Pages へ自動デプロイされます。
+MDI の Node.js ツール群のドキュメントサイトです。`main` への push 時に GitHub Pages へ自動デプロイされます。
 
 - Locales: English (root), 日本語 (`ja/`), 正體中文 (`zh-tw/`)
 - MDI syntax in these pages is rendered live by `micromark-extension-mdi` + `mdast-util-mdi` + `mdiHandlers` (see `astro.config.mjs`)

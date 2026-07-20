@@ -1,14 +1,14 @@
 ---
 title: Getting Started
-description: Install mdi-js, parse a .mdi file, and convert it to HTML, PDF, EPUB, DOCX, or plain text.
+description: Install the MDI Node.js packages, parse a .mdi file, and convert it to HTML, PDF, EPUB, DOCX, or plain text.
 ---
 
-mdi-js is a family of packages for **illusion Markdown (MDI)** — a Markdown
+This is a family of Node.js packages for **illusion Markdown (MDI)** — a Markdown
 dialect for Japanese novel typesetting. This page walks through the two ways to
 use it: the CLI and the programmatic API.
 
 This toolchain targets **MDI 2.0**
-([specification](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)).
+([specification](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)).
 
 ## The fast path: CLI
 
@@ -117,5 +117,5 @@ function remarkMdiSyntax() {
 Then pass `remarkMdiSyntax` as a remark plugin and `mdiHandlers` as
 `remark-rehype` handlers, and include the stylesheet
 (`@illusions-lab/mdi-to-hast/mdi.css` or the exported `MDI_STYLESHEET`
-string). See [Architecture](/mdi-js/guides/architecture/) for how the packages
+string). See [Architecture](/MDI/guides/architecture/) for how the packages
 fit together.

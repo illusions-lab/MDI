@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How the nine mdi-js packages fit together, and why the pipeline splits where it does.
+description: How the nine MDI packages fit together, and why the pipeline splits where it does.
 ---
 
 ## Package layers
@@ -36,7 +36,7 @@ micromark-extension-mdi ─▶ mdast-util-mdi ─▶ @illusions-lab/mdi-remark
 Every converter consumes the **same mdast tree** produced by
 `@illusions-lab/mdi-remark`, so editor-path and export-path behavior stay in
 sync (see the spec's
-[Parsing Order](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md#parsing-order--パース順序)).
+[Parsing Order](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md#parsing-order--パース順序)).
 
 ## Why the split falls where it does
 
@@ -64,9 +64,8 @@ is the batteries-included plugin for applications.
 
 ## Rust syntax core and the JavaScript-first release
 
-The canonical MDI grammar lives in [`SYNTAX.md`](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)
-in this repository. This repository keeps its existing `mdi-js` name and
-JavaScript public API.
+The canonical MDI grammar lives in [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
+in this repository. `nodejs/` keeps its existing JavaScript public API.
 
 `mdi-core` is a language-neutral Rust implementation of the
 MDI-specific grammar: escapes, grapheme-aware ruby, tate-chu-yoko, boten,

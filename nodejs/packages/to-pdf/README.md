@@ -2,6 +2,6 @@
 
 Renders @illusions-lab/mdi-to-html output to PDF via a headless browser (Playwright print-to-PDF), for correct vertical-rl / text-combine-upright / text-emphasis support.
 
-Part of the [mdi-js](https://github.com/illusions-lab/mdi-js) monorepo. See the root README for the full package architecture.
+Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
 
-Documentation: https://illusions-lab.github.io/mdi-js/
+Documentation: https://illusions-lab.github.io/MDI/

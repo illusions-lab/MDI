@@ -1,6 +1,6 @@
 ---
 title: 架構
-description: mdi-js 九個套件如何組合，以及管線為什麼在這些位置切分。
+description: MDI 九個套件如何組合，以及管線為什麼在這些位置切分。
 ---
 
 ## 套件分層
@@ -35,7 +35,7 @@ micromark-extension-mdi ─▶ mdast-util-mdi ─▶ @illusions-lab/mdi-remark
 
 所有轉換器消費 `@illusions-lab/mdi-remark` 產生的**同一棵 mdast 樹**，
 所以編輯器路徑與匯出路徑的行為保持同步（見規範的
-[解析順序](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md#parsing-order--パース順序)）。
+[解析順序](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md#parsing-order--パース順序)）。
 
 ## 為什麼在這些位置切分
 
@@ -61,8 +61,8 @@ tokenizer 和 mdast 工具可以單獨用在任何 unified 管線裡（本文檔
 ## Rust 語法核心與 JavaScript-first 發布
 
 MDI 的權威語法由本倉庫的
-[`SYNTAX.md`](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)
-管理。本倉庫維持既有的 `mdi-js` 名稱與 JavaScript 公開 API。
+[`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
+管理。`nodejs/` 維持既有的 JavaScript 公開 API。
 
 `mdi-core` 是語言中立的 Rust 實作，處理 escape、以 grapheme cluster
 為單位的 ruby、縦中横、傍點、可巢狀的行內 macro 與區塊 macro。它刻意**不**

@@ -1,6 +1,6 @@
 ---
 title: Live Showcase
-description: Every MDI 2.0 construct, rendered live by this site using the mdi-js parser itself.
+description: Every MDI 2.0 construct, rendered live by this site using its own MDI parser.
 ---
 
 Every example below is **rendered by this documentation site itself** — the
@@ -9,7 +9,7 @@ the output is styled by the stylesheet shipped in
 `@illusions-lab/mdi-to-hast`. What you see is what the converters produce.
 
 The full syntax definition lives in the
-[MDI 2.0 specification](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md);
+[MDI 2.0 specification](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md);
 this page is a demonstration, not the normative reference.
 
 ## Ruby（ルビ）

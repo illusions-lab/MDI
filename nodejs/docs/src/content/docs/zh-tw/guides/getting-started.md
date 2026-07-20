@@ -1,13 +1,13 @@
 ---
 title: 快速上手
-description: 安裝 mdi-js，解析 .mdi 檔案並轉換為 HTML、PDF、EPUB 或 DOCX。
+description: 安裝 MDI 的 Node.js 套件，解析 .mdi 檔案並轉換為 HTML、PDF、EPUB 或 DOCX。
 ---
 
-mdi-js 是一組處理 **illusion Markdown (MDI)** 的套件 — MDI 是為日文小說
+這是一組處理 **illusion Markdown (MDI)** 的 Node.js 套件 — MDI 是為日文小說
 排版設計的 Markdown 方言。本頁介紹兩種使用方式：CLI 與程式化 API。
 
 本工具鏈對應 **MDI 2.0**
-（[規範](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)）。
+（[規範](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)）。
 
 ## 最快的路：CLI
 
@@ -114,4 +114,4 @@ function remarkMdiSyntax() {
 把 `remarkMdiSyntax` 當 remark 插件傳入、`mdiHandlers` 當
 `remark-rehype` 的 handlers 傳入，再引入樣式表
 （`@illusions-lab/mdi-to-hast/mdi.css` 或匯出的 `MDI_STYLESHEET`
-字串）。套件之間的關係見[架構](/mdi-js/zh-tw/guides/architecture/)。
+字串）。套件之間的關係見[架構](/MDI/zh-tw/guides/architecture/)。

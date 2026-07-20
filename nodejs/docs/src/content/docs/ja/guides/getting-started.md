@@ -1,14 +1,14 @@
 ---
 title: はじめに
-description: mdi-js をインストールし、.mdi ファイルを解析して HTML・PDF・EPUB・DOCX へ変換します。
+description: MDI の Node.js パッケージをインストールし、.mdi ファイルを解析して HTML・PDF・EPUB・DOCX へ変換します。
 ---
 
-mdi-js は **illusion Markdown (MDI)** — 日本語小説の組版のための Markdown
+これは **illusion Markdown (MDI)** — 日本語小説の組版のための Markdown
 方言 — を扱うパッケージ群です。このページでは CLI とプログラムからの
 利用、2 つの使い方を説明します。
 
 このツールチェーンは **MDI 2.0**
-（[仕様書](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)）に対応します。
+（[仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)）に対応します。
 
 ## 最短ルート: CLI
 
@@ -119,4 +119,4 @@ function remarkMdiSyntax() {
 `remark-rehype` のハンドラとして渡し、スタイルシート
 （`@illusions-lab/mdi-to-hast/mdi.css` またはエクスポートされる
 `MDI_STYLESHEET` 文字列）を読み込んでください。パッケージ間の関係は
-[アーキテクチャ](/mdi-js/ja/guides/architecture/)を参照してください。
+[アーキテクチャ](/MDI/ja/guides/architecture/)を参照してください。

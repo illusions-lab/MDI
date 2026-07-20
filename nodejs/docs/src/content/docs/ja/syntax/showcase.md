@@ -1,6 +1,6 @@
 ---
 title: ライブ・ショーケース
-description: MDI 2.0 の全構文を、このサイト自身が mdi-js のパーサでライブ描画します。
+description: MDI 2.0 の全構文を、このサイト自身が MDI のパーサでライブ描画します。
 ---
 
 以下の例はすべて**このドキュメントサイト自身が描画しています** —
@@ -9,7 +9,7 @@ description: MDI 2.0 の全構文を、このサイト自身が mdi-js のパー
 装飾されます。見えているものが、コンバータの出力そのものです。
 
 構文の正式な定義は
-[MDI 2.0 仕様書](https://github.com/illusions-lab/mdi-js/blob/main/SYNTAX.md)
+[MDI 2.0 仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
 にあります。このページはデモであり、規範ではありません。
 
 ## ルビ

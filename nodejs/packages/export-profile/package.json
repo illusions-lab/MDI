@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/illusions-lab/mdi-js"
+    "url": "https://github.com/illusions-lab/MDI"
   },
   "type": "module",
   "main": "./dist/index.js",

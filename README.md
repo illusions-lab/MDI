@@ -1,13 +1,13 @@
-# mdi-js
+# MDI
 
-**Node.js tooling for illusion Markdown (MDI)** — parse `.mdi` files and convert them to HTML, PDF, EPUB, and DOCX.
+**illusion Markdown (MDI)** is a Markdown extension format for Japanese typography — ruby, tate-chu-yoko, boten, warichu, vertical writing, and more, inherited on top of standard Markdown.
 
-**illusion Markdown (MDI)** のための Node.js ツール群です。`.mdi` ファイルを解析し、HTML・PDF・EPUB・DOCX へ変換します。
+**illusion Markdown（MDI）** は、日本語組版のための Markdown 拡張フォーマットです。ルビ・縦中横・傍点・割注・縦書きなどを、標準 Markdown を継承しつつ拡張します。
 
-This repository is the canonical home of the **MDI spec** ([SYNTAX.md](./SYNTAX.md)) as well as its Node.js tooling; it currently targets **MDI 2.0**.  
-本リポジトリは **MDI 仕様書**（[SYNTAX.md](./SYNTAX.md)）と Node.js ツール群の両方を管理しており、現行仕様は **MDI 2.0** です。
+This repository is the canonical home of the **MDI spec** ([SYNTAX.md](./SYNTAX.md)) and its per-language implementations; it currently targets **MDI 2.0**.  
+本リポジトリは **MDI 仕様書**（[SYNTAX.md](./SYNTAX.md)）と各言語の実装の両方を管理しており、現行仕様は **MDI 2.0** です。
 
-**📖 Documentation / ドキュメント: https://illusions-lab.github.io/mdi-js/** — guides, a live-rendered syntax showcase, and generated API reference (English / 日本語 / 正體中文). Built from [`nodejs/docs/`](./nodejs/docs).
+**📖 Documentation / ドキュメント: https://illusions-lab.github.io/MDI/** — guides, a live-rendered syntax showcase, and generated API reference (English / 日本語 / 正體中文). Built from [`nodejs/docs/`](./nodejs/docs).
 
 ---
 

@@ -4,7 +4,7 @@ version = "2.0.1"
 description = "Language-neutral parser for MDI 2.0 syntax"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/illusions-lab/mdi-js"
+repository = "https://github.com/illusions-lab/MDI"
 keywords = ["markdown", "mdi", "ruby", "typesetting"]
 categories = ["parser-implementations", "text-processing"]
 

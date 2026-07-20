@@ -53,19 +53,19 @@ for (const dir of packages) {
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://illusions-lab.github.io',
-	base: '/mdi-js',
+	base: '/MDI',
 	markdown: {
 		remarkPlugins: [remarkMdiSyntax],
 		remarkRehype: { handlers: mdiHandlers },
 	},
 	integrations: [
 		starlight({
-			title: 'mdi-js',
+			title: 'MDI',
 			favicon: '/illusions-kanji.svg',
 			description:
 				'Node.js tooling for illusion Markdown (MDI) — parse .mdi and convert to HTML, PDF, EPUB, DOCX.',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/illusions-lab/mdi-js' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/illusions-lab/MDI' },
 			],
 			defaultLocale: 'root',
 			locales: {

@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/illusions-lab/mdi-js.git",
-    "directory": "packages/micromark-extension-mdi"
+    "url": "git+https://github.com/illusions-lab/MDI.git",
+    "directory": "nodejs/packages/micromark-extension-mdi"
   },
-  "homepage": "https://illusions-lab.github.io/mdi-js/",
-  "bugs": "https://github.com/illusions-lab/mdi-js/issues",
+  "homepage": "https://illusions-lab.github.io/MDI/",
+  "bugs": "https://github.com/illusions-lab/MDI/issues",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
