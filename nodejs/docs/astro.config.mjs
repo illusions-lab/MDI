@@ -52,8 +52,7 @@ for (const dir of packages) {
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://illusions-lab.github.io',
-	base: '/MDI',
+	site: 'https://mdi.illusions.app',
 	markdown: {
 		remarkPlugins: [remarkMdiSyntax],
 		remarkRehype: { handlers: mdiHandlers },

@@ -1,6 +1,6 @@
 # docs
 
-The MDI Node.js tooling documentation site — [Astro Starlight](https://starlight.astro.build), published to https://illusions-lab.github.io/MDI/ by `.github/workflows/docs.yml` on push to `main`.
+The MDI Node.js tooling documentation site — [Astro Starlight](https://starlight.astro.build), published to https://mdi.illusions.app/ by `.github/workflows/docs.yml` on push to `main`.
 
 MDI の Node.js ツール群のドキュメントサイトです。`main` への push 時に GitHub Pages へ自動デプロイされます。
 

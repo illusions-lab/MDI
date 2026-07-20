@@ -4,4 +4,4 @@ mdast extension: compiles micromark-extension-mdi token events into MDI mdast no
 
 Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
 
-Documentation: https://illusions-lab.github.io/MDI/
+Documentation: https://mdi.illusions.app/

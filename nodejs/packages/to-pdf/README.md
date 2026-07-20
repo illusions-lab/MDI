@@ -4,4 +4,4 @@ Renders @illusions-lab/mdi-to-html output to PDF via a headless browser (Playwri
 
 Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the root README for the full package architecture.
 
-Documentation: https://illusions-lab.github.io/MDI/
+Documentation: https://mdi.illusions.app/
