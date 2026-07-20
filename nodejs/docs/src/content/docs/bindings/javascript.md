@@ -1,6 +1,6 @@
 ---
-title: JavaScript / TypeScript
-description: @illusions-lab/mdi — the primary, Rust-backed JavaScript API, with every exported function and its real behavior.
+title: "JavaScript / TypeScript"
+description: "@illusions-lab/mdi — the primary, Rust-backed JavaScript API, with every exported function and its real behavior."
 ---
 
 **Prerequisites:** [Getting Started](/guides/getting-started/), [Document IR](/core/document-ir/).
