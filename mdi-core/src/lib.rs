@@ -943,6 +943,141 @@ pub fn parse_json(source: &str) -> String {
         .expect("serializing the MDI parse output cannot fail")
 }
 
+/// Stable C ABI used by native language bindings.
+///
+/// Every operation accepts UTF-8 bytes and returns owned bytes. Callers must
+/// release both buffers in an [`MdiFfiResult`] with [`mdi_free_buffer`]. The
+/// JSON returned by `mdi_parse_json` is the same versioned wire contract used
+/// by the JavaScript and future Python bindings.
+#[allow(unsafe_code)]
+pub mod ffi {
+    use super::{parse_json, render_docx, render_epub, render_html, render_text, serialize_mdi};
+    use std::slice;
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy)]
+    pub struct MdiFfiBuffer {
+        pub data: *mut u8,
+        pub len: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy)]
+    pub struct MdiFfiResult {
+        pub value: MdiFfiBuffer,
+        pub error: MdiFfiBuffer,
+    }
+
+    fn empty_buffer() -> MdiFfiBuffer {
+        MdiFfiBuffer {
+            data: std::ptr::null_mut(),
+            len: 0,
+        }
+    }
+
+    fn buffer(value: Vec<u8>) -> MdiFfiBuffer {
+        if value.is_empty() {
+            return empty_buffer();
+        }
+        let mut value = value.into_boxed_slice();
+        let result = MdiFfiBuffer {
+            data: value.as_mut_ptr(),
+            len: value.len(),
+        };
+        std::mem::forget(value);
+        result
+    }
+
+    fn success(value: Vec<u8>) -> MdiFfiResult {
+        MdiFfiResult {
+            value: buffer(value),
+            error: empty_buffer(),
+        }
+    }
+
+    fn failure(message: impl Into<String>) -> MdiFfiResult {
+        MdiFfiResult {
+            value: empty_buffer(),
+            error: buffer(message.into().into_bytes()),
+        }
+    }
+
+    fn source<'a>(data: *const u8, len: usize) -> Result<&'a str, String> {
+        if data.is_null() && len != 0 {
+            return Err("MDI source pointer is null".to_owned());
+        }
+        let bytes = if len == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(data, len) }
+        };
+        std::str::from_utf8(bytes).map_err(|_| "MDI source must be valid UTF-8".to_owned())
+    }
+
+    fn string_result(
+        data: *const u8,
+        len: usize,
+        operation: impl FnOnce(&str) -> String,
+    ) -> MdiFfiResult {
+        match source(data, len) {
+            Ok(source) => success(operation(source).into_bytes()),
+            Err(error) => failure(error),
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_parse_json(data: *const u8, len: usize) -> MdiFfiResult {
+        string_result(data, len, parse_json)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_html(data: *const u8, len: usize) -> MdiFfiResult {
+        string_result(data, len, render_html)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_serialize_mdi(data: *const u8, len: usize) -> MdiFfiResult {
+        string_result(data, len, serialize_mdi)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_text(data: *const u8, len: usize) -> MdiFfiResult {
+        string_result(data, len, render_text)
+    }
+
+    fn binary_result(
+        data: *const u8,
+        len: usize,
+        operation: impl FnOnce(&str) -> Result<Vec<u8>, String>,
+    ) -> MdiFfiResult {
+        match source(data, len).and_then(operation) {
+            Ok(value) => success(value),
+            Err(error) => failure(error),
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_epub(data: *const u8, len: usize) -> MdiFfiResult {
+        binary_result(data, len, render_epub)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_docx(data: *const u8, len: usize) -> MdiFfiResult {
+        binary_result(data, len, render_docx)
+    }
+
+    /// Releases a buffer returned by this module.
+    ///
+    /// # Safety
+    ///
+    /// `buffer` must have been returned by one of this module's functions and
+    /// each non-empty buffer must be passed here at most once.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn mdi_free_buffer(buffer: MdiFfiBuffer) {
+        if !buffer.data.is_null() && buffer.len != 0 {
+            unsafe {
+                drop(Vec::from_raw_parts(buffer.data, buffer.len, buffer.len));
+            }
+        }
+    }
+}
+
 /// Render a complete source document to a standalone HTML document directly
 /// from the Rust-owned IR.  This is intentionally source-oriented for FFI:
 /// bindings pass UTF-8 source once and never reconstruct MDI syntax in a host
@@ -3852,5 +3987,97 @@ mod tests {
         }
         assert!(docx_errors > 0);
         assert!(docx_success);
+    }
+
+    #[allow(unsafe_code)]
+    fn ffi_bytes(result: ffi::MdiFfiResult) -> Result<Vec<u8>, String> {
+        let value = if result.value.len == 0 {
+            Vec::new()
+        } else {
+            unsafe { std::slice::from_raw_parts(result.value.data, result.value.len).to_vec() }
+        };
+        let error = if result.error.len == 0 {
+            None
+        } else {
+            Some(unsafe {
+                std::str::from_utf8(std::slice::from_raw_parts(
+                    result.error.data,
+                    result.error.len,
+                ))
+                .unwrap()
+                .to_owned()
+            })
+        };
+        unsafe {
+            ffi::mdi_free_buffer(result.value);
+            ffi::mdi_free_buffer(result.error);
+        }
+        error.map_or(Ok(value), Err)
+    }
+
+    #[test]
+    #[allow(unsafe_code)]
+    fn c_abi_returns_owned_versioned_wire_data_for_every_export() {
+        let source = "{東京|とうきょう} ^12^";
+        let json = String::from_utf8(
+            ffi_bytes(ffi::mdi_parse_json(source.as_ptr(), source.len())).unwrap(),
+        )
+        .unwrap();
+        assert!(json.contains("\"irVersion\":\"1.0\""));
+        assert!(json.contains("\"type\":\"ruby\""));
+
+        let html = String::from_utf8(
+            ffi_bytes(ffi::mdi_render_html(source.as_ptr(), source.len())).unwrap(),
+        )
+        .unwrap();
+        assert!(html.contains("<ruby class=\"mdi-ruby\">東京"));
+        assert_eq!(
+            String::from_utf8(
+                ffi_bytes(ffi::mdi_serialize_mdi(source.as_ptr(), source.len())).unwrap()
+            )
+            .unwrap(),
+            "{東京|とうきょう} ^12^\n"
+        );
+        assert_eq!(
+            String::from_utf8(
+                ffi_bytes(ffi::mdi_render_text(source.as_ptr(), source.len())).unwrap()
+            )
+            .unwrap(),
+            "東京 12\n"
+        );
+        assert!(
+            ffi_bytes(ffi::mdi_render_epub(source.as_ptr(), source.len()))
+                .unwrap()
+                .starts_with(b"PK")
+        );
+        assert!(
+            ffi_bytes(ffi::mdi_render_docx(source.as_ptr(), source.len()))
+                .unwrap()
+                .starts_with(b"PK")
+        );
+
+        assert!(
+            ffi_bytes(ffi::mdi_render_text(std::ptr::null(), 0))
+                .unwrap()
+                .is_empty()
+        );
+        let invalid_utf8 = [0xff];
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_html(
+                invalid_utf8.as_ptr(),
+                invalid_utf8.len()
+            ))
+            .unwrap_err(),
+            "MDI source must be valid UTF-8"
+        );
+
+        assert_eq!(
+            ffi_bytes(ffi::mdi_parse_json(std::ptr::null(), 1)).unwrap_err(),
+            "MDI source pointer is null"
+        );
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_epub(std::ptr::null(), 1)).unwrap_err(),
+            "MDI source pointer is null"
+        );
     }
 }

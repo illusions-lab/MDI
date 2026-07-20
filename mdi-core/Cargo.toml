@@ -9,7 +9,7 @@ keywords = ["markdown", "mdi", "ruby", "typesetting"]
 categories = ["parser-implementations", "text-processing"]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 markdown = { version = "1.0.0", features = ["serde"] }
@@ -25,4 +25,4 @@ js-sys = { version = "0.3", optional = true }
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
