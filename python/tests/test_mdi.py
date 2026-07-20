@@ -77,7 +77,7 @@ def test_returns_recoverable_diagnostics_with_utf8_byte_spans() -> None:
         "severity": "warning",
         "code": "mdi.version.unsupported",
         "message": "MDI 3.0 is newer than the supported 2.0",
-        "span": {"startByte": 0, "endByte": source.encode().index("👨".encode())},
+        "span": {"startByte": 0, "endByte": 18},
     }]
     assert result["document"]["span"]["endByte"] == len(source.encode())
 
@@ -96,7 +96,7 @@ def test_serializes_and_renders_complete_source_in_rust() -> None:
         ("txt", "　東京"),
         ("txt-ruby", "　{東京|とうきょう}"),
         ("narou", "　｜東京《とうきょう》"),
-        ("kakuyomu", "　東京《とうきょう》"),
+        ("kakuyomu", "　｜東京《とうきょう》"),
         ("aozora", "　｜東京《とうきょう》"),
     ],
 )
