@@ -1,166 +1,171 @@
 ---
 title: はじめに
-description: Rust コアで .mdi 文書全体を解析し、HTML・PDF・EPUB・DOCX・プレーンテキストを生成します。
+description: CLI と JavaScript パッケージをインストールし、実際の .mdi ファイルを HTML・PDF・テキストに変換します。
 ---
 
-**illusion Markdown（MDI）** は、日本語小説の組版のための Markdown 方言です。
-`@illusions-lab/mdi` は主要な JavaScript API です。完全なソースを Rust の
-`mdi-core` に渡し、同じ文書 IR を使って解析、検証、正規化、各形式への出力を
-行います。
+**前提知識:** [MDI とは？](/ja/learn/what-is-mdi/) と [コア概念](/ja/learn/core-concepts/) ―― IR・span・診断が何かを既に知っている前提です。[Node.js](https://nodejs.org) 20 以降も必要です。
 
-このツールチェーンは **MDI 2.0**
-（[仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)）を実装します。
+このページは **MDI 2.0** を実装しています。規範的な人間向け仕様は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) です。以下のすべてのコマンドとコードはそのままコピーして実行できます ―― このリポジトリから実際に公開されているパッケージに対して動くもので、架空のものはありません。
 
-## 最短ルート：CLI
+## 1. `.mdi` ファイルを書く
+
+`novel.mdi` を作成します。
+
+```mdi
+---
+mdi: "2.0"
+title: 雪女
+author: 小泉八雲
+lang: ja
+writing-mode: vertical
+---
+
+# 第一章
+
+{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。
+彼は[[em:決して]]忘れないと誓った。[[br]]
+その日は大安[[warichu:六曜の一つで吉日とされる]]であった。
+```
+
+## 2. CLI で変換する
+
+CLI をグローバルにインストールします。
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
 ```
 
+実行します。
+
 ```bash
 mdi build novel.mdi --to html
-mdi build novel.mdi --to pdf
-mdi build novel.mdi --to epub -o dist/novel.epub
-mdi build novel.mdi --to docx
-mdi build novel.mdi --to txt
-mdi build novel.mdi --to txt-ruby
-mdi build novel.mdi --to narou
-mdi build novel.mdi --to kakuyomu
-mdi build novel.mdi --to aozora
-mdi build novel.mdi --to txt-all
 ```
 
-`-o` を省略すると、入力ファイルと同じ場所に出力形式の拡張子で保存されます
-（例：`novel.mdi` → `novel.pdf`）。
+```text
+Written /path/to/novel.html
+```
 
-`txt` は基本的なプレーンテキストを出力し、`txt-ruby` はルビを
-`{base|reading}` の形で残します。`narou`、`kakuyomu`、`aozora` はそれぞれの
-投稿先に対応した記法を出力します。`txt-all` は 5 種類すべてのテキスト形式を、
-互いに上書きせず一度に生成します。
+CLI 自身の使用方法メッセージそのままの、完全なコマンド形式です。
 
-:::note
-PDF は Chromium をレイアウトエンジンとして使用します。Rust が HTML と印刷
-CSS を生成し、隔離された Chromium process を制御して、Chrome DevTools
-Protocol 経由で PDF を取得します。Chromium は縦書き、ルビ、縦中横、傍点、
-フォント shaping、ページ分割を担当しますが、MDI の解析は行いません。
-:::
+```text
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+```
 
-## JavaScript API
+| フラグ | 意味 |
+| --- | --- |
+| `--to <format>` | 必須。上記のいずれかの形式。 |
+| `-o <path>` | 省略可。出力パス。指定しない場合、入力ファイルのそばに形式の拡張子で保存されます ―― `novel.mdi --to pdf` は `novel.pdf` を、`--to txt-ruby` は `novel_ruby.txt` を書き出します（CLI はテキストの各バリアントを `<stem>_<variant>.txt` と命名し、プレーンな `txt` にはサフィックスがありません）。 |
+| `--config <path>` | 省略可。ページサイズ、フォント、マージン、テキストの字下げを制御する[エクスポート・プロファイル](/ja/ecosystem/export-profiles/) JSON ファイルへのパス。 |
 
-主要パッケージをインストールします。
+すべての出力形式を試してみます。
+
+```bash
+mdi build novel.mdi --to html                          # novel.html
+mdi build novel.mdi --to pdf                            # novel.pdf
+mdi build novel.mdi --to epub -o dist/novel.epub        # dist/novel.epub
+mdi build novel.mdi --to docx                           # novel.docx
+mdi build novel.mdi --to txt                            # novel.txt      ―― ルビは破棄
+mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―― ルビは {base|reading} として保持
+mdi build novel.mdi --to narou                          # novel_narou.txt   ―― 小説家になろうの記法
+mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―― カクヨムの記法
+mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―― 青空文庫の記法、Shift_JIS でエンコード
+mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
+```
+
+### 各形式で実際に何が起きるか
+
+- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`、EPUB、DOCX** はすべて **Rust コアが直接**描画します（`@illusions-lab/mdi` の `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―― CLI はその間で何も再解析・再解釈しません。
+- **PDF** は同じ Rust 描画の HTML を、ローカルにインストールされた Chromium 系ブラウザに渡し、そのブラウザがページ分割と `printToPDF` の呼び出しを行います。Chromium は `.mdi` ソースを一切受け取らず、構文上の判断もしません。Chromium 系ブラウザが見つからない場合、コマンドは不足している依存関係を名指しするエラーで失敗します ―― 特定の実行ファイルを指す方法は [レンダリングモデル](/ja/core/rendering/) を参照してください。
+- **`aozora`** は書き出し時に **Shift_JIS** でエンコードされます。青空文庫自身の投稿ツールが期待する形式に合わせたものです。他のテキストバリアントはすべて UTF-8 で書き出されます。
+
+### 何か問題が起きたとき
+
+CLI はスタックトレースを表示しません。エラーは stderr へ**1行**書き出され、プロセスは終了コード `1` で終了します。
+
+```bash
+mdi build missing.mdi --to html
+```
+
+```text
+ENOENT: no such file or directory, open 'missing.mdi'
+```
+
+```bash
+mdi build novel.mdi --to svg
+```
+
+```text
+Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+```
+
+認識できない `--to` の値（や、その他の不正な引数列）は、意味を推測しようとせず、上記の使用方法を表示して終了コード `1` を返します。
+
+## 3. JavaScript から解析・描画する
+
+CLI に頼らずアプリケーションを構築する場合は、主要パッケージをインストールします。
 
 ```bash
 npm install @illusions-lab/mdi
 ```
 
-`parse` は UTF-8 の `.mdi` ソース全体を受け取り、文書 IR と診断を返します。
-ホスト側で Markdown parser を先に実行したり、入力を分割・書き換えたりする必要は
-ありません。
-
 ```js
-import { readFile } from 'node:fs/promises';
-import { parse } from '@illusions-lab/mdi';
+import { readFile } from "node:fs/promises";
+import { parse, renderHtml } from "@illusions-lab/mdi";
 
-const source = await readFile('novel.mdi', 'utf8');
-const { document, diagnostics } = await parse(source);
+const source = await readFile("novel.mdi", "utf8");
 
-for (const diagnostic of diagnostics) {
-	console.warn(
-		`${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`,
-	);
-}
+const { document, diagnostics, syntaxVersion, irVersion } = parse(source);
+console.log(syntaxVersion, irVersion); // "2.0" "1.0"
+console.log(diagnostics);              // このファイルには [] ―― 警告すべきものはない
+console.log(document.frontmatter.entries);
+// [{ key: "mdi", value: "2.0" }, { key: "title", value: "雪女" }, ...]
+
+const html = renderHtml(source);
 ```
 
-通常の不正な入力によって解析全体が失敗することはありません。Rust は仕様に従って
-利用可能な文書ツリーを生成し、安定したコード、重大度、UTF-8 byte span を持つ
-診断で問題を報告します。
-
-解析結果は MDI 構文バージョンと IR schema バージョンを明示します。CommonMark、
-GFM、フロントマター、MDI の各 node は同じツリーに格納されるため、すべての言語
-バインディングが同じ意味を共有します。
-
-## 出力の生成
-
-すべての renderer は、`parse` が返す Rust 文書 IR を直接受け取ります。
+`parse` はホスト側の Markdown parser を一切必要としません ―― CommonMark、GFM、フロントマター、MDI はすべて1回の `parse` 呼び出しの中で決定されます。通常の不正な構文は利用可能な文書と（大抵は空の）診断を返します。`try`/`catch` はプログラミングエラー、例えば文字列でない値を渡した場合のためにとっておきます。
 
 ```js
-import { writeFile } from 'node:fs/promises';
-import {
-	renderDocx,
-	renderEpub,
-	renderHtml,
-	renderPdf,
-	renderText,
-	serializeMdi,
-} from '@illusions-lab/mdi';
-
-const html = await renderHtml(document);
-const plainText = await renderText(document, 'plain');
-const normalizedMdi = await serializeMdi(document);
-const epub = await renderEpub(document);
-const docx = await renderDocx(document);
-const pdf = await renderPdf(document);
-
-await Promise.all([
-	writeFile('novel.html', html),
-	writeFile('novel.txt', plainText),
-	writeFile('novel.normalized.mdi', normalizedMdi),
-	writeFile('novel.epub', epub),
-	writeFile('novel.docx', docx),
-	writeFile('novel.pdf', pdf),
-]);
+parse(42); // TypeError: source must be a string を投げる
 ```
 
-HTML、TXT、EPUB、DOCX、正規化された MDI は Rust が直接生成します。PDF も
-Rust API が処理全体を制御し、最終的なレイアウトだけを Chromium に委ねます。
-出力形式ごとに元の構文を解釈し直すことはありません。
+すべてのエクスポート関数（`renderEpub`、`renderDocx`、`renderText`、`renderTextFormat`、`serializeMdi`）の完全なシグネチャと例は [Bindings: JavaScript / TypeScript](/ja/bindings/javascript/) を参照してください。
 
-## フロントマター
+## 4. フロントマターの解説
 
-`.mdi` 文書は YAML フロントマターで始めることができます。
+`novel.mdi` の先頭のフロントマターブロックは、同じ `parse()` 呼び出しの中で解析される通常の YAML です。
 
 ```yaml
 ---
 mdi: "2.0"
-title: 吾輩は猫である
-author: 夏目漱石
+title: 雪女
+author: 小泉八雲
 lang: ja
-writing-mode: vertical # または horizontal（既定）
-page-progression: rtl  # 既定値は writing-mode に従う
+writing-mode: vertical
 ---
 ```
 
-`parse` は同じ Rust 解析の中でフロントマターを処理し、仕様の既定値を適用しながら、
-記述順と未知の key を保持します。Renderer は文書 IR の metadata を参照します。
-HTML は `<title>`、`lang`、`writing-mode`、EPUB は OPF metadata、DOCX は
-文書プロパティと縦書き section layout に反映します。
+- `mdi` は文書が対象とする構文バージョンを宣言します。省略すると、パーサーは自身が対応する最新バージョンを前提とします。パーサーが対応するより*新しい*バージョンを宣言すると、`mdi.version.unsupported` という警告診断が出ます ―― 解析はベストエフォートで続行されます（[診断](/ja/core/diagnostics/)参照）。
+- `writing-mode: vertical` は `renderHtml` のレイアウト方法を変えます（ルート要素に `writing-mode: vertical-rl`）。これが、縦中横や傍点がそもそも存在する理由です ―― どちらも縦書き特有の組版デバイスであり、横書きでも自然に劣化して動作します。
+- キーの順序と未知のキーは `document.frontmatter.entries` に保持されます。レンダラーは認識しないキーがあってもエラーにせず無視します。
 
-## remark/unified との統合
+## 5. 任意: `unified`/`remark` パイプラインへの組み込み
 
-Remark は任意のエコシステムアダプターであり、MDI parser ではありません。
-まず `@illusions-lab/mdi` で完全なソースを解析し、Rust 文書 IR を mdast に
-変換します。
-
-```bash
-npm install @illusions-lab/mdi @illusions-lab/mdi-remark unified
-```
+すでに `mdast` ノードを期待する `unified` パイプライン（Astro、静的サイトジェネレーター、`remark` ベースの lint ツールなど）がある場合以外は、この節は読み飛ばしてかまいません。`@illusions-lab/mdi-remark` は**アダプター**であり第二のパーサーではありません ―― 同じ Rust の `parse()` を呼び出し、その結果を `mdast` へ整形し直すだけです。
 
 ```js
-import { unified } from 'unified';
-import { parse } from '@illusions-lab/mdi';
-import { toMdast } from '@illusions-lab/mdi-remark';
+import { unified } from "unified";
+import remarkMdi from "@illusions-lab/mdi-remark";
+import remarkStringify from "remark-stringify";
 
-const { document, diagnostics } = await parse(source);
-const mdast = toMdast(document);
-const transformed = await unified()
-	.use(myRemarkPlugin)
-	.run(mdast);
+const processor = unified().use(remarkMdi).use(remarkStringify);
+const tree = processor.parse(await readFile("novel.mdi", "utf8"));
 ```
 
-アダプターが行うのは Rust IR と mdast の間のデータ変換だけです。tokenizer、
-grammar table、fallback parser は含まず、MDI の境界判定を変更することもできません。
-MDI として再出力する場合は、mdast を文書 IR に戻してから、Rust の
-`serializeMdi` または各 renderer に渡します。
+何が正しくラウンドトリップし、何がしないかを含む詳細は [Remark / mdast アダプター](/ja/ecosystem/remark/) にあります。
 
-パッケージの責務と完全な契約については、
-[アーキテクチャ](/ja/guides/architecture/)を参照してください。
+## 次のステップ
+
+- [完全構文リファレンス](/ja/syntax/reference/) ―― 上の `novel.mdi` で使ったすべての構文を1つずつ解説します。
+- [Rust 主導アーキテクチャ](/ja/core/architecture/) ―― 「文法は1つ、実装も1つ」の背後にある所有権規則。
+- [エクスポート・プロファイル](/ja/ecosystem/export-profiles/) ―― `--config` でページサイズ、フォント、マージンを制御します。

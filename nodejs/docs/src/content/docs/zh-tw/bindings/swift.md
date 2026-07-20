@@ -1,53 +1,46 @@
 ---
 title: Swift
-description: 使用 Swift Package Manager 安裝與使用 MDI。
+description: Planned：尚無 Swift package。本頁明確說明此事，只描述預期契約。
 ---
 
-`IllusionMarkdown` 是 MDI 的 Swift Package Manager 發行套件；產品與 import module 都叫作 `MDI`：
+**狀態：Planned，未實作。**儲存庫的 [`swift/README.md`](https://github.com/illusions-lab/MDI/blob/main/swift/README.md) 完整寫道：*"Swift implementation of illusion Markdown (MDI). Not yet implemented."* 現在沒有 Swift package、XCFramework 或可安裝／呼叫的 public API。以下僅為預期，不能複製程式碼並期待它能 build。
 
-```swift
-import MDI
-```
+## 這個綁定將解決什麼
 
-Swift 會透過精簡的 C ABI 將解析和轉譯交給 Rust 的 `mdi-core`，不會重作語法，因此所有綁定共用同一份語法、文件 IR、診斷與 renderer。
+它將提供[JavaScript](/zh-tw/bindings/javascript/)與[Rust](/zh-tw/bindings/rust/)現已提供的功能：從 Swift 解析、轉譯 `.mdi`，供 iOS/macOS reader、editor 等需要 in-process MDI 的情境使用。
 
 ## 安裝
 
-在 `Package.swift` 加入相依套件，並讓使用它的 target 相依於 `MDI` 產品：
+沒有任何東西可安裝。加入 `illusions-lab/MDI` Swift package dependency 或同名 CocoaPod，今日都不是此 project 的真實 release。
+
+## 預期最小範例（僅示意，今日不可編譯）
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.2"),
-]
-
-// target 的 dependencies：
-.product(name: "MDI", package: "MDI")
+// ILLUSTRATIVE ONLY — this API does not exist yet.
+import MDI
+let source = try String(contentsOfFile: "novel.mdi", encoding: .utf8)
+let result = try MDI.parse(source)
+print(result.syntaxVersion, result.irVersion)
+let html = try MDI.renderHTML(source)
 ```
 
-二進位套件支援 macOS 13+ 與 iOS 15+，包含 Apple Silicon 與適用的 Intel simulator。
+## 預期 type mapping
 
-## 解析與 IR
+預計用 [UniFFI](https://mozilla.github.io/uniffi-rs/) 或小型手寫 C ABI 包裝成 iOS/macOS XCFramework；同樣**不會**有 Swift-side grammar 重作，見[Rust-authoritative architecture](/zh-tw/core/architecture/)。`Document IR` node catalogue 應對應同欄位名的 Swift `struct`/`enum`；`MdiRubyReading` 的 `group`/`split` 應是含 associated values 的 Swift `enum`。byte spans 仍是 UTF-8 offsets；Swift `String.Index` 是 grapheme-cluster-based，實作必須明確定義轉換。
 
-```swift
-let result = try MDI.parse("# 見出し\n\n{東京|とうきょう}で第^12^話")
-print(result.irVersion)          // "1.0"
-print(result.diagnostics)
-```
+## 預期 error handling 與 version handling
 
-`result.document` 是無損的 `MDIJSONValue` 樹；可用 `.object`、`.array`、`.string`、`.number`、`.bool`、`.null` pattern matching 取用節點。`MDISourceSpan` 使用 UTF-8 byte offset。
+普通 malformed MDI syntax 應如其他 binding：不 throw，保留 literal-fallback text 與少數 diagnostic。真正 programming/resource failure（例如 PDF 沒有 Chromium）才應透過 Swift `Error`/`throws` 提供。未來 binding 也應 expose `mdiSpecVersion`/`mdiIRVersion`，並拒絕不認識的 IR version。
 
-## 轉譯
+## 目前實作狀態
 
-```swift
-let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
-let mdi = try MDI.serialize("{東京|とうきょう} ^12^")
-let text = try MDI.renderText("# Title")
-let epub: Data = try MDI.renderEPUB("# Chapter")
-let docx: Data = try MDI.renderDOCX("# Chapter")
-```
+**沒有任何部分已實作。**這不是 partial/in-progress binding；repository 中除了 placeholder README 沒有其他 source。變更時可留意 [`swift/`](https://github.com/illusions-lab/MDI/tree/main/swift)，屆時本頁會改為真實安裝與 API reference。
 
-EPUB 與 DOCX 回傳 ZIP 格式的 `Data`，請以對應副檔名寫入檔案。
+## 此綁定不做什麼
 
-## 錯誤與發布
+所有事都還不能做，因為沒有可運作程式碼。
 
-所有 API 都會拋出 `MDIError`：`core` 表示 Rust core 的失敗，`invalidWireFormat` 表示無效或不支援的 native 回應。CI 會建置 XCFramework、跑 XCTest，並對 `swift/Sources/MDI` 強制 90% line coverage、上傳 Codecov；發版只使用 GitHub Actions 內建 token，不需要 PAT 或獨立倉庫。
+## 下一步
+
+- [JavaScript / TypeScript](/zh-tw/bindings/javascript/) 與 [Rust](/zh-tw/bindings/rust/)
+- [Rust-authoritative architecture](/zh-tw/core/architecture/)

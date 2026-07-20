@@ -26,12 +26,24 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		第一級語法解析，不是後處理補丁。看看[即時渲染展示](/zh-tw/syntax/showcase/)：
 		本網站就是用 MDI 自己的解析器渲染 MDI 的。
 	</Card>
-	<Card title="薄語言接口" icon="puzzle">
-		JavaScript、Python、Swift 提供同一組 Rust API，不攜帶另一套 tokenizer。
-		需要 unified 管線時，可用 remark adapter 取得 mdast。
+	<Card title="誠實而精簡的語言介面" icon="puzzle">
+		JavaScript/TypeScript、Rust 與 Python（`pip install illusion-markdown`）已可使用，且都呼叫同一個 Rust core。Swift 明確標示為 **Planned**，沒有虛構的安裝方式。需要 unified 管線時可用 remark adapter 取得 mdast。
+	</Card>
+	<Card title="一份來源，五種實際輸出" icon="document">
+		`renderHtml`、五種 `renderTextFormat`、`renderEpub`、`renderDocx`，以及透過 Chromium 的 Rust PDF 都已實作。詳見[輸出格式](/zh-tw/ecosystem/outputs/)。
 	</Card>
 	<Card title="附帶 CLI" icon="seti:shell">
 		`mdi build novel.mdi --to pdf` — 一行指令把書稿送入由 Rust 控制的
 		Chromium PDF 管線。
 	</Card>
 </CardGrid>
+
+## 30 秒試用
+
+```bash
+npm install --global @illusions-lab/mdi-cli
+echo '{雪女|ゆき.おんな}が現れた。第^12^話のことである。' > novel.mdi
+mdi build novel.mdi --to html
+```
+
+完整流程（PDF、EPUB、DOCX 與 export profile）請見[快速上手](/zh-tw/guides/getting-started/)。
