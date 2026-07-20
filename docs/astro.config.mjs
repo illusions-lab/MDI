@@ -80,6 +80,10 @@ export default defineConfig({
 				'zh-tw': { label: '正體中文', lang: 'zh-TW' },
 			},
 			customCss: ['@illusions-lab/mdi-to-hast/mdi.css', './src/styles/docs.css'],
+			components: {
+				ThemeProvider: './src/components/ForcedDarkTheme.astro',
+				ThemeSelect: './src/components/Empty.astro',
+			},
 			plugins: apiPlugins,
 			sidebar: [
 				{
