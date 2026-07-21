@@ -81,9 +81,7 @@ export async function mdiToDocx(
       : heightMm -
         options.pagination.margins.top -
         options.pagination.margins.bottom;
-  const fontSizeMm = options.typesetting.fontSize === undefined
-    ? primary / options.pagination.charactersPerLine
-    : (options.typesetting.fontSize / 72) * 25.4;
+  const fontSizeMm = (options.typesetting.fontSize / 72) * 25.4;
   const fontSizeHalfPoints = Math.round((fontSizeMm / 25.4) * 72 * 2);
   const strictGrid = options.pagination.gridMode === "strict";
   const characterPitchPoints =

@@ -120,7 +120,9 @@ describe("mdiToEpub edge cases", () => {
           typesetting: {
             writingMode: "vertical",
             fontFamily: "Noto Serif JP",
+            fontSize: 11,
             textIndentEm: 2,
+            fullwidthSpaceIndent: true,
           },
           epub: { chapterSplitLevel: "h1" },
         },
@@ -140,7 +142,9 @@ describe("mdiToEpub edge cases", () => {
         .length
     ).toBe(2);
     expect(css).toContain("font-family:Noto Serif JP");
+    expect(css).toContain("font-size:11pt");
     expect(css).toContain("text-indent:2em");
+    expect(css).toContain("--mdi-fullwidth-space-indent:1");
     expect(css).toContain("writing-mode:vertical-rl");
 	});
 

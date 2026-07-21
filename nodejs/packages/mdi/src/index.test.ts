@@ -300,6 +300,19 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(tree.children[9]).not.toHaveProperty("variant");
 	});
 
+	it("preserves an explicit frontmatter page progression for publication adapters", () => {
+		const tree = toPublicationMdast({
+			span: { startByte: 0, endByte: 0 },
+			frontmatter: {
+				span: { startByte: 0, endByte: 25 },
+				raw: "page-progression: ltr",
+				entries: [],
+			},
+			children: [],
+		} as never);
+		expect(tree.data?.frontmatter).toMatchObject({ pageProgression: "ltr" });
+	});
+
 	it("rejects malformed cover shorthands before loading publication adapters", () => {
 		expect(() => renderEpub("text", { cover: { data: new Uint8Array(), mediaType: "image/gif" as never } })).toThrow("options.cover.mediaType");
 		expect(() => renderEpub("text", { coverImage: "not-bytes" as never })).toThrow("options.coverImage");
