@@ -6,8 +6,10 @@ coverage:
         threshold: 1%
     patch:
       default:
-        target: auto
-        threshold: 1%
+        # New or changed code must meet the recommended coverage target;
+        # `auto` instead compares against an unrelated historical PR result.
+        target: 95%
+        threshold: 0%
 
 flags:
   nodejs:
