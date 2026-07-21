@@ -31,10 +31,13 @@ export function isCliEntrypoint(moduleUrl: string, invokedPath = process.argv[1]
   );
 }
 
+export async function setCliExitCode(
+  command: () => Promise<number> = run
+): Promise<void> {
+  process.exitCode = await command();
+}
+
 // npm exposes bins through `node_modules/.bin` symlinks. Resolve that link
 // before comparing URLs so the packaged CLI, not only a direct source invoke,
 // runs its command handler.
-/* v8 ignore next 3 -- exercised by the packaged-consumer process test. */
-if (isCliEntrypoint(import.meta.url)) {
-  process.exitCode = await run();
-}
+if (isCliEntrypoint(import.meta.url)) await setCliExitCode();

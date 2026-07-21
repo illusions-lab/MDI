@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import iconv from "iconv-lite";
 import { build, loadExportProfile, parseArgs } from "./index.js";
-import { isCliEntrypoint, run as runCli } from "./cli.js";
+import { isCliEntrypoint, run as runCli, setCliExitCode } from "./cli.js";
 
 const runCommand = promisify(execFile);
 
@@ -108,6 +108,16 @@ describe("CLI executable entrypoint", () => {
   it("recognizes the resolved module path used by npm bin symlinks", () => {
     expect(isCliEntrypoint(import.meta.url, fileURLToPath(import.meta.url))).toBe(true);
     expect(isCliEntrypoint(import.meta.url, process.execPath)).toBe(false);
+  });
+
+  it("sets the process status through the executable command path", async () => {
+    const previousExitCode = process.exitCode;
+    try {
+      await setCliExitCode(async () => 7);
+      expect(process.exitCode).toBe(7);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
   });
 });
 
