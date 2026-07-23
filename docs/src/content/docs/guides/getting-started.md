@@ -48,7 +48,7 @@ Written /path/to/novel.html
 The full command shape, taken directly from the CLI's own usage message:
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 | Flag | Meaning |
@@ -69,14 +69,15 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt — rub
 mdi build novel.mdi --to narou                          # novel_narou.txt   — 小説家になろう notation
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt — カクヨム notation
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  — 青空文庫 notation, Shift_JIS-encoded
-mdi build novel.mdi --to txt-all                        # writes all five text variants; rejects -o
+mdi build novel.mdi --to note                           # novel_note.txt    — note editor input, UTF-8
+mdi build novel.mdi --to txt-all                        # writes all six text variants; rejects -o
 ```
 
 `--to txt-all` and `-o` are mutually exclusive — using both is a usage error, because `txt-all` always writes multiple files next to the input.
 
 ### What actually happens on each format
 
-- **HTML, TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`, EPUB, and DOCX** are rendered **directly by the Rust core** (`renderHtml`, `renderTextFormat`, `renderEpub`, `renderDocx` in `@illusions-lab/mdi`) — the CLI does not reparse or reinterpret anything.
+- **HTML, TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`, EPUB, and DOCX** are rendered **directly by the Rust core** (`renderHtml`, `renderTextFormat`, `renderEpub`, `renderDocx` in `@illusions-lab/mdi`) — the CLI does not reparse or reinterpret anything.
 - **PDF** takes the same Rust-rendered HTML and hands it to a locally installed Chromium-family browser, which performs pagination and calls `printToPDF`. Chromium never receives `.mdi` source and makes no syntax decision. If no Chromium-family browser is found, the command fails with an error naming the missing dependency — see [Rendering model](/core/rendering/) for how to point it at a specific executable.
 - **`aozora`** is encoded to **Shift_JIS** on write, matching what Aozora Bunko's own submission tooling expects; every other text variant is written as UTF-8.
 
@@ -97,7 +98,7 @@ mdi build novel.mdi --to svg
 ```
 
 ```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 An unrecognized `--to` value (or any other malformed argument list) prints the usage line above and exits `1` — it does not attempt a best-effort guess at what you meant.

@@ -98,6 +98,7 @@ def test_serializes_and_renders_complete_source_in_rust() -> None:
         ("narou", "　｜東京《とうきょう》"),
         ("kakuyomu", "　｜東京《とうきょう》"),
         ("aozora", "　｜東京《とうきょう》"),
+        ("note", "　｜東京《とうきょう》"),
     ],
 )
 def test_renders_every_public_text_format(format: mdi.TextFormat, expected: str) -> None:

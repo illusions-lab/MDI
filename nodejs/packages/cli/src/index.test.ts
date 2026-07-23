@@ -93,7 +93,7 @@ describe("parseArgs", () => {
       config: "book.export.json",
     }));
 
-  it.each(["narou", "kakuyomu", "aozora", "txt-all"] as const)(
+  it.each(["narou", "kakuyomu", "aozora", "note", "txt-all"] as const)(
     "accepts the %s text target",
     (format) => {
       expect(parseArgs(["book.mdi", "--to", format])).toEqual({
@@ -133,12 +133,14 @@ describe("text export", () => {
         build(input, "narou"),
         build(input, "kakuyomu"),
         build(input, "aozora"),
+        build(input, "note"),
       ]);
       expect(await readFile(outputs[0], "utf8")).toBe("題\n東京と強調。");
       expect(await readFile(outputs[1], "utf8")).toContain("{東京|とうきょう}");
       expect(await readFile(outputs[2], "utf8")).toContain("｜東京《とうきょう》");
       expect(await readFile(outputs[3], "utf8")).toContain("《《強調》》");
       expect(iconv.decode(await readFile(outputs[4]), "shift_jis")).toContain("［＃「題」は中見出し］");
+      expect(await readFile(outputs[5], "utf8")).toContain("｜東京《とうきょう》");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -154,6 +156,7 @@ describe("text export", () => {
       await expect(build(input, "narou")).resolves.toBe(join(directory, "kitchen-sink_narou.txt"));
       await expect(build(input, "kakuyomu")).resolves.toBe(join(directory, "kitchen-sink_kakuyomu.txt"));
       await expect(build(input, "aozora")).resolves.toBe(join(directory, "kitchen-sink_aozora.txt"));
+      await expect(build(input, "note")).resolves.toBe(join(directory, "kitchen-sink_note.txt"));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -170,10 +173,14 @@ describe("text export", () => {
         join(directory, "kitchen-sink_narou.txt"),
         join(directory, "kitchen-sink_kakuyomu.txt"),
         join(directory, "kitchen-sink_aozora.txt"),
+        join(directory, "kitchen-sink_note.txt"),
       ]);
       const aozora = await readFile(join(directory, "kitchen-sink_aozora.txt"));
       expect(iconv.decode(aozora, "shift_jis")).toContain("｜東京《とうきょう》");
       expect(aozora.includes(Buffer.from("\r\n"))).toBe(true);
+      expect(await readFile(join(directory, "kitchen-sink_note.txt"), "utf8")).toContain(
+        "｜東京《とうきょう》"
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -338,6 +345,24 @@ describe("build edge cases", () => {
 
 describe("CLI command output", () => {
 
+  it("accepts --to note and writes the UTF-8 default output", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-note-command-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const input = join(directory, "book.mdi");
+      const output = join(directory, "book_note.txt");
+      await writeFile(input, "# 題\n\n{東京|とうきょう} **強調**");
+      await expect(runCli(["build", input, "--to", "note"])).resolves.toBe(0);
+      expect(log).toHaveBeenCalledWith(`Written ${output}`);
+      expect(await readFile(output, "utf8")).toBe(
+        "## 題\n\n｜東京《とうきょう》 **強調** "
+      );
+    } finally {
+      log.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("returns success and reports every output written by the command adapter", async () => {
     const directory = await mkdtemp(join(tmpdir(), "mdi-cli-run-success-"));
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -345,9 +370,10 @@ describe("CLI command output", () => {
       const input = join(directory, "book.mdi");
       await writeFile(input, "text");
       await expect(runCli(["build", input, "--to", "txt-all"])).resolves.toBe(0);
-      expect(log).toHaveBeenCalledTimes(5);
+      expect(log).toHaveBeenCalledTimes(6);
       expect(log).toHaveBeenCalledWith(`Written ${join(directory, "book.txt")}`);
       expect(log).toHaveBeenCalledWith(`Written ${join(directory, "book_aozora.txt")}`);
+      expect(log).toHaveBeenCalledWith(`Written ${join(directory, "book_note.txt")}`);
     } finally {
       log.mockRestore();
       await rm(directory, { recursive: true, force: true });
@@ -454,11 +480,14 @@ describe("vertical Kitchen Sink export artifacts", () => {
       expect(await epubZip.file("OEBPS/style.css")!.async("string")).toContain("writing-mode:vertical-rl");
       expect(await epubZip.file("OEBPS/package.opf")!.async("string")).toContain('page-progression-direction="rtl"');
       expect(await epubZip.file("OEBPS/chapter-1.xhtml")!.async("string")).toContain('<ruby class="mdi-ruby">');
-      expect(textOutputs).toHaveLength(5);
+      expect(textOutputs).toHaveLength(6);
       expect(await readFile(join(directory, "kitchen-sink_ruby.txt"), "utf8")).toContain("{東京|とうきょう}");
       expect(
         iconv.decode(await readFile(join(directory, "kitchen-sink_aozora.txt")), "shift_jis")
       ).toContain("｜東京《とうきょう》");
+      expect(await readFile(join(directory, "kitchen-sink_note.txt"), "utf8")).toContain(
+        "｜東京《とうきょう》"
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

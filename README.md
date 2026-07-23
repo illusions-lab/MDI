@@ -17,7 +17,7 @@
 
 **illusion Markdown (MDI)** is Markdown for Japanese publishing. It preserves the Markdown you already know while adding the typography that Japanese prose needs: ruby readings, tate-chu-yoko, boten, warichu, vertical writing, and page-aware output.
 
-Write an `.mdi` document once, then render it as HTML, PDF, EPUB, DOCX, or text formats for platforms such as Kakuyomu, Narou, and Aozora Bunko. Ordinary CommonMark and GFM remain valid MDI, so you can introduce MDI features only where your document needs them.
+Write an `.mdi` document once, then render it as HTML, PDF, EPUB, DOCX, or text formats for platforms such as note, Kakuyomu, Narou, and Aozora Bunko. Ordinary CommonMark and GFM remain valid MDI, so you can introduce MDI features only where your document needs them.
 
 ```mdi
 # 春は曙

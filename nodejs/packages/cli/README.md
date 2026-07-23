@@ -12,7 +12,7 @@ npm install --global @illusions-lab/mdi-cli
 ## Build a document
 
 ```sh
-mdi build input.mdi --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all \
+mdi build input.mdi --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all \
   [--config export.json] [-o output]
 ```
 
@@ -23,8 +23,9 @@ numbering. PDF receives Rust-prepared HTML and print data, then uses Chromium
 solely for page layout; Chromium never receives or parses MDI source.
 
 `txt-all` writes every text variant next to the input and does not accept `-o`.
-The `narou`, `kakuyomu`, and `aozora` variants are contract-tested against
-their platform-owned notation manuals. Aozora output is Shift_JIS with CRLF;
+The `narou`, `kakuyomu`, `aozora`, and `note` variants are contract-tested
+against their platform-owned notation manuals. note output is UTF-8 editor
+input; Aozora output is Shift_JIS with CRLF;
 an unencodable character fails explicitly instead of being replaced with `?`.
 
 ## Examples

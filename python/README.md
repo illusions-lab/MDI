@@ -55,7 +55,7 @@ Every source-backed span is a half-open UTF-8 byte range.
 | `mdi.serialize_mdi(source)` | Canonical MDI/Markdown source. |
 | `mdi.render_html(source)` | A standalone HTML document. |
 | `mdi.render_text(source)` | Deterministic plain text. |
-| `mdi.render_text_format(source, format)` | TXT, ruby, Narou, Kakuyomu, or Aozora text. |
+| `mdi.render_text_format(source, format)` | TXT, ruby, Narou, Kakuyomu, Aozora, or note text. |
 | `mdi.render_epub(source)` | EPUB 3 archive bytes. |
 | `mdi.render_docx(source)` | DOCX archive bytes. |
 

@@ -67,7 +67,7 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## 現在の実装状況
 
-Python binding は **実装済み・公開済み・テスト済み** です。test suite は IR shape、diagnostic、byte span、五つの text format、EPUB/DOCX archive、ここにある error path を検証し、branch coverage 95% を要求します。
+Python binding は **実装済み・公開済み・テスト済み** です。test suite は IR shape、diagnostic、byte span、六つの text format、EPUB/DOCX archive、ここにある error path を検証し、branch coverage 95% を要求します。
 
 ## この binding がしないこと
 

@@ -13,7 +13,7 @@ mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 input 為 UTF-8。`--to` 必填；`-o` 覆寫 output path 且不可與 `txt-all` 併用；`--config` 是 [export profile](/zh-tw/ecosystem/export-profiles/) JSON。成功輸出 `Written <path>` 並以 status `0` 結束；argument/input/profile/renderer/output failure 會在 stderr 寫一行並以 status `1` 結束。
@@ -26,8 +26,8 @@ input 為 UTF-8。`--to` 必填；`-o` 覆寫 output path 且不可與 `txt-all`
 | `pdf` | `novel.pdf` | Rust HTML + local Chromium；使用 print profile。 |
 | `epub` | `novel.epub` | 無 config 為 Rust baseline；有 config 則用 metadata/type/chapter/cover。 |
 | `docx` | `novel.docx` | 無 config 為 Rust baseline；有 config 則用 metadata/page/type/numbering。 |
-| 五種 text | 對應 `.txt` | Rust text；profile 控制 indent。`aozora` 使用 Shift_JIS、CRLF；範圍外字元會報錯，不會寫成 `?`。 |
-| `txt-all` | 5 files | 輸出全部 text，拒絕 `-o`。 |
+| 六種 text | 對應 `.txt` | Rust text；`note` 是 UTF-8 編輯器輸入（見 [note 匯出](/zh-tw/ecosystem/note/)）；profile 控制 indent。`aozora` 使用 Shift_JIS、CRLF；範圍外字元會報錯，不會寫成 `?`。 |
+| `txt-all` | 6 files | 輸出全部 text，拒絕 `-o`。 |
 
 CLI 以 profile file 為基準讀取 `epub.coverPath`，只接受 PNG/JPEG；cover bytes 只放進 EPUB，不傳給 parser。`--config` 不再被 EPUB/DOCX 靜默忽略。
 

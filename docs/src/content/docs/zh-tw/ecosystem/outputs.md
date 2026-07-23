@@ -10,7 +10,7 @@ description: 每個輸出格式的含義、rendering package 與 layout responsi
 | Format | Package | 實際內容 |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi`（`renderHtml`） | standalone HTML document 加 embedded `.mdi-*` stylesheet |
-| TXT（5 flavors） | `@illusions-lab/mdi`（`renderTextFormat`）/ CLI | plain、保留 ruby 或特定日文出版平台的 plain-text convention；見[TXT export flavors](/zh-tw/syntax/reference/#txt-匯出風格) |
+| TXT（6 flavors） | `@illusions-lab/mdi`（`renderTextFormat`）/ CLI | plain、保留 ruby 或特定日文出版平台的 plain-text convention；包含 [note 匯出](/zh-tw/ecosystem/note/) |
 | EPUB | `@illusions-lab/mdi`（`renderEpub`） | 真正 EPUB 3 archive：reflowable XHTML chapters + `nav.xhtml` + CSS + OPF package，由 Rust zip |
 | DOCX | `@illusions-lab/mdi`（`renderDocx`） | 真正 OOXML（WordprocessingML）文件，由 Rust zip |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust-rendered HTML/print CSS，由本機 Chromium-family browser layout/rasterize |

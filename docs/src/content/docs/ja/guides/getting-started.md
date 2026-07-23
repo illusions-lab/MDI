@@ -48,7 +48,7 @@ Written /path/to/novel.html
 CLI 自身の使用方法メッセージそのままの、完全なコマンド形式です。
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 | フラグ | 意味 |
@@ -69,12 +69,13 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―― 
 mdi build novel.mdi --to narou                          # novel_narou.txt   ―― 小説家になろうの記法
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―― カクヨムの記法
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―― 青空文庫の記法、Shift_JIS でエンコード
-mdi build novel.mdi --to txt-all                        # 5 種類のテキストをすべて書き出す。-o は拒否される
+mdi build novel.mdi --to note                           # novel_note.txt    ―― note エディタ入力、UTF-8
+mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
 ```
 
 ### 各形式で実際に何が起きるか
 
-- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`、EPUB、DOCX** はすべて **Rust コアが直接**描画します（`@illusions-lab/mdi` の `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―― CLI はその間で何も再解析・再解釈しません。
+- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`、EPUB、DOCX** はすべて **Rust コアが直接**描画します（`@illusions-lab/mdi` の `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―― CLI はその間で何も再解析・再解釈しません。
 - **PDF** は同じ Rust 描画の HTML を、ローカルにインストールされた Chromium 系ブラウザに渡し、そのブラウザがページ分割と `printToPDF` の呼び出しを行います。Chromium は `.mdi` ソースを一切受け取らず、構文上の判断もしません。Chromium 系ブラウザが見つからない場合、コマンドは不足している依存関係を名指しするエラーで失敗します ―― 特定の実行ファイルを指す方法は [レンダリングモデル](/ja/core/rendering/) を参照してください。
 - **`aozora`** は書き出し時に **Shift_JIS** でエンコードされます。青空文庫自身の投稿ツールが期待する形式に合わせたものです。他のテキストバリアントはすべて UTF-8 で書き出されます。
 
@@ -95,7 +96,7 @@ mdi build novel.mdi --to svg
 ```
 
 ```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 認識できない `--to` の値（や、その他の不正な引数列）は、意味を推測しようとせず、上記の使用方法を表示して終了コード `1` を返します。

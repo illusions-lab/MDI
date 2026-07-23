@@ -13,7 +13,7 @@ mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 `<input.mdi>` is UTF-8. `--to` is required; `-o` overrides the derived output path and cannot be used with `txt-all`; `--config` points to an [export profile](/ecosystem/export-profiles/) JSON file. Success prints `Written <path>` and exits `0`. Any argument, input, profile, renderer, or output failure writes one message to stderr and exits `1`.
@@ -26,8 +26,8 @@ mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora
 | `pdf` | `novel.pdf` | Rust HTML plus local Chromium; consumes the print profile. |
 | `epub` | `novel.epub` | Baseline Rust EPUB without `--config`; configured profile export with metadata, typography, chapter split, and optional cover with `--config`. |
 | `docx` | `novel.docx` | Baseline Rust DOCX without `--config`; configured profile export with metadata, page setup, typography, and numbering with `--config`. |
-| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` | matching `.txt` suffix | Rust text convention; profile controls indentation. `aozora` is Shift_JIS + CRLF and rejects characters outside that official repertoire instead of writing `?`. |
-| `txt-all` | five text files | Writes every text flavor and rejects `-o`. |
+| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` / `note` | matching `.txt` suffix | Rust text convention; profile controls indentation. `note` is UTF-8 editor input; see [note export](/ecosystem/note/). `aozora` is Shift_JIS + CRLF and rejects characters outside that official repertoire instead of writing `?`. |
+| `txt-all` | six text files | Writes every text flavor and rejects `-o`. |
 
 The CLI reads `epub.coverPath` relative to the profile file. It must name a PNG or JPEG; the bytes are included in the EPUB only, never sent to the parser. `--config` is no longer silently ignored for EPUB or DOCX.
 

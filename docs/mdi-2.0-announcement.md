@@ -140,7 +140,7 @@ MDI 固有の記法は導入せず、GFM / Pandoc の脚注記法をそのまま
 
 ## TXT 書き出しフレーバー — 投稿サイト・青空文庫へそのまま
 
-2.0 仕様には、プレーンテキストへの書き出し規約 **5 フレーバー** が含まれます。
+2.0 仕様には、プレーンテキストへの書き出し規約 **6 フレーバー** が含まれます。
 
 | フレーバー | 用途 |
 |-----------|------|
@@ -149,6 +149,7 @@ MDI 固有の記法は導入せず、GFM / Pandoc の脚注記法をそのまま
 | `narou` | 小説家になろう投稿用（傍点は圏点ルビで表現） |
 | `kakuyomu` | カクヨム投稿用（傍点は `《《》》` 記法） |
 | `aozora` | 青空文庫注記形式 |
+| `note` | note エディタ入力用（ネイティブルビと公式ショートカットを保持） |
 
 たとえば次の MDI 原稿は——
 
@@ -177,7 +178,7 @@ MDI 固有の記法は導入せず、GFM / Pandoc の脚注記法をそのまま
 
 MDI 2.0 仕様と並行して、公式ツール群を開発しています。
 
-- **[MDI](https://github.com/illusions-lab/MDI)** — Node.js 向けパーサとコンバータ群。unified / remark エコシステムの上に構築され、`.mdi` から HTML・PDF・EPUB・DOCX・TXT（5 フレーバー）への変換を提供予定です。
+- **[MDI](https://github.com/illusions-lab/MDI)** — Node.js 向けパーサとコンバータ群。unified / remark エコシステムの上に構築され、`.mdi` から HTML・PDF・EPUB・DOCX・TXT（note を含む 6 フレーバー）への変換を提供します。
 - **[milkdown-mdi](https://github.com/illusions-lab/milkdown-mdi)** — Milkdown エディタ向けプラグイン。MDI 記法の WYSIWYG 編集と縦書き表示を提供予定です。
 - **[illusions](https://github.com/Iktahana/illusions)** — MDI をネイティブフォーマットとして採用する日本語小説執筆アプリ。
 

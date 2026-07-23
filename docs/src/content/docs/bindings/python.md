@@ -46,7 +46,7 @@ import mdi
 
 mdi.MDI_SPEC_VERSION      # "2.0"
 mdi.MDI_IR_VERSION        # "1.0"
-mdi.TextFormat            # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora"]
+mdi.TextFormat            # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 mdi.MdiRenderError        # Exception subclass — see "Diagnostics and error handling"
 
 mdi.parse(source: str) -> dict                                    # versioned IR + diagnostics
@@ -106,7 +106,7 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## Current implementation status
 
-Everything listed above is real, published, and tested — the package's own test suite (`python/tests/test_mdi.py`) asserts the exact IR shape, diagnostic format, byte-span validity, all five text-format outputs, EPUB/DOCX archive structure, and every error path shown on this page, with a minimum 95% branch-coverage requirement. This is not a thin or speculative binding.
+Everything listed above is real, published, and tested — the package's own test suite (`python/tests/test_mdi.py`) asserts the exact IR shape, diagnostic format, byte-span validity, all six text-format outputs, EPUB/DOCX archive structure, and every error path shown on this page, with a minimum 95% branch-coverage requirement. This is not a thin or speculative binding.
 
 ## What this binding doesn't do
 

@@ -47,6 +47,7 @@ public object Mdi {
 /** Text export conventions implemented by mdi-core. */
 public enum class MdiTextFormat(internal val wireName: String) {
     Plain("txt"), Ruby("txt-ruby"), Narou("narou"), Kakuyomu("kakuyomu"), Aozora("aozora"),
+    Note("note"),
 }
 
 @Serializable

@@ -163,6 +163,7 @@ gtag('config', '${gaMeasurementId}');`,
 					items: [
 						{ label: 'Remark / mdast adapter', translations: { ja: 'Remark / mdast アダプター', 'zh-TW': 'Remark / mdast adapter' }, slug: 'ecosystem/remark' },
 						{ label: 'Export profiles', translations: { ja: 'エクスポート・プロファイル', 'zh-TW': '匯出設定檔' }, slug: 'ecosystem/export-profiles' },
+						{ label: 'note export', translations: { ja: 'note 書き出し', 'zh-TW': 'note 匯出' }, slug: 'ecosystem/note' },
 						{ label: 'HTML / TXT / EPUB / DOCX / PDF outputs', translations: { ja: 'HTML / TXT / EPUB / DOCX / PDF 出力', 'zh-TW': 'HTML / TXT / EPUB / DOCX / PDF 輸出' }, slug: 'ecosystem/outputs' },
 						{ label: 'Migration and compatibility', translations: { ja: '移行と互換性', 'zh-TW': '遷移與相容性' }, slug: 'ecosystem/compatibility' },
 					],

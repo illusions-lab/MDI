@@ -29,7 +29,7 @@ This page lists only symbols present in [`mdi-core/src/lib.rs`](https://github.c
 
 - `render_html(source: &str) -> String` / `render_html_document(document: &Document) -> String` — standalone HTML document.
 - `render_text(source: &str) -> String` / `render_text_document(document: &Document) -> String` — deterministic plain text (the `txt` flavor, hardcoded).
-- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — any of the five TXT flavors. `TextFormat` is `Plain | Ruby | Narou | Kakuyomu | Aozora`, parsed from the binding-facing strings `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora` via `TextFormat::parse`.
+- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — any of the six TXT flavors. `TextFormat` is `Plain | Ruby | Narou | Kakuyomu | Aozora | Note`, parsed from `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note` via `TextFormat::parse`.
 - `render_epub(source: &str) -> Result<Vec<u8>, String>` / `render_epub_document(document: &Document) -> Result<Vec<u8>, String>` — a complete EPUB 3 archive.
 - `render_epub_with_profile(source: &str, profile_json: &str, cover: Option<&EpubCover>) -> Result<Vec<u8>, String>` / `render_epub_document_with_profile(...)` — configured EPUB metadata, typography, chapter splitting, and optional PNG/JPEG cover data.
 - `render_docx(source: &str) -> Result<Vec<u8>, String>` / `render_docx_document(document: &Document) -> Result<Vec<u8>, String>` — a complete DOCX archive.

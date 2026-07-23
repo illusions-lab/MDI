@@ -238,7 +238,7 @@ CSS 沒有原生的割注表現，`SYNTAX.md` 規定用 `display: inline-block` 
 
 ## TXT 匯出風格
 
-`render_text_format`（Rust）與 CLI 的 `--to <flavor>` 實作了五種風格：
+`render_text_format`（Rust）與 CLI 的 `--to <flavor>` 實作了六種風格：
 
 | 風格 | Ruby | 傍點 | 備註 |
 | --- | --- | --- | --- |
@@ -247,6 +247,7 @@ CSS 沒有原生的割注表現，`SYNTAX.md` 規定用 `display: inline-block` 
 | `narou` | 在官方 10 字／10 字上限內使用 `｜base《reading》` | 逐字圈點 ruby | 問題字元或超過上限時安全退回親字 |
 | `kakuyomu` | 在官方 20 字／50 字上限內使用 `｜base《reading》` | 原生 `《《text》》` | 純文字 `《` 會轉義成 `｜《`；ruby 與傍點重疊時保留 ruby |
 | `aozora` | `｜base《reading》` | `［＃傍点］text［＃傍点終わり］` | 青空文庫注記；CLI 使用 Shift_JIS、CRLF，遇到無法編碼的字元會報錯 |
+| `note` | `｜base《reading》` | 降級成可讀文字 | UTF-8 note 編輯器輸入；保留標題、粗體、刪除線、清單、引用、code/Mermaid、分隔線、ruby 與 TeX。見 [note 匯出](/zh-tw/ecosystem/note/) |
 
 這些輸出會根據平台官方的[なろう ruby 說明](https://syosetu.com/helpcenter/helppage/helppageid/42/)、[カクヨム記法](https://kakuyomu.jp/help/entry/notation)、[青空文庫輸入手冊](https://www.aozora.gr.jp/aozora-manual/index-input.html)與[注記一覽](https://www.aozora.gr.jp/annotation/)執行契約測試。某個風格沒有合法對應表示時，會退回親字，不會輸出平台無法解析的記法。青空文庫標題會依官方的大／中／小層級輸出；若文件有四種以上的標題層級，較低層級不加注記，並在檔案末尾附上官方要求的說明。完整對應表請見 [CLI 頁面](/zh-tw/bindings/cli/#text-formats) 與 `SYNTAX.md` 的 TXT Export Flavors 一節。
 

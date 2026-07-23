@@ -10,7 +10,7 @@ Every output below is a transformation of the **same** MDI document IR (see [Doc
 | Format | Package | What it actually is |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi` (`renderHtml`) | A standalone HTML document plus the embedded `.mdi-*` stylesheet |
-| TXT (5 flavors) | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | Plain, ruby-preserving, or a specific Japanese publishing platform's plain-text convention — see [TXT export flavors](/syntax/reference/#txt-export-flavors) |
+| TXT (6 flavors) | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | Plain, ruby-preserving, or a specific Japanese publishing platform's plain-text convention — including [note export](/ecosystem/note/) |
 | EPUB | `@illusions-lab/mdi` (`renderEpub`) | A real EPUB 3 archive: reflowable XHTML chapters + `nav.xhtml` + CSS + OPF package, zipped by Rust |
 | DOCX | `@illusions-lab/mdi` (`renderDocx`) | A real OOXML (WordprocessingML) document, zipped by Rust |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust-rendered HTML/print CSS, laid out and rasterized by a locally installed Chromium-family browser |

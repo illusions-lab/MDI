@@ -29,7 +29,7 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 
 - `render_html(source: &str) -> String` / `render_html_document(document: &Document) -> String` — standalone HTML。
 - `render_text(source: &str) -> String` / `render_text_document(document: &Document) -> String` — deterministic plain text（硬編碼 `txt` flavor）。
-- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — 五種 TXT flavor。`TextFormat` 為 `Plain | Ruby | Narou | Kakuyomu | Aozora`，透過 `TextFormat::parse` 解析 binding-facing 字串 `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`。
+- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — 六種 TXT flavor。`TextFormat` 為 `Plain | Ruby | Narou | Kakuyomu | Aozora | Note`，透過 `TextFormat::parse` 解析 `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`。
 - `render_epub(source: &str) -> Result<Vec<u8>, String>` / `render_epub_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 EPUB 3 archive。
 - `render_epub_with_profile(source: &str, profile_json: &str, cover: Option<&EpubCover>) -> Result<Vec<u8>, String>` / `render_epub_document_with_profile(...)` — 支援 metadata、typography、chapter split 與 optional PNG/JPEG cover 的設定型 EPUB。
 - `render_docx(source: &str) -> Result<Vec<u8>, String>` / `render_docx_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 DOCX archive。

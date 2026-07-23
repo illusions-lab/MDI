@@ -155,6 +155,7 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       narou: join(consumerDirectory, "book_narou.txt"),
       kakuyomu: join(consumerDirectory, "book_kakuyomu.txt"),
       aozora: join(consumerDirectory, "book_aozora.txt"),
+      note: join(consumerDirectory, "book_note.txt"),
     };
     for (const [format, output] of Object.entries(outputs)) {
       execFileSync(cli, ["build", source, "--to", format, "-o", output], {
@@ -168,16 +169,17 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       stdio: "inherit",
     });
     assert.deepEqual(
-      ["book.txt", "book_ruby.txt", "book_narou.txt", "book_kakuyomu.txt", "book_aozora.txt"].map(
+      ["book.txt", "book_ruby.txt", "book_narou.txt", "book_kakuyomu.txt", "book_aozora.txt", "book_note.txt"].map(
         (output) => existsSync(join(consumerDirectory, output))
       ),
-      [true, true, true, true, true]
+      [true, true, true, true, true, true]
     );
     assert.match(readFileSync(outputs.html, "utf8"), /<ruby(?:\s|>)/);
     assert.deepEqual(readFileSync(outputs.pdf).subarray(0, 4), Buffer.from("%PDF"));
     assert.deepEqual(readFileSync(outputs.epub).subarray(0, 2), Buffer.from("PK"));
     assert.deepEqual(readFileSync(outputs.docx).subarray(0, 2), Buffer.from("PK"));
     assert.match(readFileSync(outputs["txt-ruby"], "utf8"), /\{東京\|とうきょう\}/);
+    assert.match(readFileSync(outputs.note, "utf8"), /｜東京《とうきょう》/);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }

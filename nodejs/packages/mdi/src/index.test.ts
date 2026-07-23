@@ -131,6 +131,9 @@ describe("Rust MDI JavaScript binding", () => {
 	it("renders platform text formats through Rust", () => {
 		expect(renderTextFormat("{東京|とうきょう}", "txt-ruby")).toBe("{東京|とうきょう}");
 		expect(renderTextFormat("{東京|とうきょう}", "narou")).toBe("｜東京《とうきょう》");
+		expect(renderTextFormat("# 題\n\n{東京|とうきょう} **強調**", "note")).toBe(
+			"## 題\n\n｜東京《とうきょう》 **強調** ",
+		);
 	});
 
 	it("packages a baseline EPUB through Rust", () => {

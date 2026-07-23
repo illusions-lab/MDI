@@ -41,7 +41,7 @@ open("book.html", "w", encoding="utf-8").write(html)
 ```python
 mdi.MDI_SPEC_VERSION  # "2.0"
 mdi.MDI_IR_VERSION    # "1.0"
-mdi.TextFormat        # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora"]
+mdi.TextFormat        # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 mdi.MdiRenderError
 mdi.parse(source: str) -> dict
 mdi.render_html(source: str) -> str
@@ -84,7 +84,7 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## 目前實作狀態
 
-以上功能都已發布並受測，並非 speculative binding。套件自己的測試會驗證 IR shape、diagnostic 格式、byte span、五種文字格式、EPUB/DOCX archive 結構與上述錯誤路徑，並強制至少 95% branch coverage。
+以上功能都已發布並受測，並非 speculative binding。套件自己的測試會驗證 IR shape、diagnostic 格式、byte span、六種文字格式、EPUB/DOCX archive 結構與上述錯誤路徑，並強制至少 95% branch coverage。
 
 ## 此綁定不做什麼
 

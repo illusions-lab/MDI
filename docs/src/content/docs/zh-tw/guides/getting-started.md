@@ -48,7 +48,7 @@ Written /path/to/novel.html
 完整的指令形式，直接取自 CLI 自己的用法訊息：
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 | 旗標 | 意義 |
@@ -69,12 +69,13 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―— 
 mdi build novel.mdi --to narou                          # novel_narou.txt   ―— 小説家になろう 記法
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―— カクヨム 記法
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―— 青空文庫 記法，以 Shift_JIS 編碼
-mdi build novel.mdi --to txt-all                        # 一次寫出全部五種文字檔；不接受 -o
+mdi build novel.mdi --to note                           # novel_note.txt    ―— note 編輯器輸入，UTF-8
+mdi build novel.mdi --to txt-all                        # 一次寫出全部六種文字檔；不接受 -o
 ```
 
 ### 每種格式實際會發生什麼事
 
-- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`、EPUB、DOCX** 全都**直接由 Rust 核心**渲染（`@illusions-lab/mdi` 的 `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―— CLI 中間不會重新剖析或重新詮釋任何東西。
+- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`、EPUB、DOCX** 全都**直接由 Rust 核心**渲染（`@illusions-lab/mdi` 的 `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―— CLI 中間不會重新剖析或重新詮釋任何東西。
 - **PDF** 會把同一份 Rust 渲染出的 HTML 交給本機安裝的 Chromium 系瀏覽器，由它負責分頁並呼叫 `printToPDF`。Chromium 完全不會收到 `.mdi` 原始碼，也不做任何語法判斷。如果找不到 Chromium 系瀏覽器，指令會失敗並顯示指名缺少哪個相依項目的錯誤 —— 指定特定執行檔的方式請見[渲染模型](/zh-tw/core/rendering/)。
 - **`aozora`** 輸出時會以 **Shift_JIS** 編碼，符合青空文庫自己投稿工具的期待格式；其他每種文字變體都以 UTF-8 寫出。
 
@@ -95,7 +96,7 @@ mdi build novel.mdi --to svg
 ```
 
 ```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
 ```
 
 無法識別的 `--to` 值（或任何其他格式錯誤的引數列）都會印出上面的用法訊息，而不是嘗試猜測你的意圖。

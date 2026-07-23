@@ -160,6 +160,7 @@ mod tests {
     #[test]
     fn restricts_text_formats_to_the_core_contract() {
         assert_eq!(TextFormat::parse("txt-ruby"), Some(TextFormat::Ruby));
+        assert_eq!(TextFormat::parse("note"), Some(TextFormat::Note));
         assert_eq!(TextFormat::parse("not-an-mdi-format"), None);
     }
 }

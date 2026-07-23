@@ -26,9 +26,10 @@ export type OutputFormat =
   | "narou"
   | "kakuyomu"
   | "aozora"
+  | "note"
   | "txt-all";
-type TextOutputFormat = Extract<OutputFormat, "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora">;
-const TEXT_OUTPUT_FORMATS: readonly TextOutputFormat[] = ["txt", "txt-ruby", "narou", "kakuyomu", "aozora"];
+type TextOutputFormat = Extract<OutputFormat, "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora" | "note">;
+const TEXT_OUTPUT_FORMATS: readonly TextOutputFormat[] = ["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"];
 export interface BuildOptions {
   output?: string;
   profile?: ExportProfile;
@@ -242,6 +243,7 @@ function isFormat(value: string): value is OutputFormat {
     value === "narou" ||
     value === "kakuyomu" ||
     value === "aozora" ||
+    value === "note" ||
     value === "txt-all"
   );
 }

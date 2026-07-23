@@ -606,7 +606,7 @@ export function renderTextWithDiagnostics(source: string): MdiRenderResult<strin
 	return renderWithDiagnostics(source, () => renderText(source));
 }
 
-export type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora";
+export type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora" | "note";
 
 /** Render a named publication-text convention through Rust. */
 export function renderTextFormat(

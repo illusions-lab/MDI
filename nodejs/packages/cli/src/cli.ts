@@ -8,7 +8,7 @@ export async function run(argv = process.argv.slice(2)): Promise<number> {
   const args = parseArgs(argv.slice(1));
   if (!args || argv[0] !== "build") {
     console.error(
-      "Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]"
+      "Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]"
     );
     return 1;
   }

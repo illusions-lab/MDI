@@ -13,7 +13,7 @@ MDI_SPEC_VERSION: Final = _native.MDI_SPEC_VERSION
 MDI_IR_VERSION: Final = _native.MDI_IR_VERSION
 """Version of the document-IR wire schema returned by :func:`parse`."""
 
-TextFormat = Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora"]
+TextFormat = Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 """A Rust-supported plain-text export convention."""
 
 MdiRenderError = _native.MdiRenderError

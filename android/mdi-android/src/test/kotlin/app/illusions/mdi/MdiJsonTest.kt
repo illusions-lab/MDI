@@ -44,6 +44,7 @@ class MdiJsonTest {
     fun text_formats_keep_the_stable_core_names() {
         assertEquals("txt-ruby", MdiTextFormat.Ruby.wireName)
         assertTrue(MdiTextFormat.entries.any { it.wireName == "aozora" })
+        assertTrue(MdiTextFormat.entries.any { it.wireName == "note" })
         assertFalse(MdiTextFormat.entries.any { it.wireName == "pdf" })
     }
 
@@ -55,10 +56,11 @@ class MdiJsonTest {
         assertEquals("plain", Mdi.renderText("source"))
         assertEquals("narou:  ", Mdi.renderTextFormat("source", MdiTextFormat.Narou, "  "))
         assertEquals("txt:", Mdi.renderTextFormat("source", MdiTextFormat.Plain))
+        assertEquals("note:", Mdi.renderTextFormat("source", MdiTextFormat.Note))
         assertEquals(listOf<Byte>(1, 2), Mdi.renderEpub("source").toList())
         assertEquals(listOf<Byte>(3, 4), Mdi.renderDocx("source").toList())
         assertEquals(
-            listOf("parse:source", "html:source", "serialize:source", "text:source", "format:narou:  ", "format:txt:", "epub:source", "docx:source"),
+            listOf("parse:source", "html:source", "serialize:source", "text:source", "format:narou:  ", "format:txt:", "format:note:", "epub:source", "docx:source"),
             bridge.calls,
         )
     }

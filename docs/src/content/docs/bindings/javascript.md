@@ -109,6 +109,6 @@ Install `@illusions-lab/mdi-to-pdf` alongside `@illusions-lab/mdi` for the defau
 
 ## Other exports and errors
 
-`renderText`, `renderTextFormat`, and `serializeMdi` are synchronous Rust functions. `renderTextFormat` accepts `txt`, `txt-ruby`, `narou`, `kakuyomu`, or `aozora` plus an optional indentation prefix. `parseMdiSyntax` is a deprecated alias for `parse`; `MDI_SPEC_VERSION` is `"2.0"` and `MDI_IR_VERSION` is `"1.0"`.
+`renderText`, `renderTextFormat`, and `serializeMdi` are synchronous Rust functions. `renderTextFormat` accepts `txt`, `txt-ruby`, `narou`, `kakuyomu`, `aozora`, or `note` plus an optional indentation prefix. `parseMdiSyntax` is a deprecated alias for `parse`; `MDI_SPEC_VERSION` is `"2.0"` and `MDI_IR_VERSION` is `"1.0"`.
 
 Non-string source is a `TypeError`; invalid option objects are also rejected with `TypeError`. Treat diagnostics as document feedback, and reserve `try`/`catch` for programming, I/O, archive, or host-renderer failures. Source spans are UTF-8 **byte** offsets, not JavaScript string indices; see [Diagnostics](/core/diagnostics/).

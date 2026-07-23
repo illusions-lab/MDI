@@ -966,7 +966,10 @@ pub fn parse_json(source: &str) -> String {
 /// by the JavaScript and future Python bindings.
 #[allow(unsafe_code)]
 pub mod ffi {
-    use super::{parse_json, render_docx, render_epub, render_html, render_text, serialize_mdi};
+    use super::{
+        TextFormat, parse_json, render_docx, render_epub, render_html, render_text,
+        render_text_format, serialize_mdi,
+    };
     use std::slice;
 
     #[repr(C)]
@@ -1017,16 +1020,20 @@ pub mod ffi {
         }
     }
 
-    fn source<'a>(data: *const u8, len: usize) -> Result<&'a str, String> {
+    fn utf8_argument<'a>(data: *const u8, len: usize, name: &str) -> Result<&'a str, String> {
         if data.is_null() && len != 0 {
-            return Err("MDI source pointer is null".to_owned());
+            return Err(format!("{name} pointer is null"));
         }
         let bytes = if len == 0 {
             &[]
         } else {
             unsafe { slice::from_raw_parts(data, len) }
         };
-        std::str::from_utf8(bytes).map_err(|_| "MDI source must be valid UTF-8".to_owned())
+        std::str::from_utf8(bytes).map_err(|_| format!("{name} must be valid UTF-8"))
+    }
+
+    fn source<'a>(data: *const u8, len: usize) -> Result<&'a str, String> {
+        utf8_argument(data, len, "MDI source")
     }
 
     fn string_result(
@@ -1055,6 +1062,27 @@ pub mod ffi {
     #[unsafe(no_mangle)]
     pub extern "C" fn mdi_render_text(data: *const u8, len: usize) -> MdiFfiResult {
         string_result(data, len, render_text)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_text_format(
+        data: *const u8,
+        len: usize,
+        format_data: *const u8,
+        format_len: usize,
+        indent_data: *const u8,
+        indent_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|source| {
+            let format = utf8_argument(format_data, format_len, "MDI text format")?;
+            let indent_prefix = utf8_argument(indent_data, indent_len, "MDI text indent prefix")?;
+            let format = TextFormat::parse(format)
+                .ok_or_else(|| format!("Unsupported text format: {format}"))?;
+            Ok(render_text_format(source, format, indent_prefix))
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
+            Err(error) => failure(error),
+        }
     }
 
     fn binary_result(
@@ -1206,6 +1234,7 @@ pub enum TextFormat {
     Narou,
     Kakuyomu,
     Aozora,
+    Note,
 }
 
 impl TextFormat {
@@ -1217,6 +1246,7 @@ impl TextFormat {
             "narou" => Some(Self::Narou),
             "kakuyomu" => Some(Self::Kakuyomu),
             "aozora" => Some(Self::Aozora),
+            "note" => Some(Self::Note),
             _ => None,
         }
     }
@@ -1226,6 +1256,9 @@ impl TextFormat {
 /// is supplied by the host's already-resolved export profile.
 pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String {
     let document = parse_document(source);
+    if matches!(format, TextFormat::Note) {
+        return render_note_document(&document, indent_prefix);
+    }
     let mut heading_depths = document
         .children
         .iter()
@@ -1277,6 +1310,397 @@ pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str)
     } else {
         output
     }
+}
+
+fn render_note_document(document: &Document, indent_prefix: &str) -> String {
+    let definitions: Vec<&serde_json::Value> = document
+        .children
+        .iter()
+        .filter(|node| {
+            node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteDefinition")
+        })
+        .collect();
+    let mut blocks = document
+        .children
+        .iter()
+        .filter_map(|node| {
+            note_format_block(node, indent_prefix, &definitions, NoteInlineContext::Body)
+        })
+        .collect::<Vec<_>>();
+    if !definitions.is_empty() {
+        let mut footnotes = vec!["注".to_owned()];
+        for (index, definition) in definitions.iter().enumerate() {
+            let value = children(definition)
+                .iter()
+                .filter_map(|child| {
+                    note_format_block(child, "", &definitions, NoteInlineContext::Body)
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            footnotes.push(format!("{}. {value}", index + 1));
+        }
+        blocks.push("---".to_owned());
+        blocks.push(footnotes.join("\n"));
+    }
+    blocks.join("\n\n")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoteInlineContext {
+    Body,
+    Heading,
+    Quote,
+}
+
+fn note_format_block(
+    node: &serde_json::Value,
+    indent_prefix: &str,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> Option<String> {
+    let kind = node
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    match kind {
+        "footnoteDefinition" | "definition" => None,
+        "paragraph" => {
+            let indent = node
+                .get("indent")
+                .and_then(serde_json::Value::as_u64)
+                .map(|amount| "　".repeat(amount as usize))
+                .unwrap_or_default();
+            Some(format!(
+                "{indent_prefix}{indent}{}",
+                note_inline_children(node, definitions, context)
+            ))
+        }
+        "heading" => {
+            let marker = if node
+                .get("depth")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(1)
+                == 1
+            {
+                "##"
+            } else {
+                "###"
+            };
+            Some(format!(
+                "{marker} {}",
+                note_inline_children(node, definitions, NoteInlineContext::Heading)
+            ))
+        }
+        "list" => Some(note_format_list(node, 0, definitions, context)),
+        "blockquote" => {
+            let value = children(node)
+                .iter()
+                .filter_map(|child| {
+                    note_format_block(child, "", definitions, NoteInlineContext::Quote)
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            Some(
+                value
+                    .lines()
+                    .map(|line| format!("> {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        }
+        "code" => Some(note_code_block(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            node.get("lang").and_then(serde_json::Value::as_str),
+        )),
+        "math" => Some(format!(
+            "$$\n{}\n$$",
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+        )),
+        "table" => Some(
+            children(node)
+                .iter()
+                .map(|row| {
+                    children(row)
+                        .iter()
+                        .map(|cell| note_inline_children(cell, definitions, context))
+                        .collect::<Vec<_>>()
+                        .join("\t")
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        "thematicBreak" => Some("---".to_owned()),
+        // note has no pagination paste syntax.  A visual divider preserves the
+        // source boundary but does not claim to retain pagination semantics.
+        "pagebreak" => Some("---".to_owned()),
+        "blank" => Some(String::new()),
+        "html" => Some(note_code_block(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            Some("html"),
+        )),
+        _ if !children(node).is_empty() => Some(note_inline_children(node, definitions, context)),
+        _ => None,
+    }
+}
+
+fn note_format_list(
+    node: &serde_json::Value,
+    depth: usize,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    // note's editor supports five list levels, but its documented hierarchy
+    // controls are Tab/Shift+Tab (or their shortcuts), not space indentation.
+    // Indentation here is therefore a readable visual fallback, clamped at
+    // five levels rather than a claim that paste will create nested list nodes.
+    let indentation = "  ".repeat(depth.min(4));
+    let continuation = "  ".repeat((depth + 1).min(5));
+    let ordered = node
+        .get("ordered")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let start = node
+        .get("start")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(1);
+    let mut lines = Vec::new();
+    for (index, item) in children(node).iter().enumerate() {
+        let marker = if ordered {
+            format!("{}.", start + index as u64)
+        } else {
+            "-".to_owned()
+        };
+        let checked = match item.get("checked").and_then(serde_json::Value::as_bool) {
+            Some(true) => "[x] ",
+            Some(false) => "[ ] ",
+            None => "",
+        };
+        let mut item_started = false;
+        for child in children(item) {
+            if child.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                && !item_started
+            {
+                lines.push(format!(
+                    "{indentation}{marker} {checked}{}",
+                    note_inline_children(child, definitions, context)
+                ));
+                item_started = true;
+                continue;
+            }
+            if child.get("type").and_then(serde_json::Value::as_str) == Some("list") {
+                if !item_started {
+                    lines.push(format!("{indentation}{marker} {checked}"));
+                    item_started = true;
+                }
+                lines.push(note_format_list(child, depth + 1, definitions, context));
+                continue;
+            }
+            if let Some(value) = note_format_block(child, "", definitions, context) {
+                if !item_started {
+                    lines.push(format!("{indentation}{marker} {checked}"));
+                    item_started = true;
+                }
+                lines.extend(value.lines().map(|line| format!("{continuation}{line}")));
+            }
+        }
+        if !item_started {
+            lines.push(format!("{indentation}{marker} {checked}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn note_inline_children(
+    node: &serde_json::Value,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    children(node)
+        .iter()
+        .map(|child| note_inline(child, definitions, context))
+        .collect()
+}
+
+fn note_inline(
+    node: &serde_json::Value,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    let kind = node
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    match kind {
+        "text" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        // note documents fenced code blocks, not inline-code Markdown.  Keep
+        // the code readable without emitting a marker the editor may not own.
+        "inlineCode" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "inlineMath" => {
+            let value = node
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if matches!(context, NoteInlineContext::Body) {
+                format!("$${{{value}}}$$")
+            } else {
+                note_text_literal(value)
+            }
+        }
+        "tcy" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "break" => "\n".to_owned(),
+        "ruby" => {
+            let base = node
+                .get("base")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let reading = node
+                .pointer("/ruby/value")
+                .map(|value| match value {
+                    serde_json::Value::Array(parts) => parts
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .collect::<String>(),
+                    serde_json::Value::String(value) => value.to_owned(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+            text_format_platform_ruby(base, &reading, TextFormat::Note)
+        }
+        "strong" => {
+            let value = note_inline_children(node, definitions, context);
+            if matches!(context, NoteInlineContext::Heading) {
+                value
+            } else {
+                // note activates this input shortcut after a following
+                // half-width space is entered.
+                format!("**{value}** ")
+            }
+        }
+        "delete" => {
+            let value = note_inline_children(node, definitions, context);
+            if matches!(context, NoteInlineContext::Heading) {
+                value
+            } else {
+                // note activates this input shortcut after a following
+                // half-width space is entered.
+                format!("~~{value}~~ ")
+            }
+        }
+        "link" => {
+            let label = note_inline_children(node, definitions, context);
+            let url = node
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let title_value = node
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .filter(|title| !title.is_empty() && !title.contains(['\r', '\n']));
+            if title_value.is_none() && label == note_text_literal(url) {
+                return note_text_literal(url);
+            }
+            let title = title_value
+                .map(|title| format!(" — {title}"))
+                .unwrap_or_default();
+            if url.is_empty() {
+                format!("{label}{title}")
+            } else {
+                format!("{label} ({}){title}", note_text_literal(url))
+            }
+        }
+        "image" => {
+            let alt = note_text_literal(
+                node.get("alt")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            let url = node
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if url.is_empty() {
+                format!("画像: {alt}")
+            } else {
+                format!("画像: {alt} ({})", note_text_literal(url))
+            }
+        }
+        "html" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "footnoteReference" => {
+            let identifier = node
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let index = definitions
+                .iter()
+                .position(|definition| {
+                    definition
+                        .get("identifier")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(identifier)
+                })
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            format!("［注{index}］")
+        }
+        // note has no paste syntax for these MDI presentation annotations or
+        // Markdown emphasis, so retain their readable content.
+        "emphasis" | "em" | "warichu" | "kern" | "noBreak" => {
+            note_inline_children(node, definitions, context)
+        }
+        _ => note_inline_children(node, definitions, context),
+    }
+}
+
+fn note_code_block(value: &str, language: Option<&str>) -> String {
+    let longest_run = longest_backtick_run(value);
+    let fence = "`".repeat(longest_run.saturating_add(1).max(3));
+    let language = language
+        .filter(|language| !language.is_empty() && !language.contains(['`', '\r', '\n', ' ', '\t']))
+        // note documents Mermaid only with an exact triple-backtick fence.
+        // If the body forces a longer fence, keep the code readable without
+        // falsely labelling it as a Mermaid contract.
+        .filter(|language| *language != "mermaid" || longest_run < 3)
+        .unwrap_or_default();
+    let trailing_newline = if value.ends_with('\n') { "" } else { "\n" };
+    format!("{fence}{language}\n{value}{trailing_newline}{fence}")
+}
+
+fn longest_backtick_run(value: &str) -> usize {
+    value
+        .split(|character| character != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or(0)
+}
+
+fn note_text_literal(value: &str) -> String {
+    // note does not document a backslash escape for editor shortcuts or ruby.
+    // Inventing one would visibly corrupt ordinary punctuation.  Preserve
+    // literal text and document that delimiter collisions cannot be represented
+    // losslessly by this plain-text profile.
+    value.to_owned()
 }
 
 fn text_format_block(
@@ -1607,10 +2031,18 @@ fn text_format_platform_ruby(base: &str, reading: &str, format: TextFormat) -> S
                 && !base.chars().any(aozora_reserved_character)
                 && !reading.chars().any(aozora_reserved_character)
         }
+        TextFormat::Note => {
+            !base.is_empty()
+                && !reading.is_empty()
+                && !base.contains(['\r', '\n', '《', '》', '|', '｜'])
+                && !reading.contains(['\r', '\n', '《', '》'])
+        }
         TextFormat::Plain | TextFormat::Ruby => false,
     };
     if valid {
         format!("｜{base}《{reading}》")
+    } else if matches!(format, TextFormat::Note) {
+        note_text_literal(base)
     } else {
         text_format_literal(base, format)
     }
@@ -1706,7 +2138,7 @@ fn text_format_literal(value: &str, format: TextFormat) -> String {
                 _ => character.to_string(),
             })
             .collect(),
-        TextFormat::Plain | TextFormat::Ruby => value.to_owned(),
+        TextFormat::Plain | TextFormat::Ruby | TextFormat::Note => value.to_owned(),
     }
 }
 
@@ -2226,10 +2658,15 @@ fn write_epub_document_with_profile<W: Write + Seek>(
         .iter()
         .enumerate()
         .map(|(index, chapter)| {
+            let chapter_title = if chapter.title.trim().is_empty() {
+                format!("Chapter {}", index + 1)
+            } else {
+                chapter.title.clone()
+            };
             format!(
                 "<li><a href=\"chapter-{}.xhtml\">{}</a></li>",
                 index + 1,
-                escape_html(&chapter.title)
+                escape_html(&chapter_title)
             )
         })
         .collect::<String>();
@@ -2273,7 +2710,7 @@ fn write_epub_document_with_profile<W: Write + Seek>(
         epub_file(
             zip,
             &format!("OEBPS/chapter-{}.xhtml", index + 1),
-            &epub_xhtml(
+            &epub_chapter_xhtml(
                 if chapter.title.is_empty() {
                     title
                 } else {
@@ -2292,7 +2729,20 @@ fn write_epub_document_with_profile<W: Write + Seek>(
         ),
         _ => String::new(),
     };
-    let manifest = format!("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{cover_manifest}{}", chapters.iter().enumerate().map(|(index, _)| format!("<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>", index + 1, index + 1)).collect::<String>());
+    let chapter_manifest = chapters
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            format!(
+                "<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>",
+                index + 1,
+                index + 1
+            )
+        })
+        .collect::<String>();
+    let manifest = format!(
+        "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{cover_manifest}{chapter_manifest}"
+    );
     let chapter_spine = chapters
         .iter()
         .enumerate()
@@ -2579,8 +3029,42 @@ fn epub_xhtml(title: &str, language: &str, body: &str) -> String {
         escape_html(language),
         escape_html(language),
         escape_html(title),
-        body.replace("<br>", "<br/>").replace("<hr>", "<hr/>")
+        body
     )
+}
+
+fn epub_chapter_xhtml(title: &str, language: &str, body: &str) -> String {
+    epub_xhtml(title, language, &epub_chapter_body(body))
+}
+
+fn epub_chapter_body(body: &str) -> String {
+    let mut output = body.replace("<br>", "<br/>").replace("<hr>", "<hr/>");
+    let mut search_from = 0;
+    while let Some(relative_start) = output[search_from..].find("<img src=\"") {
+        let start = search_from + relative_start;
+        let Some(relative_end) = output[start..].find('>') else {
+            break;
+        };
+        let end = start + relative_end;
+        let image = &output[start..=end];
+        let Some(attributes) = image.strip_prefix("<img src=\"") else {
+            search_from = end + 1;
+            continue;
+        };
+        let Some((source, alt)) = attributes.split_once("\" alt=\"") else {
+            search_from = end + 1;
+            continue;
+        };
+        let Some(alt) = alt.strip_suffix("\">") else {
+            search_from = end + 1;
+            continue;
+        };
+        let replacement =
+            format!("<span class=\"mdi-image-fallback\">Image: {alt} ({source})</span>");
+        output.replace_range(start..=end, &replacement);
+        search_from = start + replacement.len();
+    }
+    output
 }
 
 #[cfg(not(feature = "wasm"))]
@@ -4135,6 +4619,67 @@ mod tests {
     }
 
     #[test]
+    fn note_renderer_defensively_degrades_partial_and_future_ir() {
+        let document = Document {
+            span: SourceSpan::default(),
+            frontmatter: None,
+            children: vec![
+                serde_json::json!({"type":"math", "value":"x < y"}),
+                serde_json::json!({
+                    "type":"paragraph",
+                    "children":[
+                        {"type":"inlineMath", "value":"x < y"},
+                        {"type":"text", "value":" "},
+                        {"type":"html", "value":"<i>raw</i>"},
+                        {"type":"text", "value":" "},
+                        {"type":"link", "url":"https://example.test/a>b", "children":[{"type":"text", "value":"link"}]},
+                        {"type":"text", "value":" "},
+                        {"type":"image", "url":"", "alt":"alt"},
+                        {"type":"footnoteReference", "identifier":"missing"}
+                    ]
+                }),
+                serde_json::json!({
+                    "type":"heading",
+                    "depth":1,
+                    "children":[
+                        {"type":"strong", "children":[{"type":"text", "value":"heading"}]},
+                        {"type":"text", "value":" "},
+                        {"type":"inlineMath", "value":"x < y"}
+                    ]
+                }),
+                serde_json::json!({
+                    "type":"blockquote",
+                    "children":[{
+                        "type":"paragraph",
+                        "children":[{"type":"inlineMath", "value":"quoted"}]
+                    }]
+                }),
+                serde_json::json!({
+                    "type":"list",
+                    "ordered":false,
+                    "children":[{"type":"listItem", "checked":true, "children":[]}]
+                }),
+                serde_json::json!({
+                    "type":"unknown",
+                    "children":[{"type":"text", "value":"readable"}]
+                }),
+                serde_json::json!({"type":"unknown"}),
+                serde_json::json!({"type":"blank"}),
+            ],
+        };
+        let rendered = render_note_document(&document, "");
+        assert!(rendered.contains("$$\nx < y\n$$"));
+        assert!(rendered.contains("$${x < y}$$"));
+        assert!(rendered.contains("<i>raw</i>"));
+        assert!(rendered.contains("link (https://example.test/a>b)"));
+        assert!(rendered.contains("画像: alt［注0］"));
+        assert!(rendered.contains("## heading x < y"));
+        assert!(rendered.contains("> quoted"));
+        assert!(rendered.contains("- [x] "));
+        assert!(rendered.contains("readable"));
+    }
+
+    #[test]
     fn renders_and_serializes_every_public_inline_and_block_variant() {
         let source = "---\ntitle: Variants\n---\n\n[[bottom]]\n本文\n\n## 中見出し\n\n### 小見出し\n\n> 引用\n\n1. 一\n2. 二\n\n- 箇条\n  - 巢狀\n\n```rust\nlet x = 1;\n```\n\n---\n\n| 見出し | 値 |\n| --- | --- |\n| [リンク](https://example.test \"題\") | ![画像](image.png) |\n\n~~削除~~ `code` [[br]][[warichu:割書]][[kern:1em:字]][[em:●:傍点]]\n";
 
@@ -4194,6 +4739,7 @@ mod tests {
             ("narou", TextFormat::Narou),
             ("kakuyomu", TextFormat::Kakuyomu),
             ("aozora", TextFormat::Aozora),
+            ("note", TextFormat::Note),
         ] {
             assert_eq!(TextFormat::parse(name), Some(format));
             assert!(!render_text_format(source, format, "　").is_empty());
@@ -4220,6 +4766,44 @@ mod tests {
         assert!(opf.contains("<meta property=\"dcterms:modified\">"));
         assert!(opf.contains("page-progression-direction=\"rtl\""));
         assert!(opf.contains("chapter-2.xhtml"));
+    }
+
+    #[test]
+    fn packages_epub_xhtml_with_nonempty_navigation_and_readable_image_fallbacks() {
+        let bytes = render_epub(
+            "---\ntitle: Test\n---\n\nopening\n\n[[pagebreak]]\n\n![remote](https://example.com/image.png)",
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+
+        let mut navigation = String::new();
+        zip.by_name("OEBPS/nav.xhtml")
+            .unwrap()
+            .read_to_string(&mut navigation)
+            .unwrap();
+        assert!(navigation.contains(">Chapter 1</a>"));
+        assert!(navigation.contains(">Chapter 2</a>"));
+        assert!(!navigation.contains("></a>"));
+
+        let mut opf = String::new();
+        zip.by_name("OEBPS/package.opf")
+            .unwrap()
+            .read_to_string(&mut opf)
+            .unwrap();
+        assert!(opf.contains(
+            "id=\"chapter-2\" href=\"chapter-2.xhtml\" media-type=\"application/xhtml+xml\"/"
+        ));
+        assert!(!opf.contains("remote-resources"));
+
+        let mut chapter = String::new();
+        zip.by_name("OEBPS/chapter-2.xhtml")
+            .unwrap()
+            .read_to_string(&mut chapter)
+            .unwrap();
+        assert!(chapter.contains(
+            "<span class=\"mdi-image-fallback\">Image: remote (https://example.com/image.png)</span>"
+        ));
+        assert!(!chapter.contains("<img"));
     }
 
     #[test]
@@ -4919,6 +5503,23 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
             .unwrap(),
             "東京 12\n"
         );
+        let format = b"note";
+        let indent = "　".as_bytes();
+        assert_eq!(
+            String::from_utf8(
+                ffi_bytes(ffi::mdi_render_text_format(
+                    source.as_ptr(),
+                    source.len(),
+                    format.as_ptr(),
+                    format.len(),
+                    indent.as_ptr(),
+                    indent.len(),
+                ))
+                .unwrap()
+            )
+            .unwrap(),
+            "　｜東京《とうきょう》 12"
+        );
         assert!(
             ffi_bytes(ffi::mdi_render_epub(source.as_ptr(), source.len()))
                 .unwrap()
@@ -4952,6 +5553,44 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
         assert_eq!(
             ffi_bytes(ffi::mdi_render_epub(std::ptr::null(), 1)).unwrap_err(),
             "MDI source pointer is null"
+        );
+
+        let invalid_format = b"invalid";
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                invalid_format.as_ptr(),
+                invalid_format.len(),
+                std::ptr::null(),
+                0,
+            ))
+            .unwrap_err(),
+            "Unsupported text format: invalid"
+        );
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                std::ptr::null(),
+                1,
+                std::ptr::null(),
+                0,
+            ))
+            .unwrap_err(),
+            "MDI text format pointer is null"
+        );
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                format.as_ptr(),
+                format.len(),
+                invalid_utf8.as_ptr(),
+                invalid_utf8.len(),
+            ))
+            .unwrap_err(),
+            "MDI text indent prefix must be valid UTF-8"
         );
     }
 }

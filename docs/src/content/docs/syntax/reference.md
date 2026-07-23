@@ -647,7 +647,7 @@ Implementations process MDI syntax in this order (normative in `SYNTAX.md`):
 
 ## TXT export flavors
 
-HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no styling layer, so every MDI construct is flattened to a specific textual convention — and more than one such convention exists in real-world use. `render_text_format` (Rust) and the CLI's `--to <flavor>` implement five:
+HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no styling layer, so every MDI construct is flattened to a specific textual convention — and more than one such convention exists in real-world use. `render_text_format` (Rust) and the CLI's `--to <flavor>` implement six:
 
 | Flavor | Ruby | Boten | Notes |
 | --- | --- | --- | --- |
@@ -656,8 +656,9 @@ HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no stylin
 | `narou` | `｜base《reading》` within the official 10/10 limits | per-character dot ruby | 小説家になろう submission format; documented problem characters and overflow flatten to base text. |
 | `kakuyomu` | `｜base《reading》` within the official 20/50 limits | native `《《text》》` notation | カクヨム submission format; literal `《` is escaped as `｜《`, and nested ruby wins over boten. |
 | `aozora` | `｜base《reading》` | `［＃傍点］text［＃傍点終わり］` | 青空文庫 annotation convention; the CLI writes Shift_JIS + CRLF and rejects unencodable characters. |
+| `note` | `｜base《reading》` | flattened to readable text | UTF-8 note-editor input; preserves note's heading, strong, strike, list, quote, code/Mermaid, divider, ruby, and TeX spellings. See [note export](/ecosystem/note/). |
 
-These outputs are contract-tested against the platform-owned [Narou ruby help](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Kakuyomu notation help](https://kakuyomu.jp/help/entry/notation), and the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/). Any construct with no legal equivalent is flattened to base text instead of emitting invalid platform markup. Aozora headings follow the documented 大／中／小 hierarchy; if a document has more than three distinct heading levels, lower levels remain unannotated and the required explanation is appended at file end. See the [CLI page](/bindings/cli/#text-formats) and `SYNTAX.md`'s [TXT Export Flavors](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md#txt-export-flavors--txt-書き出しフレーバー) section for the complete mapping table, including `[[warichu:...]]`, `[[indent:N]]`, and all three Aozora page-break variants.
+These outputs are contract-tested against the platform-owned [Narou ruby help](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Kakuyomu notation help](https://kakuyomu.jp/help/entry/notation), the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/), and note's [editor](https://www.help-note.com/hc/ja/articles/360012426133-%E3%82%A8%E3%83%87%E3%82%A3%E3%82%BF-%E8%A8%98%E4%BA%8B%E7%B7%A8%E9%9B%86%E7%94%BB%E9%9D%A2-%E3%81%A7%E3%81%A7%E3%81%8D%E3%82%8B%E3%81%93%E3%81%A8), [Markdown shortcut](https://www.help-note.com/hc/ja/articles/4410617032217-Markdown%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88), and [ruby](https://www.help-note.com/hc/ja/articles/4406430353817-%E3%83%AB%E3%83%93-%E3%81%B5%E3%82%8A%E3%81%8C%E3%81%AA-%E3%82%92%E3%81%B5%E3%82%8B) documentation. Any construct with no legal equivalent is flattened to readable text instead of emitting invalid platform markup.
 
 ## Next steps
 

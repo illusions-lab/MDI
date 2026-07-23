@@ -8,7 +8,7 @@ description: 各出力の意味、renderer、layout の担当範囲。
 | Format | package | 実体 |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi` (`renderHtml`) | embedded `.mdi-*` CSS を含む standalone HTML |
-| TXT（5種） | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | plain、ruby-preserving、投稿サイト規約 text。 [TXT 書き出し](/ja/syntax/reference/) を参照 |
+| TXT（6種） | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | plain、ruby-preserving、投稿サイト規約 text。[note 書き出し](/ja/ecosystem/note/) を含む |
 | EPUB | `@illusions-lab/mdi` (`renderEpub`) | reflowable XHTML、`nav.xhtml`、CSS、OPF を Rust が zip する EPUB 3 archive |
 | DOCX | `@illusions-lab/mdi` (`renderDocx`) | Rust が zip する OOXML（WordprocessingML）document |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust HTML/print CSS を local Chromium が layout |
