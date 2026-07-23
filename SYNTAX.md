@@ -803,26 +803,30 @@ HTML・PDF・EPUB は同じ CSS 駆動の描画モデルを共有しますが、
 | `kakuyomu` | カクヨム submission format. Ruby via `｜《》`; boten via the site's native `《《》》` notation. / カクヨムの投稿フォーマット。ルビは `｜《》`、傍点はサイト固有の `《《》》` 記法。 |
 | `aozora` | Aozora Bunko (青空文庫) annotation ("注記") convention. / 青空文庫注記形式。 |
 
-`narou` and `kakuyomu` differ **only** in the boten row below — every other construct maps identically. They are separate flavors because each site renders only its own convention: なろう displays `《《それ》》` as literal brackets, and カクヨム has no need for the ruby workaround.  
-`narou` と `kakuyomu` の違いは下表の**傍点の行のみ**で、他の構成要素はすべて同一です。各サイトは自サイトの慣例しか描画しないため（なろうでは `《《それ》》` が括弧のまま表示される）、別フレーバーとして分けています。
+The three platform flavors are contract-bound to the platform-owned documentation: [Narou ruby](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Narou boten](https://syosetu.com/helpcenter/helppage/helppageid/43/), [Kakuyomu notation](https://kakuyomu.jp/help/entry/notation), and the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/). Consequently the two posting-site outputs also differ in limits and literal escaping, not only boten. Ruby outside a site's documented limits is flattened to readable base text rather than emitting an invalid tag.
+三つのプラットフォーム向けフレーバーは、各公式文書（[なろうのルビ](https://syosetu.com/helpcenter/helppage/helppageid/42/)、[なろうの傍点](https://syosetu.com/helpcenter/helppage/helppageid/43/)、[カクヨム記法](https://kakuyomu.jp/help/entry/notation)、[青空文庫作業マニュアル](https://www.aozora.gr.jp/aozora-manual/index-input.html) と [注記一覧](https://www.aozora.gr.jp/annotation/)）を契約とします。そのため、投稿サイト向けの二形式は傍点だけでなく、字数上限とリテラルのエスケープも異なります。公式上限を超えるルビは、不正なタグを出力せず、読みやすい親文字へフラット化します。
 
 ### Mapping table / 対応表
 
 | MDI | `plain` | `ruby-paren` | `narou` | `kakuyomu` | `aozora` |
 |-----|---------|--------------|---------|------------|----------|
-| `{東京\|とうきょう}` (group ruby) | `東京` | `東京（とうきょう）` | `｜東京《とうきょう》` | same as narou | `東京《とうきょう》` (pure-kanji base; `｜` only needed to disambiguate a mixed-script base) |
-| `{東京\|とう.きょう}` (split ruby) | `東京` | `東京（とうきょう）` (dots removed) | `｜東《とう》｜京《きょう》` | same as narou | `東《とう》京《きょう》` (each character annotated individually — no platform has a "one ruby over N characters, split by dot" primitive) |
+| `{東京\|とうきょう}` (group ruby) | `東京` | `東京（とうきょう）` | `｜東京《とうきょう》` (base/reading 1–10 characters; `&"<>` rejected) | `｜東京《とうきょう》` (base ≤20, reading ≤50) | `｜東京《とうきょう》` |
+| `{東京\|とう.きょう}` (split ruby) | `東京` | `東京（とうきょう）` (dots removed) | `｜東京《とうきょう》` | same notation, with Kakuyomu limits | `｜東京《とうきょう》` |
 | `^12^` (tate-chu-yoko) | `12` | `12` | `12` (no convention; flattened) | same as narou | `12［＃「12」は縦中横］` |
-| `[[em:それ]]` (boten, default mark) | `それ` | `それ` | `｜そ《・》｜れ《・》` (per-character dot ruby — the only boten device なろう renders; the `<mark>` character is not representable and is dropped) | `《《それ》》` (native Kakuyomu notation — the §4 Supported alternate, used verbatim; `<mark>` not representable) | `それ［＃「それ」に傍点］` (marks recognized from aozora's own vocabulary, e.g. `●`→`丸傍点`, `﹆`→`白ゴマ点`, map to that name; an unrecognized `<mark>` falls back to the generic `に傍点`) |
+| `[[em:それ]]` (boten, default mark) | `それ` | `それ` | `｜そ《・》｜れ《・》` (per-character valid ruby; `<mark>` dropped) | `《《それ》》` (native Kakuyomu notation; `<mark>` dropped) | `［＃傍点］それ［＃傍点終わり］` (recognized marks map to official names, e.g. `●`→`丸傍点`, `﹆`→`白ゴマ傍点`) |
 | `[[no-break:...]]` | text kept, macro dropped | same | same | same | same (no aozora equivalent) |
 | `[[br]]` | `\n` | `\n` | `\n` | `\n` | `\n` |
 | `\` (blank paragraph) | blank line | blank line | blank line | blank line | blank line |
 | `[[warichu:text]]` | text kept, macro dropped | same | same (no convention) | same | `［＃割り注］text［＃割り注終わり］` (aozora's native two-line-note construct) |
 | `[[kern:<amount>:text]]` | text kept, macro dropped | same | same | same | same (no aozora equivalent — kerning is a rendering-only concern) |
-| `[[indent:N]]` | implementation-defined | same | same (no convention) | same | `［＃ここからN字下げ］` … `［＃ここで字下げ終わり］` |
-| `[[bottom]]` / `[[bottom:N]]` | implementation-defined | same | same (no convention) | same | `［＃地付き］` / `［＃地からN字上げ］` |
-| `[[pagebreak]]` | blank line or dropped (implementation-defined) | same | same (no convention) | same | `［＃改ページ］` |
+| `[[indent:N]]` | implementation-defined | same | N ideographic spaces | same | `［＃Ｎ字下げ］` (fullwidth digits, official one-line form) |
+| `[[bottom]]` / `[[bottom:N]]` | implementation-defined | same | same (no convention) | same | `［＃地付き］` / `［＃地からＮ字上げ］` |
+| `[[pagebreak]]` / `:left` / `:right` | blank line or dropped (implementation-defined) | same | same (no convention) | same | `［＃改ページ］` / `［＃改丁］` / `［＃改見開き］` |
+| Markdown headings | text kept | same | same | same | official 大／中／小 hierarchy; a fourth distinct level is left unannotated and adds the required note at file end |
 | `[^id]` (footnote) | implementation-defined (e.g. inline number + note appended at document end) | same | same | same | same |
+
+Literal platform delimiters are protected according to the same contracts: Kakuyomu `《` becomes `｜《`; Narou parenthesized prose gets the documented leading vertical bar so it is not mistaken for shorthand ruby; and Aozora's nine reserved characters are emitted with the official external-character annotations. The CLI writes Aozora files as Shift_JIS with CRLF and rejects characters outside that repertoire instead of silently replacing them with `?`.
+プラットフォームの区切り記号を本文として書く場合も、同じ公式契約に従います。カクヨムの `《` は `｜《`、なろうの括弧書きは簡易ルビと誤認されないよう公式どおり直前に縦線を置き、青空文庫の予約済み9文字は公式の外字注記へ変換します。CLI の青空文庫ファイルは Shift_JIS・CRLF で、範囲外文字を `?` に黙って置換せずエラーにします。
 
 Implementations MAY offer additional flavors beyond these five; they are the minimum interoperability baseline so that `.mdi → txt` conversions stay predictable across tools.  
 実装はこれ以外のフレーバーを追加してもよい（MAY）。上記 5 種類は、`.mdi → txt` の変換がツール間で予測可能であるための最小限の相互運用ベースラインです。

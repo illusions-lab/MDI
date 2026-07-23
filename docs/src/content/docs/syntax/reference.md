@@ -652,12 +652,12 @@ HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no stylin
 | Flavor | Ruby | Boten | Notes |
 | --- | --- | --- | --- |
 | `txt` (plain) | discarded — base text only | discarded | Simplest export. |
-| `txt-ruby` | `base{reading}`-style round-trip spelling | kept as plain text (mark discarded) | Preserves enough to reconstruct ruby later. |
-| `narou` | `｜base《reading》` | per-character dot ruby (site has no boten notation) | 小説家になろう submission format. |
-| `kakuyomu` | `｜base《reading》` | native `《《text》》` notation | カクヨム submission format — differs from `narou` *only* in the boten row. |
-| `aozora` | `base《reading》` | `text［＃「text」に傍点］` | 青空文庫 (Aozora Bunko) annotation convention; output is re-encoded to Shift_JIS by the CLI. |
+| `txt-ruby` | `{base\|reading}` round-trip spelling | kept as plain text (mark discarded) | Preserves enough to reconstruct ruby later. |
+| `narou` | `｜base《reading》` within the official 10/10 limits | per-character dot ruby | 小説家になろう submission format; documented problem characters and overflow flatten to base text. |
+| `kakuyomu` | `｜base《reading》` within the official 20/50 limits | native `《《text》》` notation | カクヨム submission format; literal `《` is escaped as `｜《`, and nested ruby wins over boten. |
+| `aozora` | `｜base《reading》` | `［＃傍点］text［＃傍点終わり］` | 青空文庫 annotation convention; the CLI writes Shift_JIS + CRLF and rejects unencodable characters. |
 
-Any construct with no equivalent in a given flavor is flattened to its base text with the macro simply dropped. See the [CLI page](/bindings/cli/#text-formats) for the exact commands, and `SYNTAX.md`'s [TXT Export Flavors](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md#txt-export-flavors--txt-書き出しフレーバー) section for the complete mapping table, including `[[warichu:...]]`, `[[indent:N]]`, and page breaks.
+These outputs are contract-tested against the platform-owned [Narou ruby help](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Kakuyomu notation help](https://kakuyomu.jp/help/entry/notation), and the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/). Any construct with no legal equivalent is flattened to base text instead of emitting invalid platform markup. Aozora headings follow the documented 大／中／小 hierarchy; if a document has more than three distinct heading levels, lower levels remain unannotated and the required explanation is appended at file end. See the [CLI page](/bindings/cli/#text-formats) and `SYNTAX.md`'s [TXT Export Flavors](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md#txt-export-flavors--txt-書き出しフレーバー) section for the complete mapping table, including `[[warichu:...]]`, `[[indent:N]]`, and all three Aozora page-break variants.
 
 ## Next steps
 

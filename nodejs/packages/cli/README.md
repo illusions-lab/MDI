@@ -23,6 +23,9 @@ applies PDF and text settings. EPUB and DOCX use Rust's deterministic baseline
 and front matter metadata while their full profile options move into Rust.
 
 `txt-all` writes every text variant next to the input and does not accept `-o`.
+The `narou`, `kakuyomu`, and `aozora` variants are contract-tested against
+their platform-owned notation manuals. Aozora output is Shift_JIS with CRLF;
+an unencodable character fails explicitly instead of being replaced with `?`.
 
 ## Examples
 

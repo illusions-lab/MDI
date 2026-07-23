@@ -26,8 +26,8 @@ mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora
 | `pdf` | `novel.pdf` | Rust HTML plus local Chromium; consumes the print profile. |
 | `epub` | `novel.epub` | Baseline Rust EPUB without `--config`; configured profile export with metadata, typography, chapter split, and optional cover with `--config`. |
 | `docx` | `novel.docx` | Baseline Rust DOCX without `--config`; configured profile export with metadata, page setup, typography, and numbering with `--config`. |
-| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` | matching `.txt` suffix | Rust text convention; profile controls indentation. `aozora` is Shift_JIS. |
-| `txt-all` | six text files | Writes every text flavor and rejects `-o`. |
+| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` | matching `.txt` suffix | Rust text convention; profile controls indentation. `aozora` is Shift_JIS + CRLF and rejects characters outside that official repertoire instead of writing `?`. |
+| `txt-all` | five text files | Writes every text flavor and rejects `-o`. |
 
 The CLI reads `epub.coverPath` relative to the profile file. It must name a PNG or JPEG; the bytes are included in the EPUB only, never sent to the parser. `--config` is no longer silently ignored for EPUB or DOCX.
 

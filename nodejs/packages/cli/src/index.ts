@@ -194,8 +194,23 @@ async function loadEpubCover(profile: ExportProfile): Promise<EpubCover | undefi
 async function writeTextOutput(destination: string, text: string, format: TextOutputFormat): Promise<void> {
   await writeFile(
     destination,
-    format === "aozora" ? iconv.encode(normalizeAozoraShiftJis(text), "shift_jis") : text
+    format === "aozora" ? encodeAozoraShiftJis(text) : text
   );
+}
+
+function encodeAozoraShiftJis(text: string): Buffer {
+  const normalized = normalizeAozoraShiftJis(text);
+  const unsupported = [...normalized].find((character) => {
+    const encoded = iconv.encode(character, "shift_jis");
+    return character !== "?" && encoded.length === 1 && encoded[0] === 0x3f;
+  });
+  if (unsupported) {
+    const codePoint = unsupported.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+    throw new Error(
+      `Aozora Bunko output cannot encode ${unsupported} (U+${codePoint}) as Shift_JIS; replace it or provide an official Aozora gaiji annotation`
+    );
+  }
+  return iconv.encode(normalized, "shift_jis");
 }
 
 /**

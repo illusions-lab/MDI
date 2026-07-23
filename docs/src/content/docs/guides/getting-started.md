@@ -69,7 +69,7 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt — rub
 mdi build novel.mdi --to narou                          # novel_narou.txt   — 小説家になろう notation
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt — カクヨム notation
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  — 青空文庫 notation, Shift_JIS-encoded
-mdi build novel.mdi --to txt-all                        # writes all six text variants; rejects -o
+mdi build novel.mdi --to txt-all                        # writes all five text variants; rejects -o
 ```
 
 `--to txt-all` and `-o` are mutually exclusive — using both is a usage error, because `txt-all` always writes multiple files next to the input.

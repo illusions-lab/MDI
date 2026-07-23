@@ -69,7 +69,7 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―— 
 mdi build novel.mdi --to narou                          # novel_narou.txt   ―— 小説家になろう 記法
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―— カクヨム 記法
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―— 青空文庫 記法，以 Shift_JIS 編碼
-mdi build novel.mdi --to txt-all                        # 一次寫出全部六種文字檔；不接受 -o
+mdi build novel.mdi --to txt-all                        # 一次寫出全部五種文字檔；不接受 -o
 ```
 
 ### 每種格式實際會發生什麼事

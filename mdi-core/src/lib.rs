@@ -1211,6 +1211,14 @@ impl TextFormat {
 /// is supplied by the host's already-resolved export profile.
 pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String {
     let document = parse_document(source);
+    let mut heading_depths = document
+        .children
+        .iter()
+        .filter(|node| node.get("type").and_then(serde_json::Value::as_str) == Some("heading"))
+        .filter_map(|node| node.get("depth").and_then(serde_json::Value::as_u64))
+        .collect::<Vec<_>>();
+    heading_depths.sort_unstable();
+    heading_depths.dedup();
     let definitions: Vec<&serde_json::Value> = document
         .children
         .iter()
@@ -1220,7 +1228,14 @@ pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str)
         .collect();
     let mut blocks = Vec::new();
     for node in &document.children {
-        text_format_block(node, format, indent_prefix, &definitions, &mut blocks);
+        text_format_block(
+            node,
+            format,
+            indent_prefix,
+            &definitions,
+            &heading_depths,
+            &mut blocks,
+        );
     }
     if !matches!(format, TextFormat::Plain | TextFormat::Ruby) && !definitions.is_empty() {
         blocks.push(String::new());
@@ -1237,6 +1252,10 @@ pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str)
             blocks.push(format!("{}. {text}", index + 1));
         }
     }
+    if matches!(format, TextFormat::Aozora) && heading_depths.len() > 3 {
+        blocks.push(String::new());
+        blocks.push("※小見出しよりもさらに下位の見出しには、注記しませんでした。".to_owned());
+    }
     let output = blocks.join("\n");
     if matches!(format, TextFormat::Aozora) {
         output.replace('\n', "\r\n")
@@ -1250,6 +1269,7 @@ fn text_format_block(
     format: TextFormat,
     prefix: &str,
     definitions: &[&serde_json::Value],
+    heading_depths: &[u64],
     output: &mut Vec<String>,
 ) {
     let kind = node
@@ -1258,23 +1278,28 @@ fn text_format_block(
         .unwrap_or_default();
     match kind {
         "footnoteDefinition" | "definition" => {}
-        "paragraph" => output.push(format!(
-            "{prefix}{}",
-            text_format_inline_children(node, format, definitions)
-        )),
+        "paragraph" => {
+            let value = text_format_inline_children(node, format, definitions);
+            let block_prefix = text_format_block_prefix(node, format);
+            output.push(format!("{prefix}{block_prefix}{value}"));
+        }
         "heading" => {
             let value = text_format_inline_children(node, format, definitions);
             if matches!(format, TextFormat::Aozora) {
-                let size = match node
+                let depth = node
                     .get("depth")
                     .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(3)
-                {
-                    1 => "大",
-                    2 => "中",
-                    _ => "小",
-                };
-                output.push(format!("{value}［＃「{value}」は{size}見出し］"));
+                    .unwrap_or(3);
+                if let Some(size) = aozora_heading_size(depth, heading_depths) {
+                    let reference = text_format_plain_inline_children(node);
+                    if aozora_needs_range_annotation(node) {
+                        output.push(format!("［＃{size}見出し］{value}［＃{size}見出し終わり］"));
+                    } else {
+                        output.push(format!("{value}［＃「{reference}」は{size}見出し］"));
+                    }
+                } else {
+                    output.push(value);
+                }
             } else {
                 output.push(value);
             }
@@ -1297,14 +1322,21 @@ fn text_format_block(
                             text_format_inline_children(child, format, definitions)
                         ));
                     } else {
-                        text_format_block(child, format, prefix, definitions, output);
+                        text_format_block(
+                            child,
+                            format,
+                            prefix,
+                            definitions,
+                            heading_depths,
+                            output,
+                        );
                     }
                 }
             }
         }
         "blockquote" => {
             for child in children(node) {
-                text_format_block(child, format, prefix, definitions, output);
+                text_format_block(child, format, prefix, definitions, heading_depths, output);
             }
         }
         "code" => output.extend(
@@ -1312,7 +1344,7 @@ fn text_format_block(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .lines()
-                .map(str::to_owned),
+                .map(|line| text_format_literal(line, format)),
         ),
         "table" => {
             for row in children(node) {
@@ -1326,9 +1358,70 @@ fn text_format_block(
             }
         }
         "thematicBreak" => output.push("――――――".to_owned()),
-        "blank" | "pagebreak" => output.push(String::new()),
+        "blank" => output.push(String::new()),
+        "pagebreak" => {
+            if matches!(format, TextFormat::Aozora) {
+                let annotation = match node.get("variant").and_then(serde_json::Value::as_str) {
+                    Some("left") => "［＃改丁］",
+                    Some("right") => "［＃改見開き］",
+                    _ => "［＃改ページ］",
+                };
+                output.push(annotation.to_owned());
+            } else {
+                output.push(String::new());
+            }
+        }
         _ => {}
     }
+}
+
+fn aozora_heading_size(depth: u64, heading_depths: &[u64]) -> Option<&'static str> {
+    let index = heading_depths
+        .iter()
+        .position(|candidate| *candidate == depth)?;
+    match heading_depths.len() {
+        1 => Some("中"),
+        2 => ["大", "中"].get(index).copied(),
+        _ => ["大", "中", "小"].get(index).copied(),
+    }
+}
+
+fn text_format_block_prefix(node: &serde_json::Value, format: TextFormat) -> String {
+    let indent = node
+        .get("indent")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|amount| *amount > 0);
+    let bottom = node.get("bottom").and_then(serde_json::Value::as_u64);
+    if matches!(format, TextFormat::Aozora) {
+        if let Some(amount) = bottom {
+            return if amount == 0 {
+                "［＃地付き］".to_owned()
+            } else {
+                format!("［＃地から{}字上げ］", fullwidth_digits(amount))
+            };
+        }
+        return indent
+            .map(|amount| format!("［＃{}字下げ］", fullwidth_digits(amount)))
+            .unwrap_or_default();
+    }
+    indent
+        .map(|amount| "　".repeat(amount as usize))
+        .unwrap_or_default()
+}
+
+fn fullwidth_digits(value: u64) -> String {
+    value
+        .to_string()
+        .replace('0', "０")
+        .replace('1', "１")
+        .replace('2', "２")
+        .replace('3', "３")
+        .replace('4', "４")
+        .replace('5', "５")
+        .replace('6', "６")
+        .replace('7', "７")
+        .replace('8', "８")
+        .replace('9', "９")
 }
 
 fn text_format_inline_children(
@@ -1351,11 +1444,25 @@ fn text_format_inline(
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
     {
-        "text" | "inlineCode" | "tcy" => node
-            .get("value")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
+        "text" | "inlineCode" => text_format_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            format,
+        ),
+        "tcy" => {
+            let value = text_format_literal(
+                node.get("value")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+                format,
+            );
+            if matches!(format, TextFormat::Aozora) {
+                format!("{value}［＃「{value}」は縦中横］")
+            } else {
+                value
+            }
+        }
         "break" => "\n".to_owned(),
         "ruby" => {
             let base = node
@@ -1381,14 +1488,40 @@ fn text_format_inline(
             match format {
                 TextFormat::Plain => base.to_owned(),
                 TextFormat::Ruby => format!("{{{base}|{reading}}}"),
-                _ => format!("｜{base}《{reading}》"),
+                _ => text_format_platform_ruby(base, &reading, format),
             }
         }
         "em" => {
             let value = text_format_inline_children(node, format, definitions);
             match format {
-                TextFormat::Aozora => format!("{value}［＃「{value}」に傍点］"),
-                TextFormat::Kakuyomu => format!("《《{value}》》"),
+                TextFormat::Aozora if !value.is_empty() && !value.contains('\n') => {
+                    let name = aozora_boten_name(
+                        node.get("mark")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("﹅"),
+                    );
+                    format!("［＃{name}］{value}［＃{name}終わり］")
+                }
+                TextFormat::Kakuyomu
+                    if !value.is_empty()
+                        && !value.contains('\n')
+                        && !value.contains('《')
+                        && !node_contains_type(node, "ruby") =>
+                {
+                    format!("《《{value}》》")
+                }
+                TextFormat::Narou
+                    if !value.is_empty()
+                        && !value.contains('\n')
+                        && !node_contains_type(node, "ruby") =>
+                {
+                    value
+                        .graphemes(true)
+                        .map(|character| {
+                            text_format_platform_ruby(character, "・", TextFormat::Narou)
+                        })
+                        .collect()
+                }
                 _ => value,
             }
         }
@@ -1396,8 +1529,16 @@ fn text_format_inline(
             .get("alt")
             .and_then(serde_json::Value::as_str)
             .filter(|alt| !alt.is_empty())
-            .map(|alt| format!("[画像: {alt}]"))
+            .map(|alt| format!("[画像: {}]", text_format_literal(alt, format)))
             .unwrap_or_else(|| "[画像]".to_owned()),
+        "warichu" => {
+            let value = text_format_inline_children(node, format, definitions);
+            if matches!(format, TextFormat::Aozora) && !value.is_empty() && !value.contains('\n') {
+                format!("［＃割り注］{value}［＃割り注終わり］")
+            } else {
+                value
+            }
+        }
         "footnoteReference" => {
             if matches!(format, TextFormat::Plain | TextFormat::Ruby) {
                 String::new()
@@ -1416,10 +1557,141 @@ fn text_format_inline(
                     })
                     .map(|index| index + 1)
                     .unwrap_or(0);
-                format!("［注{index}］")
+                if matches!(format, TextFormat::Aozora) {
+                    format!("（注{index}）")
+                } else {
+                    format!("［注{index}］")
+                }
             }
         }
         _ => text_format_inline_children(node, format, definitions),
+    }
+}
+
+fn text_format_platform_ruby(base: &str, reading: &str, format: TextFormat) -> String {
+    let valid = match format {
+        TextFormat::Narou => {
+            (1..=10).contains(&base.graphemes(true).count())
+                && (1..=10).contains(&reading.graphemes(true).count())
+                && !base.chars().any(narou_ruby_problem_character)
+                && !reading.chars().any(narou_ruby_problem_character)
+        }
+        TextFormat::Kakuyomu => {
+            (1..=20).contains(&base.graphemes(true).count())
+                && (1..=50).contains(&reading.graphemes(true).count())
+                && !base.contains(['\r', '\n'])
+                && !reading.contains(['\r', '\n'])
+                && !base.contains(['《', '》'])
+                && !reading.contains(['《', '》'])
+        }
+        TextFormat::Aozora => {
+            !base.is_empty()
+                && !reading.is_empty()
+                && !base.contains(['\r', '\n'])
+                && !reading.contains(['\r', '\n'])
+                && !base.chars().any(aozora_reserved_character)
+                && !reading.chars().any(aozora_reserved_character)
+        }
+        TextFormat::Plain | TextFormat::Ruby => false,
+    };
+    if valid {
+        format!("｜{base}《{reading}》")
+    } else {
+        text_format_literal(base, format)
+    }
+}
+
+fn narou_ruby_problem_character(character: char) -> bool {
+    matches!(character, '&' | '"' | '<' | '>')
+}
+
+fn aozora_boten_name(mark: &str) -> &'static str {
+    match mark {
+        "﹆" => "白ゴマ傍点",
+        "●" => "丸傍点",
+        "○" => "白丸傍点",
+        "▲" => "黒三角傍点",
+        "△" => "白三角傍点",
+        "◎" => "二重丸傍点",
+        "×" => "ばつ傍点",
+        _ => "傍点",
+    }
+}
+
+fn node_contains_type(node: &serde_json::Value, expected: &str) -> bool {
+    node.get("type").and_then(serde_json::Value::as_str) == Some(expected)
+        || children(node)
+            .iter()
+            .any(|child| node_contains_type(child, expected))
+}
+
+fn text_format_plain_inline_children(node: &serde_json::Value) -> String {
+    children(node)
+        .iter()
+        .map(text_format_plain_inline)
+        .collect()
+}
+
+fn text_format_plain_inline(node: &serde_json::Value) -> String {
+    match node
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+    {
+        "text" | "inlineCode" | "tcy" => node
+            .get("value")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        "ruby" => node
+            .get("base")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        "break" => "\n".to_owned(),
+        "image" => node
+            .get("alt")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        _ => text_format_plain_inline_children(node),
+    }
+}
+
+fn aozora_needs_range_annotation(node: &serde_json::Value) -> bool {
+    node_contains_type(node, "em")
+        || text_format_plain_inline_children(node)
+            .chars()
+            .any(aozora_reserved_character)
+}
+
+fn aozora_reserved_character(character: char) -> bool {
+    matches!(
+        character,
+        '《' | '》' | '［' | '］' | '〔' | '〕' | '｜' | '＃' | '※'
+    )
+}
+
+fn text_format_literal(value: &str, format: TextFormat) -> String {
+    match format {
+        TextFormat::Kakuyomu => value.replace('《', "｜《"),
+        TextFormat::Narou => value.replace('（', "｜（").replace('(', "|("),
+        TextFormat::Aozora => value
+            .chars()
+            .map(|character| match character {
+                '《' => "※［＃始め二重山括弧、1-1-52］".to_owned(),
+                '》' => "※［＃終わり二重山括弧、1-1-53］".to_owned(),
+                '［' => "※［＃始め角括弧、1-1-46］".to_owned(),
+                '］' => "※［＃終わり角括弧、1-1-47］".to_owned(),
+                '〔' => "※［＃始めきっこう（亀甲）括弧、1-1-44］".to_owned(),
+                '〕' => "※［＃終わりきっこう（亀甲）括弧、1-1-45］".to_owned(),
+                '｜' => "※［＃縦線、1-1-35］".to_owned(),
+                '＃' => "※［＃井げた、1-1-84］".to_owned(),
+                '※' => "※［＃米印、1-2-8］".to_owned(),
+                _ => character.to_string(),
+            })
+            .collect(),
+        TextFormat::Plain | TextFormat::Ruby => value.to_owned(),
     }
 }
 
@@ -3588,7 +3860,7 @@ mod tests {
             "題\n｜東京《とうきょう》《《強調》》。［注1］\n\nFootnotes\n1. 注"
         );
         assert!(
-            render_text_format(source, TextFormat::Aozora, "").contains("［＃「題」は大見出し］")
+            render_text_format(source, TextFormat::Aozora, "").contains("［＃「題」は中見出し］")
         );
     }
 
@@ -3996,12 +4268,14 @@ mod tests {
             TextFormat::Plain,
             "",
             &[],
+            &[],
             &mut formatted,
         );
         text_format_block(
             &serde_json::json!({"type": "unknown"}),
             TextFormat::Plain,
             "",
+            &[],
             &[],
             &mut formatted,
         );

@@ -138,7 +138,7 @@ describe("text export", () => {
       expect(await readFile(outputs[1], "utf8")).toContain("{東京|とうきょう}");
       expect(await readFile(outputs[2], "utf8")).toContain("｜東京《とうきょう》");
       expect(await readFile(outputs[3], "utf8")).toContain("《《強調》》");
-      expect(iconv.decode(await readFile(outputs[4]), "shift_jis")).toContain("［＃「題」は大見出し］");
+      expect(iconv.decode(await readFile(outputs[4]), "shift_jis")).toContain("［＃「題」は中見出し］");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -188,6 +188,47 @@ describe("text export", () => {
       const decoded = iconv.decode(await readFile(output), "shift_jis");
       expect(decoded).toContain("彼は――振り返らなかった。");
       expect(decoded).not.toContain("?");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("writes the official platform annotations through the packaged file boundary", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-platform-contracts-"));
+    try {
+      const input = join(directory, "novel.mdi");
+      await writeFile(
+        input,
+        "# {独|ひと}り寝\n\n漢字（説明）と《記号》と[[em:強調]]\n\n[[pagebreak:right]]"
+      );
+      const narou = await build(input, "narou");
+      expect(await readFile(narou, "utf8")).toContain(
+        "漢字｜（説明）と《記号》と｜強《・》｜調《・》"
+      );
+      const kakuyomu = await build(input, "kakuyomu");
+      expect(await readFile(kakuyomu, "utf8")).toContain(
+        "漢字（説明）と｜《記号》と《《強調》》"
+      );
+      const aozora = await build(input, "aozora");
+      const decoded = iconv.decode(await readFile(aozora), "shift_jis");
+      expect(decoded).toContain("｜独《ひと》り寝［＃「独り寝」は中見出し］");
+      expect(decoded).toContain("［＃傍点］強調［＃傍点終わり］");
+      expect(decoded).toContain("［＃改見開き］");
+      expect(decoded).toContain("\r\n");
+      expect(decoded.replaceAll("\r\n", "")).not.toContain("\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects characters outside the official Aozora Shift_JIS character contract", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-aozora-gaiji-"));
+    try {
+      const input = join(directory, "novel.mdi");
+      await writeFile(input, "未定義😀");
+      await expect(build(input, "aozora")).rejects.toThrow(
+        "Aozora Bunko output cannot encode 😀 (U+1F600) as Shift_JIS"
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -383,7 +424,13 @@ describe("vertical Kitchen Sink export artifacts", () => {
       const source = (await readFile(
         new URL("../../../../examples/kitchen-sink.mdi", import.meta.url),
         "utf8"
-      )).replace("writing-mode: horizontal", "writing-mode: vertical");
+      ))
+        .replace("writing-mode: horizontal", "writing-mode: vertical")
+        // The Aozora contract is Shift_JIS/JIS X 0208. Keep this all-format
+        // fixture inside that repertoire; the dedicated contract test above
+        // verifies that unsupported literal glyphs fail instead of becoming ?.
+        .replace("（既定記号 ﹅）", "（既定記号）")
+        .replace("[[em:﹆:ここぞ]]", "[[em:○:ここぞ]]");
       const input = join(directory, "kitchen-sink.mdi");
       await writeFile(input, source);
       const [html, pdf, docx, epub, textOutputs] = await Promise.all([

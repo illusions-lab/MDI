@@ -26,8 +26,8 @@ input は UTF-8 です。`--to` は必須、`-o` は output path を上書きし
 | `pdf` | `novel.pdf` | Rust HTML + local Chromium。print profile を使う。 |
 | `epub` | `novel.epub` | config なしは Rust baseline。config があれば metadata/type/chapter/cover を使う。 |
 | `docx` | `novel.docx` | config なしは Rust baseline。config があれば metadata/page/type/numbering を使う。 |
-| text 5 形式 | 各 `.txt` | Rust text。profile は indent を決める。`aozora` は Shift_JIS。 |
-| `txt-all` | 6 files | 全 text を書き、`-o` を reject。 |
+| text 5 形式 | 各 `.txt` | Rust text。profile は indent を決める。`aozora` は Shift_JIS・CRLF で、範囲外文字は `?` にせずエラー。 |
+| `txt-all` | 5 files | 全 text を書き、`-o` を reject。 |
 
 `epub.coverPath` は profile file からの相対 path として読み、PNG/JPEG でなければ error です。cover bytes は EPUB にのみ入り parser には渡りません。EPUB/DOCX で `--config` が静かに無視されることはもうありません。
 

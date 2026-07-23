@@ -69,7 +69,7 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―― 
 mdi build novel.mdi --to narou                          # novel_narou.txt   ―― 小説家になろうの記法
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―― カクヨムの記法
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―― 青空文庫の記法、Shift_JIS でエンコード
-mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
+mdi build novel.mdi --to txt-all                        # 5 種類のテキストをすべて書き出す。-o は拒否される
 ```
 
 ### 各形式で実際に何が起きるか
