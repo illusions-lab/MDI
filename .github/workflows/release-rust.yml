@@ -38,14 +38,28 @@ jobs:
         shell: bash
         run: |
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          if cargo info "mdi-core@${version}" >/dev/null 2>&1; then
-            echo "mdi-core@${version} is already on crates.io; skipping."
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          else
-            cargo publish --locked
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "version=${version}" >> "$GITHUB_OUTPUT"
-          fi
+          status=$(
+            curl --silent --show-error --location \
+              --user-agent "mdi-release-workflow/1.0" \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              "https://crates.io/api/v1/crates/mdi-core/${version}"
+          )
+          case "$status" in
+            200)
+              echo "mdi-core@${version} is already on crates.io; skipping."
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              cargo publish --locked
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              echo "version=${version}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unexpected crates.io response while checking mdi-core@${version}: HTTP ${status}" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Tag the published crate
         if: steps.publish.outputs.published == 'true'
