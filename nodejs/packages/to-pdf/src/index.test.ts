@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { chromium } from "playwright";
+import { renderHtml } from "@illusions-lab/mdi";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkMdi from "@illusions-lab/mdi-remark";
@@ -119,6 +121,53 @@ describe("browser-safe Chromium print profile", () => {
     expect(prepared.pageNumbers.headerTemplate).toBeUndefined();
     expect(prepared.pageNumbers.footerTemplate).toBeUndefined();
   });
+});
+
+describe("vertical Chromium syntax layout", () => {
+  it("keeps documented blank syntax as one strict-grid column", async () => {
+    const html = renderHtml(`---
+writing-mode: vertical
+---
+
+前の段落です。
+
+\\
+
+<br>
+
+<br />
+
+[[blank]]
+
+後の段落です。`);
+    const prepared = prepareChromiumPrintProfile(html, {
+      layout: { system: "japanese-publisher" },
+      typesetting: { writingMode: "vertical" },
+    }, "vertical");
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(prepared.html);
+      const blankColumns = await page.locator(".mdi-blank").evaluateAll((blanks) =>
+        blanks.map((blank) => {
+          const style = blank.ownerDocument.defaultView!.getComputedStyle(blank);
+          return {
+            blockSize: blank.getBoundingClientRect().width,
+            minimumBlockSize: Number.parseFloat(style.minBlockSize),
+            lineHeight: Number.parseFloat(style.lineHeight),
+          };
+        }),
+      );
+      expect(blankColumns).toHaveLength(4);
+      for (const column of blankColumns) {
+        expect(column.minimumBlockSize).toBeGreaterThan(0);
+        expect(column.blockSize).toBeCloseTo(column.lineHeight, 2);
+        expect(column.blockSize).toBeCloseTo(column.minimumBlockSize, 2);
+      }
+    } finally {
+      await browser.close();
+    }
+  }, 30_000);
 });
 
 describe("PDF export profile", () => {

@@ -38,6 +38,7 @@
     "@types/mdast": "^4.0.0"
   },
   "devDependencies": {
+    "@illusions-lab/mdi": "workspace:*",
     "@illusions-lab/mdi-remark": "workspace:*",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.0",

@@ -119,11 +119,14 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
         "--input-type=module",
         "--eval",
         `import { prepareChromiumPrintProfile } from "@illusions-lab/mdi-to-pdf/profile";
+         import { getPageSizeLabel, listPageSizes } from "@illusions-lab/mdi-export-profile";
          const print = prepareChromiumPrintProfile("<p>本文</p>", undefined, "vertical");
          console.log(JSON.stringify({
            hasCss: print.html.includes("mdi-export-profile"),
            widthMm: print.page.widthMm,
            heightMm: print.page.heightMm,
+           bunkoLabel: getPageSizeLabel("Bunko"),
+           jisB5Label: listPageSizes().find((size) => size.key === "JIS-B5")?.label,
          }));`,
       ],
       { cwd: consumerDirectory, encoding: "utf8" }
@@ -132,6 +135,8 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       hasCss: true,
       widthMm: 297,
       heightMm: 210,
+      bunkoLabel: "文庫判",
+      jisB5Label: "JIS B5判",
     });
 
     const source = join(consumerDirectory, "book.mdi");

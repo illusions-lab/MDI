@@ -818,7 +818,10 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
     }
     let span = object.get("span").cloned();
     let parsed = parse_inline_parts(rendered_value);
-    if parsed.len() == 1 && matches!(parsed.first(), Some((Inline::Text(_), _, _))) {
+    if let Some((Inline::Text(value), _, _)) = parsed.first()
+        && parsed.len() == 1
+        && value == rendered_value
+    {
         return;
     }
     let replacement: Vec<serde_json::Value> = parsed
@@ -1761,7 +1764,7 @@ fn children(node: &serde_json::Value) -> &[serde_json::Value] {
 
 /// The base stylesheet is intentionally shipped by the core alongside the
 /// semantic HTML. Hosts may add presentation CSS, but not reinterpret nodes.
-pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-height:1em}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
+pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
 
 /// Build a reflowable EPUB 3 archive entirely from Rust's document IR.
 /// Metadata comes from front matter; richer cover and print-profile options
@@ -2600,7 +2603,7 @@ fn boten(value: &str) -> Option<(Inline, usize)> {
     if !value.starts_with(prefix) {
         return None;
     }
-    let end = value.find("》》")?;
+    let end = close_boten_alias(value)?;
     let body = &value[prefix.len()..end];
     if body.is_empty()
         || body.contains('\n')
@@ -2616,6 +2619,24 @@ fn boten(value: &str) -> Option<(Inline, usize)> {
         },
         end + "》》".len(),
     ))
+}
+
+/// Find the closing `》》` of the supported boten alias.  As with every other
+/// MDI delimiter, an escaped `》` is content and cannot close the alias.
+fn close_boten_alias(value: &str) -> Option<usize> {
+    let mut index = "《《".len();
+    while index < value.len() {
+        let rest = &value[index..];
+        if rest.starts_with('\\') {
+            let next = rest.chars().nth(1)?;
+            index += 1 + next.len_utf8();
+        } else if rest.starts_with("》》") {
+            return Some(index);
+        } else {
+            index += rest.chars().next()?.len_utf8();
+        }
+    }
+    None
 }
 
 fn bracket_macro(value: &str) -> Option<(Inline, usize)> {
@@ -3182,6 +3203,49 @@ mod tests {
     }
 
     #[test]
+    fn recovers_from_malformed_inline_syntax_at_delimiter_boundaries() {
+        // A malformed construct must stay literal without preventing a later,
+        // adjacent construct from being recognized.  These cases cover every
+        // inline delimiter family, including a delimiter at end of input.
+        for (source, expected) in [
+            ("{東京|とうきょう", "{東京|とうきょう"),
+            ("{東京|とうきょう ^12^", "{東京|とうきょう 12"),
+            ("^1234567^ ^12^", "^1234567^ 12"),
+            ("[[no-break:]][[em:強調]]", "[[no-break:]]強調"),
+            ("[[kern:wide:字]][[warichu:注]]", "[[kern:wide:字]]注"),
+            ("[[em:未閉", "[[em:未閉"),
+            ("《《未閉", "《《未閉"),
+            ("{", "{"),
+            ("^", "^"),
+            ("[[", "[["),
+        ] {
+            let rendered = render_text(source);
+            assert_eq!(rendered.trim_end(), expected, "source: {source:?}");
+            assert!(parse_output(source).diagnostics.is_empty(), "source: {source:?}");
+        }
+    }
+
+    #[test]
+    fn honors_escaped_alias_delimiters_without_consuming_them_as_closers() {
+        // Escaped delimiters never participate in matching.  In particular,
+        // the first `》` below is content; the following pair closes the alias.
+        assert_eq!(
+            parse_inlines("《《a\\》》》"),
+            vec![Inline::Em {
+                mark: "﹅".into(),
+                children: vec![Inline::Text("a》".into())],
+            }]
+        );
+
+        // Without a non-escaped closing pair, the complete alias remains
+        // literal instead of partially consuming its escaped content.
+        assert_eq!(
+            parse_inlines("《《a\\》》"),
+            vec![Inline::Text("《《a》》".into())]
+        );
+    }
+
+    #[test]
     fn applies_mdi_escapes_once_before_recognition() {
         assert_eq!(
             parse_inlines(r"\{東京\|とうきょう\} \^12\^ \[\[br\]\] \《《文字\》》"),
@@ -3403,6 +3467,39 @@ mod tests {
         assert!(html.contains("<h1>題</h1>"));
         assert!(html.contains("<ruby class=\"mdi-ruby\">東京<rp>（</rp><rt>とうきょう</rt>"));
         assert!(html.contains("<span class=\"mdi-tcy\">12</span>"));
+    }
+
+    #[test]
+    fn renders_every_documented_mdi_construct_in_vertical_html() {
+        let vertical = "---\ntitle: 構文\nlang: ja\nwriting-mode: vertical\n---\n\n";
+        for (name, source, expected) in [
+            ("front matter", "# 見出し", "<html lang=\"ja\" style=\"writing-mode: vertical-rl;\">"),
+            ("group ruby", "{東京|とうきょう}", "<ruby class=\"mdi-ruby\">東京"),
+            ("split ruby", "{東京|とう.きょう}", "<ruby class=\"mdi-ruby\""),
+            ("tate-chu-yoko", "^12^", "<span class=\"mdi-tcy\">12</span>"),
+            ("default boten", "[[em:傍点]]", "class=\"mdi-em\""),
+            ("custom boten", "[[em:※:任意]]", "--mdi-em:&quot;※&quot;"),
+            ("no-break", "[[no-break:改行禁止]]", "class=\"mdi-nobr\""),
+            ("explicit line break", "前[[br]]次", "<br>"),
+            ("blank backslash", "\\", "<p class=\"mdi-blank\"></p>"),
+            ("blank br", "<br>", "<p class=\"mdi-blank\"></p>"),
+            ("blank br slash", "<br />", "<p class=\"mdi-blank\"></p>"),
+            ("blank legacy macro", "[[blank]]", "<p class=\"mdi-blank\"></p>"),
+            ("warichu", "[[warichu:割注]]", "class=\"mdi-warichu\""),
+            ("kerning", "[[kern:-0.1em:詰め]]", "--mdi-kern:-0.1em"),
+            ("indent", "[[indent:2]]\n字下げ", "class=\"mdi-indent\""),
+            ("bottom alignment", "[[bottom]]\n地付き", "class=\"mdi-bottom\""),
+            ("bottom shift", "[[bottom:2]]\n地付き", "--mdi-shift:2"),
+            ("page break", "[[pagebreak]]", "class=\"mdi-pagebreak\""),
+            ("recto page break", "[[pagebreak:right]]", "class=\"mdi-pagebreak mdi-pagebreak-right\""),
+            ("verso page break", "[[pagebreak:left]]", "class=\"mdi-pagebreak mdi-pagebreak-left\""),
+            ("footnote", "脚注[^n]\n\n[^n]: 注", "data-footnotes"),
+            ("escaped delimiters", "\\{ \\} \\| \\^ \\[ \\: \\《 \\》", "{ } | ^ [ : 《 》"),
+        ] {
+            let html = render_html(&format!("{vertical}{source}"));
+            assert!(html.contains(expected), "missing {name}: {expected}; rendered {html}");
+        }
+        assert!(render_html(&format!("{vertical}\\")).contains(".mdi-blank{min-block-size:1lh}"));
     }
 
     #[test]

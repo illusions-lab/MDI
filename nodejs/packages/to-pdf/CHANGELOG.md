@@ -6,6 +6,8 @@
 
 - Add the browser-safe `@illusions-lab/mdi-to-pdf/profile` entry for applying
   Chromium print profiles without importing Playwright or launching Chromium.
+- Make all blank-paragraph spellings reserve one logical strict-grid column in
+  vertical Chromium layout.
 
 ## 2.0.18
 

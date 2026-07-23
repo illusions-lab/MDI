@@ -33,6 +33,24 @@ const fromFile = parseExportProfileJson(
 );
 ```
 
+## Paper-size UI metadata
+
+Japanese labels are part of the public catalogue, alongside stable keys and
+physical dimensions. `listPageSizes()` is suitable for a select menu.
+
+```ts
+import {
+  getPageSizeLabel,
+  listPageSizes,
+  PAGE_SIZE_LABELS,
+} from "@illusions-lab/mdi-export-profile";
+
+getPageSizeLabel("Bunko"); // "文庫判"
+PAGE_SIZE_LABELS.ja["JIS-B5"]; // "JIS B5判"
+listPageSizes({ locale: "ja" });
+// [{ key: "A4", label: "A4判", widthMm: 210, heightMm: 297 }, ...]
+```
+
 Use the resolved profile with the JavaScript PDF/mdast adapters or pass a JSON
 profile to `mdi build --config export.json`. Rust remains responsible for MDI
 syntax and document semantics.

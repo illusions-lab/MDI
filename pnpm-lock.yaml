@@ -358,6 +358,9 @@ importers:
         specifier: ^1.48.0
         version: 1.61.1
     devDependencies:
+      '@illusions-lab/mdi':
+        specifier: workspace:*
+        version: link:../mdi
       '@illusions-lab/mdi-remark':
         specifier: workspace:*
         version: link:../remark

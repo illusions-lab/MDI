@@ -1,13 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
   PAGE_DIMENSIONS,
+  PAGE_SIZE_LABELS,
   PAGE_SIZES,
+  getPageSizeLabel,
+  listPageSizes,
   parseExportProfileJson,
   resolveExportProfile,
   resolvePrintProfile,
 } from "./index.js";
 
 describe("export profiles", () => {
+  it("publishes complete Japanese labels and UI metadata for every paper size", () => {
+    const sizes = listPageSizes();
+    expect(sizes).toHaveLength(PAGE_SIZES.length);
+    expect(Object.keys(PAGE_SIZE_LABELS.ja)).toHaveLength(PAGE_SIZES.length);
+
+    for (const pageSize of PAGE_SIZES) {
+      expect(PAGE_SIZE_LABELS.ja[pageSize]).toEqual(expect.any(String));
+      expect(getPageSizeLabel(pageSize, "ja")).toBe(PAGE_SIZE_LABELS.ja[pageSize]);
+      expect(sizes.find((size) => size.key === pageSize)).toEqual({
+        key: pageSize,
+        label: PAGE_SIZE_LABELS.ja[pageSize],
+        widthMm: PAGE_DIMENSIONS[pageSize].width,
+        heightMm: PAGE_DIMENSIONS[pageSize].height,
+      });
+    }
+  });
+  it("preserves distinct Japanese labels for A, JIS B, and ISO B families", () => {
+    expect(getPageSizeLabel("A4")).toBe("A4判");
+    expect(getPageSizeLabel("JIS-B5")).toBe("JIS B5判");
+    expect(getPageSizeLabel("ISO-B5")).toBe("ISO B5判");
+    expect(getPageSizeLabel("B5")).toBe("ISO B5判");
+    expect(getPageSizeLabel("Bunko")).toBe("文庫判");
+    expect(getPageSizeLabel("Ofuku-Hagaki")).toBe("往復はがき");
+  });
+  it("rejects unsupported runtime paper-size keys and locales", () => {
+    expect(() => getPageSizeLabel("A11" as never)).toThrow("Unsupported page size or locale");
+    expect(() => getPageSizeLabel("A4", "en" as never)).toThrow("Unsupported page size or locale");
+    expect(() => listPageSizes({ locale: "en" as never })).toThrow("Unsupported page size or locale");
+  });
   it("resolves a physically valid publisher default for every supported paper size and writing direction", () => {
     for (const pageSize of PAGE_SIZES) {
       expect(
