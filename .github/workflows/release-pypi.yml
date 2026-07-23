@@ -108,11 +108,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag_sha=$(
+          if tag_sha=$(
             gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" \
-              --jq '.sha' 2>/dev/null || true
-          )
-          if [[ -n "$tag_sha" ]]; then
+              --jq '.sha' 2>/dev/null
+          ); then
             test "$tag_sha" = "$RELEASE_SHA"
           fi
 
