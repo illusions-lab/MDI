@@ -6,22 +6,46 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Commit on main whose complete CI run succeeded
+        required: true
+        type: string
 
 # Publishing here is deliberately limited to the canonical crate. The JNI
 # crate is an Android implementation detail (`publish = false`); the other
 # ecosystems have their own release workflows.
-concurrency: release-rust-${{ github.event.workflow_run.head_sha || github.sha }}
+concurrency: release-rust-${{ github.event.workflow_run.head_sha || inputs.release_sha || github.sha }}
 
 jobs:
+  dispatch:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # crates.io deliberately rejects OIDC tokens from workflow_run events.
+      # Redispatch the already-gated commit as the supported workflow_dispatch
+      # event; the publishing job independently verifies the completed CI run.
+      - name: Dispatch the trusted-publishing workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: >-
+          gh workflow run release-rust.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref main
+          --field release_sha="$RELEASE_SHA"
+
   crates-io:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
       id-token: write
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
     defaults:
       run:
         working-directory: mdi-core
@@ -30,11 +54,12 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
 
-      - name: Verify the manual release commit passed the complete CI gate
-        if: github.event_name == 'workflow_dispatch'
+      - name: Verify the release commit is current and passed the complete CI gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          test "$RELEASE_SHA" = "$main_sha"
           count=$(
             gh api --method GET \
               "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
