@@ -28,9 +28,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@illusions-lab/mdi-core": "workspace:*",
     "@illusions-lab/mdi-export-profile": "workspace:*",
     "mdast-util-mdi": "workspace:*",
-    "docx": "^9.0.0",
     "@types/mdast": "^4.0.0"
   },
   "devDependencies": {

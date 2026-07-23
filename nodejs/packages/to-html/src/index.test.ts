@@ -4,7 +4,6 @@ import remarkParse from "remark-parse";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import type { Root } from "mdast";
 import { mdiToHtml } from "./index.js";
-import { MDI_STYLESHEET } from "@illusions-lab/mdi-to-hast";
 
 function parse(source: string): Root {
 	const processor = unified().use(remarkParse).use(remarkMdi);
@@ -19,6 +18,14 @@ describe("mdiToHtml", () => it("wraps rendered MDI in a vertical HTML document",
 }));
 
 describe("mdiToHtml edge cases", () => {
+	it.each([
+		null,
+		{ type: "paragraph", children: [] },
+		{ type: "root", children: null },
+	])("rejects an invalid adapter tree %#", (tree) => {
+		expect(() => mdiToHtml(tree as never)).toThrow("tree must be an mdast root");
+	});
+
 	it("uses horizontal Japanese defaults without a title when front matter is absent", () => {
 		const html = mdiToHtml(parse("plain text"));
 		expect(html).toContain('<html lang="ja">');
@@ -49,13 +56,13 @@ describe("mdiToHtml edge cases", () => {
 		expect(html).toContain("<title>A &lt; B &amp; &quot;quoted&quot;</title>");
 	});
 
-	it("embeds the shared stylesheet verbatim", () => {
+	it("embeds the Rust-owned stylesheet", () => {
 		// Ruby and tate-chu-yoko have no dedicated CSS block in SYNTAX.md
 		// (<ruby>/<rt>/<rp> are styled natively; text-combine-upright is
 		// mentioned only in prose) - .mdi-em/.mdi-kern are constructs that do.
 		const html = mdiToHtml(parse("text"));
-		expect(html).toContain(MDI_STYLESHEET);
 		expect(html).toContain(".mdi-em");
+		expect(html).toContain(".mdi-kern");
 		expect(html).toContain("letter-spacing");
 	});
 });

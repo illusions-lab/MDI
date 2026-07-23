@@ -110,6 +110,14 @@ describe("browser-safe Chromium print profile", () => {
 
   it("keeps browser-safe input validation and creates no header/footer for disabled numbering", () => {
     expect(() => prepareChromiumPrintProfile(null as never)).toThrow("html must be a string");
+    for (const profile of [null, 1, []]) {
+      expect(() =>
+        prepareChromiumPrintProfile("<p>本文</p>", profile as never)
+      ).toThrow("profile must be an object");
+    }
+    expect(() => applyPdfProfile(null as never, resolveExportProfile())).toThrow(
+      "html must be a string",
+    );
     const prepared = prepareChromiumPrintProfile(
       "<html><body><p>本文</p></body></html>",
       {
@@ -202,6 +210,7 @@ describe("PDF export profile", () => {
         typesetting: {
           writingMode: "vertical",
           fontFamily: "Noto Serif JP",
+          fontSize: 10.5,
           textIndentEm: 2,
           fullwidthSpaceIndent: true,
         },

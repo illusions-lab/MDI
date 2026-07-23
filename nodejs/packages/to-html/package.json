@@ -28,8 +28,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@illusions-lab/mdi-to-hast": "workspace:*",
-    "hast-util-to-html": "^9.0.0",
+    "@illusions-lab/mdi-core": "workspace:*",
+    "mdast-util-mdi": "workspace:*",
     "@types/mdast": "^4.0.0"
   },
   "devDependencies": {

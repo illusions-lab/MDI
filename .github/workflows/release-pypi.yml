@@ -7,11 +7,31 @@ on:
       - "illusion-markdown-v*"
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
+  verify-ci:
+    name: Verify complete CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$RELEASE_SHA" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
+
   build-wheels:
     name: Build ${{ matrix.target }} wheel
+    needs: verify-ci
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,6 +64,7 @@ jobs:
 
   build-sdist:
     name: Build source distribution
+    needs: verify-ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -10,8 +10,20 @@ use std::io::{Cursor, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(not(feature = "wasm"))]
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+
+mod docx;
+mod publication_profile;
+pub use publication_profile::{
+    ChromiumPrintPage, ChromiumPrintPageNumbers, ChromiumPrintProfile, Margins, PageNumbers,
+    PageSizeDimensions, ResolvedEpub, ResolvedExportProfile, ResolvedLayout, ResolvedPagination,
+    ResolvedText, ResolvedTypesetting, apply_pdf_profile, apply_pdf_profile_json, page_dimensions,
+    page_size_catalog_json, prepare_chromium_print_profile, prepare_chromium_print_profile_json,
+    prepare_chromium_print_profile_resolved, resolve_export_profile, resolve_export_profile_json,
+};
 
 /// MDI syntax version implemented by this crate.
 pub const MDI_SPEC_VERSION: &str = "2.0";
@@ -1117,17 +1129,20 @@ pub fn render_html_document(document: &Document) -> String {
         }
     }
     if !footnotes.is_empty() {
-        body.push_str("<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\">Footnotes</h2><ol>");
+        body.push_str("<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\" id=\"footnote-label\">Footnotes</h2><ol>");
         for (index, footnote) in footnotes.into_iter().enumerate() {
+            let identifier = footnote
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("{}", index + 1));
             body.push_str("<li id=\"user-content-fn-");
-            body.push_str(&escape_html(
-                footnote
-                    .get("identifier")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or(&format!("{}", index + 1)),
-            ));
+            body.push_str(&escape_html(&identifier));
             body.push_str("\">");
             render_html_children(footnote, &mut body);
+            body.push_str(" <a href=\"#user-content-fnref-");
+            body.push_str(&escape_html(&identifier));
+            body.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a>");
             body.push_str("</li>");
         }
         body.push_str("</ol></section>");
@@ -2027,37 +2042,126 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
     }
 }
 
-fn children(node: &serde_json::Value) -> &[serde_json::Value] {
+pub(crate) fn children(node: &serde_json::Value) -> &[serde_json::Value] {
     node.get("children")
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
 
+fn document_frontmatter_field<'a>(document: &'a Document, key: &str) -> Option<&'a str> {
+    document
+        .frontmatter
+        .as_ref()
+        .and_then(|frontmatter| frontmatter.entries.iter().find(|entry| entry.key == key))
+        .and_then(|entry| entry.value.as_str())
+}
+
+fn default_profile_for_document(document: &Document) -> Result<ResolvedExportProfile, String> {
+    resolve_export_profile(
+        &serde_json::Map::new(),
+        document_frontmatter_field(document, "writing-mode"),
+    )
+}
+
+fn resolved_profile_for_document(
+    document: &Document,
+    profile_json: &str,
+    require_layout: bool,
+) -> Result<ResolvedExportProfile, String> {
+    let value: serde_json::Value = serde_json::from_str(profile_json)
+        .map_err(|_| "Export profile must be valid JSON".to_owned())?;
+    let profile = value
+        .as_object()
+        .ok_or_else(|| "Export profile must be a JSON object".to_owned())?;
+    if require_layout
+        && profile
+            .get("layout")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|layout| layout.get("system"))
+            .is_none()
+    {
+        return Err(
+            "Configured exports require layout.system: japanese-publisher or word".to_owned(),
+        );
+    }
+    resolve_export_profile(
+        profile,
+        document_frontmatter_field(document, "writing-mode"),
+    )
+}
+
+fn css_value(value: &str) -> String {
+    let safe = value
+        .chars()
+        .filter(|character| !matches!(character, '{' | '}' | '<' | '>' | ';'))
+        .collect::<String>();
+    if safe.trim().is_empty() {
+        "serif".to_owned()
+    } else {
+        safe
+    }
+}
+
 /// The base stylesheet is intentionally shipped by the core alongside the
 /// semantic HTML. Hosts may add presentation CSS, but not reinterpret nodes.
 pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
 
+#[derive(Debug, Clone)]
+pub struct EpubCover {
+    pub data: Vec<u8>,
+    pub media_type: String,
+}
+
 /// Build a reflowable EPUB 3 archive entirely from Rust's document IR.
-/// Metadata comes from front matter; richer cover and print-profile options
-/// are intentionally layered on this deterministic core API later.
 pub fn render_epub(source: &str) -> Result<Vec<u8>, String> {
     render_epub_document(&parse_document(source))
 }
 
+/// Build an EPUB with the canonical configured-export profile.
+pub fn render_epub_with_profile(
+    source: &str,
+    profile_json: &str,
+    cover: Option<&EpubCover>,
+) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    let profile = resolved_profile_for_document(&document, profile_json, false)?;
+    render_epub_document_with_profile(&document, &profile, cover)
+}
+
 /// Build a reflowable EPUB 3 archive from a parsed document.
 pub fn render_epub_document(document: &Document) -> Result<Vec<u8>, String> {
+    let profile = default_profile_for_document(document)?;
+    render_epub_document_with_profile(document, &profile, None)
+}
+
+pub fn render_epub_document_with_profile(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+    cover: Option<&EpubCover>,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    write_epub_document(document, &mut zip)?;
+    write_epub_document_with_profile(document, &mut zip, profile, cover)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn write_epub_document<W: Write + Seek>(
     document: &Document,
     zip: &mut ZipWriter<W>,
+) -> Result<(), String> {
+    let profile = default_profile_for_document(document)?;
+    write_epub_document_with_profile(document, zip, &profile, None)
+}
+
+fn write_epub_document_with_profile<W: Write + Seek>(
+    document: &Document,
+    zip: &mut ZipWriter<W>,
+    profile: &ResolvedExportProfile,
+    cover: Option<&EpubCover>,
 ) -> Result<(), String> {
     let field = |key: &str| {
         document
@@ -2066,12 +2170,27 @@ fn write_epub_document<W: Write + Seek>(
             .and_then(|frontmatter| frontmatter.entries.iter().find(|entry| entry.key == key))
             .and_then(|entry| entry.value.as_str())
     };
-    let title = field("title").unwrap_or("Untitled");
-    let author = field("author");
-    let language = field("lang").unwrap_or("ja");
-    let identifier = field("identifier").unwrap_or("urn:mdi:document");
-    let vertical = matches!(field("writing-mode"), Some("vertical"));
-    let chapters = epub_chapters(document);
+    let metadata = |key: &str| {
+        profile
+            .metadata
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+    };
+    let title = metadata("title")
+        .or_else(|| field("title"))
+        .unwrap_or("Untitled");
+    let author = metadata("author").or_else(|| field("author"));
+    let publisher = metadata("publisher").or_else(|| field("publisher"));
+    let date = metadata("date").or_else(|| field("date"));
+    let language = metadata("language")
+        .or_else(|| field("lang"))
+        .unwrap_or("ja");
+    let identifier = metadata("identifier")
+        .or_else(|| field("identifier"))
+        .unwrap_or("urn:mdi:document");
+    let vertical = profile.typesetting.writing_mode == "vertical";
+    let modified = epub_modified_timestamp()?;
+    let chapters = epub_chapters(document, &profile.epub.chapter_split_level);
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     epub_file(zip, "mimetype", "application/epub+zip", stored)?;
     let compressed = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -2086,11 +2205,20 @@ fn write_epub_document<W: Write + Seek>(
     } else {
         ""
     };
+    let line_spacing = profile.typesetting.line_spacing.unwrap_or(1.8);
+    let fullwidth_indent = if profile.typesetting.fullwidth_space_indent {
+        "--mdi-fullwidth-space-indent:1;"
+    } else {
+        ""
+    };
     epub_file(
         zip,
         "OEBPS/style.css",
         &format!(
-            "body{{font-family:serif;{writing}line-height:1.8;margin:1em}}p{{text-indent:1em;margin:.3em 0}}{MDI_STYLESHEET}"
+            "body{{font-family:{};font-size:{}pt;{writing}line-height:{line_spacing};margin:1em}}p{{{fullwidth_indent}text-indent:{}em;margin:.3em 0}}{MDI_STYLESHEET}",
+            css_value(&profile.typesetting.font_family),
+            profile.typesetting.font_size,
+            profile.typesetting.text_indent_em,
         ),
         compressed,
     )?;
@@ -2115,6 +2243,32 @@ fn write_epub_document<W: Write + Seek>(
         ),
         compressed,
     )?;
+    let cover_extension = cover
+        .map(|cover| match cover.media_type.as_str() {
+            "image/png" => Ok("png"),
+            "image/jpeg" => Ok("jpg"),
+            _ => Err("EPUB cover must be image/png or image/jpeg".to_owned()),
+        })
+        .transpose()?;
+    if let (Some(cover), Some(extension)) = (cover, cover_extension) {
+        zip.start_file(format!("OEBPS/cover.{extension}"), compressed)
+            .map_err(|error| error.to_string())?;
+        zip.write_all(&cover.data)
+            .map_err(|error| error.to_string())?;
+        epub_file(
+            zip,
+            "OEBPS/cover.xhtml",
+            &epub_xhtml(
+                title,
+                language,
+                &format!(
+                    "<img src=\"cover.{extension}\" alt=\"{}\"/>",
+                    escape_html(title)
+                ),
+            ),
+            compressed,
+        )?;
+    }
     for (index, chapter) in chapters.iter().enumerate() {
         epub_file(
             zip,
@@ -2131,14 +2285,35 @@ fn write_epub_document<W: Write + Seek>(
             compressed,
         )?;
     }
-    let manifest = format!("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{}", chapters.iter().enumerate().map(|(index, _)| format!("<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>", index + 1, index + 1)).collect::<String>());
-    let spine = chapters
+    let cover_manifest = match (cover, cover_extension) {
+        (Some(cover), Some(extension)) => format!(
+            "<item id=\"cover-image\" href=\"cover.{extension}\" media-type=\"{}\" properties=\"cover-image\"/><item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>",
+            cover.media_type
+        ),
+        _ => String::new(),
+    };
+    let manifest = format!("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{cover_manifest}{}", chapters.iter().enumerate().map(|(index, _)| format!("<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>", index + 1, index + 1)).collect::<String>());
+    let chapter_spine = chapters
         .iter()
         .enumerate()
         .map(|(index, _)| format!("<itemref idref=\"chapter-{}\"/>", index + 1))
         .collect::<String>();
+    let spine = format!(
+        "{}{chapter_spine}",
+        if cover.is_some() {
+            "<itemref idref=\"cover\"/>"
+        } else {
+            ""
+        }
+    );
     let creator = author
         .map(|author| format!("<dc:creator>{}</dc:creator>", escape_html(author)))
+        .unwrap_or_default();
+    let publisher = publisher
+        .map(|publisher| format!("<dc:publisher>{}</dc:publisher>", escape_html(publisher)))
+        .unwrap_or_default();
+    let date = date
+        .map(|date| format!("<dc:date>{}</dc:date>", escape_html(date)))
         .unwrap_or_default();
     let progression = if vertical {
         " page-progression-direction=\"rtl\""
@@ -2149,7 +2324,7 @@ fn write_epub_document<W: Write + Seek>(
         zip,
         "OEBPS/package.opf",
         &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"book-id\">{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language>{creator}</metadata><manifest>{manifest}</manifest><spine{progression}>{spine}</spine></package>",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"book-id\">{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language>{creator}{publisher}{date}<meta property=\"dcterms:modified\">{modified}</meta></metadata><manifest>{manifest}</manifest><spine{progression}>{spine}</spine></package>",
             escape_html(identifier),
             escape_html(title),
             escape_html(language)
@@ -2166,87 +2341,38 @@ pub fn render_docx(source: &str) -> Result<Vec<u8>, String> {
     render_docx_document(&parse_document(source))
 }
 
+/// Build a configured DOCX through the canonical Rust OOXML writer.
+pub fn render_docx_with_profile(source: &str, profile_json: &str) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    let profile = resolved_profile_for_document(&document, profile_json, false)?;
+    render_docx_document_with_profile(&document, &profile)
+}
+
 /// Build a baseline DOCX archive from a parsed document.
 pub fn render_docx_document(document: &Document) -> Result<Vec<u8>, String> {
+    let profile = default_profile_for_document(document)?;
+    render_docx_document_with_profile(document, &profile)
+}
+
+pub fn render_docx_document_with_profile(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    write_docx_document(document, &mut zip)?;
+    docx::write(document, profile, &mut zip)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn write_docx_document<W: Write + Seek>(
     document: &Document,
     zip: &mut ZipWriter<W>,
 ) -> Result<(), String> {
-    let title = document
-        .frontmatter
-        .as_ref()
-        .and_then(|frontmatter| {
-            frontmatter
-                .entries
-                .iter()
-                .find(|entry| entry.key == "title")
-        })
-        .and_then(|entry| entry.value.as_str())
-        .unwrap_or("Untitled");
-    let mut content = String::new();
-    for node in &document.children {
-        if node.get("type").and_then(serde_json::Value::as_str) == Some("pagebreak") {
-            content.push('\x0C');
-            content.push('\n');
-        } else {
-            render_text_node(node, &mut content);
-            if !content.ends_with('\n') {
-                content.push('\n');
-            }
-        }
-    }
-    let paragraphs = content
-        .split('\n')
-        .map(|line| {
-            if line.contains('\x0C') {
-                "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>".to_owned()
-            } else {
-                format!(
-                    "<w:p><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>",
-                    escape_xml(line)
-                )
-            }
-        })
-        .collect::<String>();
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    docx_file(
-        zip,
-        "[Content_Types].xml",
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/></Types>",
-        options,
-    )?;
-    docx_file(
-        zip,
-        "_rels/.rels",
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/></Relationships>",
-        options,
-    )?;
-    docx_file(
-        zip,
-        "docProps/core.xml",
-        &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>{}</dc:title></cp:coreProperties>",
-            escape_xml(title)
-        ),
-        options,
-    )?;
-    docx_file(
-        zip,
-        "word/document.xml",
-        &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>{paragraphs}<w:sectPr/></w:body></w:document>"
-        ),
-        options,
-    )?;
-    Ok(())
+    let profile = default_profile_for_document(document)?;
+    docx::write(document, &profile, zip)
 }
 
 /// Native configuration for Chromium PDF layout. WebAssembly deliberately
@@ -2316,18 +2442,7 @@ pub fn find_chromium() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn docx_file<W: Write + Seek>(
-    zip: &mut ZipWriter<W>,
-    path: &str,
-    content: &str,
-    options: SimpleFileOptions,
-) -> Result<(), String> {
-    zip.start_file(path, options)
-        .map_err(|error| error.to_string())?;
-    zip.write_all(content.as_bytes())
-        .map_err(|error| error.to_string())
-}
-fn escape_xml(value: &str) -> String {
+pub(crate) fn escape_xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -2339,27 +2454,53 @@ fn escape_xml(value: &str) -> String {
 struct EpubChapter {
     title: String,
     html: String,
+    footnote_ids: Vec<String>,
 }
-fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
+fn epub_chapters(document: &Document, split_level: &str) -> Vec<EpubChapter> {
+    let split_depth = match split_level {
+        "h1" => Some(1),
+        "h2" => Some(2),
+        "h3" => Some(3),
+        "none" => None,
+        _ => Some(1),
+    };
     let mut chapters = vec![EpubChapter {
         title: String::new(),
         html: String::new(),
+        footnote_ids: Vec::new(),
     }];
+    let footnote_definitions = document
+        .children
+        .iter()
+        .filter_map(|node| {
+            if node.get("type").and_then(serde_json::Value::as_str) != Some("footnoteDefinition") {
+                return None;
+            }
+            node.get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .map(|identifier| (identifier, node))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     for node in &document.children {
+        if node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteDefinition") {
+            continue;
+        }
         if node.get("type").and_then(serde_json::Value::as_str) == Some("pagebreak") {
-            if !chapters
-                .last()
-                .is_some_and(|chapter| chapter.html.is_empty())
+            if split_depth.is_some()
+                && !chapters
+                    .last()
+                    .is_some_and(|chapter| chapter.html.is_empty())
             {
                 chapters.push(EpubChapter {
                     title: String::new(),
                     html: String::new(),
+                    footnote_ids: Vec::new(),
                 });
             }
             continue;
         }
         if node.get("type").and_then(serde_json::Value::as_str) == Some("heading")
-            && node.get("depth").and_then(serde_json::Value::as_u64) == Some(1)
+            && node.get("depth").and_then(serde_json::Value::as_u64) == split_depth
             && !chapters
                 .last()
                 .is_some_and(|chapter| chapter.html.is_empty())
@@ -2367,6 +2508,7 @@ fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
             chapters.push(EpubChapter {
                 title: String::new(),
                 html: String::new(),
+                footnote_ids: Vec::new(),
             });
         }
         let chapter = chapters.last_mut().expect("one chapter exists");
@@ -2375,19 +2517,55 @@ fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
         {
             chapter.title = plain_node_text(node);
         }
+        collect_footnote_references(node, &mut chapter.footnote_ids);
         render_html_node(node, &mut chapter.html);
     }
-    let chapters: Vec<_> = chapters
+    let mut chapters: Vec<_> = chapters
         .into_iter()
         .filter(|chapter| !chapter.html.is_empty())
         .collect();
+    for chapter in &mut chapters {
+        chapter.footnote_ids.sort();
+        chapter.footnote_ids.dedup();
+        if chapter.footnote_ids.is_empty() {
+            continue;
+        }
+        chapter.html.push_str(
+            "<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\" id=\"footnote-label\">Footnotes</h2><ol>",
+        );
+        for identifier in &chapter.footnote_ids {
+            let Some(definition) = footnote_definitions.get(identifier.as_str()) else {
+                continue;
+            };
+            chapter.html.push_str("<li id=\"user-content-fn-");
+            chapter.html.push_str(&escape_html(identifier));
+            chapter.html.push_str("\">");
+            render_html_children(definition, &mut chapter.html);
+            chapter.html.push_str(" <a href=\"#user-content-fnref-");
+            chapter.html.push_str(&escape_html(identifier));
+            chapter.html.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a></li>");
+        }
+        chapter.html.push_str("</ol></section>");
+    }
     if chapters.is_empty() {
         vec![EpubChapter {
             title: String::new(),
             html: String::new(),
+            footnote_ids: Vec::new(),
         }]
     } else {
         chapters
+    }
+}
+
+fn collect_footnote_references(node: &serde_json::Value, identifiers: &mut Vec<String>) {
+    if node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteReference")
+        && let Some(identifier) = node.get("identifier").and_then(serde_json::Value::as_str)
+    {
+        identifiers.push(identifier.to_owned());
+    }
+    for child in children(node) {
+        collect_footnote_references(child, identifiers);
     }
 }
 fn plain_node_text(node: &serde_json::Value) -> String {
@@ -2403,6 +2581,26 @@ fn epub_xhtml(title: &str, language: &str, body: &str) -> String {
         escape_html(title),
         body.replace("<br>", "<br/>").replace("<hr>", "<hr/>")
     )
+}
+
+#[cfg(not(feature = "wasm"))]
+fn epub_modified_timestamp() -> Result<String, String> {
+    OffsetDateTime::now_utc()
+        .replace_nanosecond(0)
+        .map_err(|error| error.to_string())?
+        .format(&Rfc3339)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(feature = "wasm")]
+fn epub_modified_timestamp() -> Result<String, String> {
+    let value = js_sys::Date::new_0()
+        .to_iso_string()
+        .as_string()
+        .ok_or_else(|| "JavaScript Date did not return an ISO timestamp".to_owned())?;
+    Ok(value
+        .find('.')
+        .map_or(value.clone(), |fraction| format!("{}Z", &value[..fraction])))
 }
 fn epub_file<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
@@ -2488,7 +2686,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
         }
         "listItem" => wrapped(out, "li", children),
         "thematicBreak" => out.push_str("<hr>"),
-        "break" => out.push_str("<br>"),
+        "break" => out.push_str("<br class=\"mdi-break\"/>"),
         "inlineCode" => {
             out.push_str("<code>");
             out.push_str(&escape_html(
@@ -2549,13 +2747,21 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
         "tableRow" => wrapped(out, "tr", children),
         "tableCell" => wrapped(out, "td", children),
         "footnoteReference" => {
+            let identifier = node
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
             let label = node
                 .get("label")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default();
-            out.push_str("<sup class=\"footnote-ref\">");
+            out.push_str("<sup class=\"footnote-ref\"><a href=\"#user-content-fn-");
+            out.push_str(&escape_html(identifier));
+            out.push_str("\" id=\"user-content-fnref-");
+            out.push_str(&escape_html(identifier));
+            out.push_str("\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">");
             out.push_str(&escape_html(label));
-            out.push_str("</sup>");
+            out.push_str("</a></sup>");
         }
         "footnoteDefinition" | "definition" => {}
         "html" => out.push_str(&escape_html(
@@ -3162,9 +3368,11 @@ fn classify_block_macro(source: &str) -> BlockMacroClass {
 #[cfg(feature = "wasm")]
 mod wasm {
     use super::{
-        BlockMacroClass, PagebreakVariant, RubyReading, TextFormat, classify_block_macro,
-        parse_json, render_docx, render_epub, render_html, render_text, render_text_format,
-        serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
+        BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, TextFormat,
+        apply_pdf_profile_json, classify_block_macro, page_size_catalog_json, parse_json,
+        prepare_chromium_print_profile_json, render_docx, render_docx_with_profile, render_epub,
+        render_epub_with_profile, render_html, render_text, render_text_format,
+        resolve_export_profile_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
 
@@ -3180,6 +3388,39 @@ mod wasm {
     #[wasm_bindgen(js_name = renderHtml)]
     pub fn wasm_render_html(source: &str) -> String {
         render_html(source)
+    }
+
+    /// Validate and resolve the language-neutral configured-export profile.
+    #[wasm_bindgen(js_name = resolveExportProfileJson)]
+    pub fn wasm_resolve_export_profile_json(
+        profile_json: &str,
+        source_writing_mode: Option<String>,
+        require_layout: bool,
+    ) -> Result<String, JsValue> {
+        resolve_export_profile_json(profile_json, source_writing_mode.as_deref(), require_layout)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
+    #[wasm_bindgen(js_name = pageSizeCatalogJson)]
+    pub fn wasm_page_size_catalog_json() -> Result<String, JsValue> {
+        page_size_catalog_json().map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Apply canonical Rust-owned print CSS to HTML using a resolved profile.
+    #[wasm_bindgen(js_name = applyPdfProfileJson)]
+    pub fn wasm_apply_pdf_profile_json(html: &str, profile_json: &str) -> Result<String, JsValue> {
+        apply_pdf_profile_json(html, profile_json).map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Resolve and prepare all browser-independent Chromium print data.
+    #[wasm_bindgen(js_name = prepareChromiumPrintProfileJson)]
+    pub fn wasm_prepare_chromium_print_profile_json(
+        html: &str,
+        profile_json: &str,
+        source_writing_mode: Option<String>,
+    ) -> Result<String, JsValue> {
+        prepare_chromium_print_profile_json(html, profile_json, source_writing_mode.as_deref())
+            .map_err(|message| JsValue::from_str(&message))
     }
 
     /// Normalize source through the Rust parser and canonical serializer.
@@ -3214,10 +3455,38 @@ mod wasm {
             .map_err(|message| JsValue::from_str(&message))
     }
 
+    /// Build a configured EPUB through the same Rust path used by native bindings.
+    #[wasm_bindgen(js_name = renderEpubWithProfile)]
+    pub fn wasm_render_epub_with_profile(
+        source: &str,
+        profile_json: &str,
+        cover_data: &[u8],
+        cover_media_type: Option<String>,
+    ) -> Result<Box<[u8]>, JsValue> {
+        let cover = cover_media_type.map(|media_type| EpubCover {
+            data: cover_data.to_vec(),
+            media_type,
+        });
+        render_epub_with_profile(source, profile_json, cover.as_ref())
+            .map(Vec::into_boxed_slice)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
     /// Build a baseline DOCX archive entirely in Rust.
     #[wasm_bindgen(js_name = renderDocx)]
     pub fn wasm_render_docx(source: &str) -> Result<Box<[u8]>, JsValue> {
         render_docx(source)
+            .map(Vec::into_boxed_slice)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Build a configured DOCX through the canonical Rust OOXML writer.
+    #[wasm_bindgen(js_name = renderDocxWithProfile)]
+    pub fn wasm_render_docx_with_profile(
+        source: &str,
+        profile_json: &str,
+    ) -> Result<Box<[u8]>, JsValue> {
+        render_docx_with_profile(source, profile_json)
             .map(Vec::into_boxed_slice)
             .map_err(|message| JsValue::from_str(&message))
     }
@@ -3282,7 +3551,7 @@ mod wasm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Error, ErrorKind, Read, SeekFrom};
+    use std::io::{Error, Read, SeekFrom};
     use zip::ZipArchive;
 
     struct FailAfterWrites {
@@ -3293,10 +3562,7 @@ mod tests {
     impl Write for FailAfterWrites {
         fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
             if self.remaining == 0 {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "injected archive write failure",
-                ));
+                return Err(Error::other("injected archive write failure"));
             }
             self.remaining -= 1;
             self.inner.write(buffer)
@@ -3767,7 +4033,11 @@ mod tests {
             ("default boten", "[[em:傍点]]", "class=\"mdi-em\""),
             ("custom boten", "[[em:※:任意]]", "--mdi-em:&quot;※&quot;"),
             ("no-break", "[[no-break:改行禁止]]", "class=\"mdi-nobr\""),
-            ("explicit line break", "前[[br]]次", "<br>"),
+            (
+                "explicit line break",
+                "前[[br]]次",
+                "<br class=\"mdi-break\"/>",
+            ),
             ("blank backslash", "\\", "<p class=\"mdi-blank\"></p>"),
             ("blank br", "<br>", "<p class=\"mdi-blank\"></p>"),
             ("blank br slash", "<br />", "<p class=\"mdi-blank\"></p>"),
@@ -3882,7 +4152,7 @@ mod tests {
             "<img src=\"image.png\" alt=\"画像\">",
             "<del>削除</del>",
             "<code>code</code>",
-            "<br>",
+            "<br class=\"mdi-break\"/>",
             "mdi-warichu",
             "mdi-kern",
             "--mdi-em:&quot;●&quot;",
@@ -3947,8 +4217,59 @@ mod tests {
             .read_to_string(&mut opf)
             .unwrap();
         assert!(opf.contains("<dc:title>Test</dc:title>"));
+        assert!(opf.contains("<meta property=\"dcterms:modified\">"));
         assert!(opf.contains("page-progression-direction=\"rtl\""));
         assert!(opf.contains("chapter-2.xhtml"));
+    }
+
+    #[test]
+    fn packages_configured_epub_metadata_cover_chapters_and_local_footnotes() {
+        let cover = EpubCover {
+            data: vec![0x89, 0x50, 0x4e, 0x47],
+            media_type: "image/png".to_owned(),
+        };
+        let bytes = render_epub_with_profile(
+            "# One\n\nnote[^n]\n\n[[pagebreak]]\n\n## Two\n\nmore\n\n[^n]: text",
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "metadata":{"title":"Book","author":"Writer","publisher":"Press","identifier":"urn:test","language":"en","date":"2026-07-23"},
+                "typesetting":{"writingMode":"vertical","fontFamily":"Noto Serif JP","fontSize":11,"lineSpacing":1.5,"textIndentEm":2,"fullwidthSpaceIndent":true},
+                "pagination":{"gridMode":"typographic"},
+                "epub":{"chapterSplitLevel":"h2"}
+            }"#,
+            Some(&cover),
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut opf = String::new();
+        zip.by_name("OEBPS/package.opf")
+            .unwrap()
+            .read_to_string(&mut opf)
+            .unwrap();
+        assert!(opf.contains("<dc:title>Book</dc:title>"));
+        assert!(opf.contains("<dc:creator>Writer</dc:creator>"));
+        assert!(opf.contains("<dc:publisher>Press</dc:publisher>"));
+        assert!(opf.contains("<dc:date>2026-07-23</dc:date>"));
+        assert!(opf.contains("cover-image"));
+        assert!(opf.contains("page-progression-direction=\"rtl\""));
+        let mut css = String::new();
+        zip.by_name("OEBPS/style.css")
+            .unwrap()
+            .read_to_string(&mut css)
+            .unwrap();
+        assert!(css.contains("font-family:Noto Serif JP"));
+        assert!(css.contains("font-size:11pt"));
+        assert!(css.contains("line-height:1.5"));
+        let mut chapter = String::new();
+        zip.by_name("OEBPS/chapter-1.xhtml")
+            .unwrap()
+            .read_to_string(&mut chapter)
+            .unwrap();
+        assert!(chapter.contains("href=\"#user-content-fn-n\""));
+        assert!(chapter.contains("id=\"user-content-fn-n\""));
+        assert!(chapter.contains("href=\"#user-content-fnref-n\""));
+        assert!(zip.by_name("OEBPS/chapter-2.xhtml").is_ok());
+        assert!(zip.by_name("OEBPS/cover.png").is_ok());
     }
 
     #[test]
@@ -3968,6 +4289,84 @@ mod tests {
             .read_to_string(&mut core)
             .unwrap();
         assert!(core.contains("<dc:title>Test</dc:title>"));
+    }
+
+    #[test]
+    fn packages_configured_docx_geometry_typography_content_and_book_settings() {
+        let bytes = render_docx_with_profile(
+            "# {第一章|だいいっしょう}\n\n本文[^n]\n\n- 一\n- 二\n\n|項目|値|\n|-|-|\n|契約|有効|\n\n[link](https://example.com) ^12^ [[em:圏点]]\n\n[^n]: 脚注",
+            r#"{
+                "layout":{"system":"japanese-publisher","marginMode":"mirror","bindingSide":"right","gutter":3},
+                "metadata":{"title":"契約","author":"MDI"},
+                "typesetting":{"writingMode":"vertical","fontFamily":"Yu Mincho","fontSize":10.5,"fullwidthSpaceIndent":true},
+                "pagination":{"pageSize":"A4","landscape":true,"charactersPerLine":40,"linesPerPage":30,"gridMode":"strict","pageNumbers":{"enabled":true,"format":"fraction","position":"top-right"}}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(document.contains("<w:ruby>"));
+        assert!(document.contains("<w:lid w:val=\"ja-JP\"/>"));
+        assert!(document.contains("<w:eastAsianLayout"));
+        assert!(document.contains("<w:em w:val=\"dot\"/>"));
+        assert!(document.contains("<w:tbl>"));
+        assert!(document.contains("<w:footnoteReference w:id=\"1\"/>"));
+        assert!(document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:docGrid w:type=\"linesAndChars\""));
+        assert!(document.contains("<w:pgSz w:w=\"16838\" w:h=\"11906\"/>"));
+        assert!(document.contains("<w:hyperlink r:id=\"rId1\">"));
+
+        let mut settings = String::new();
+        zip.by_name("word/settings.xml")
+            .unwrap()
+            .read_to_string(&mut settings)
+            .unwrap();
+        assert!(settings.contains("<w:mirrorMargins/>"));
+        assert!(!settings.contains("rtlGutter"));
+
+        let mut header = String::new();
+        zip.by_name("word/header1.xml")
+            .unwrap()
+            .read_to_string(&mut header)
+            .unwrap();
+        assert!(header.contains("NUMPAGES"));
+        assert!(header.contains("<w:jc w:val=\"right\"/>"));
+        assert!(zip.by_name("word/footnotes.xml").is_ok());
+    }
+
+    #[test]
+    fn configured_docx_rejects_word_limits_and_uses_typographic_spacing() {
+        let oversized = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"pagination":{"pageSize":"A0"}}"#,
+        )
+        .unwrap_err();
+        assert!(oversized.contains("22-inch maximum"));
+        let long_font = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"typesetting":{"fontFamily":"12345678901234567890123456789012"}}"#,
+        )
+        .unwrap_err();
+        assert!(long_font.contains("at most 31 characters"));
+
+        let bytes = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"typesetting":{"lineSpacing":1.5},"pagination":{"gridMode":"typographic","pageNumbers":{"enabled":false}}}"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(!document.contains("<w:docGrid"));
+        assert!(!document.contains("headerReference"));
+        assert!(!document.contains("footerReference"));
     }
 
     #[test]
@@ -4097,7 +4496,8 @@ mod tests {
             .unwrap()
             .read_to_string(&mut document)
             .unwrap();
-        assert!(document.contains("&lt;unsafe&gt;&amp;"));
+        assert!(document.contains("&lt;unsafe&gt;"));
+        assert!(document.contains("&amp;"));
     }
 
     #[test]

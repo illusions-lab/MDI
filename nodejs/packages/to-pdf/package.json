@@ -32,6 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@illusions-lab/mdi-core": "workspace:*",
     "@illusions-lab/mdi-export-profile": "workspace:*",
     "@illusions-lab/mdi-to-html": "workspace:*",
     "playwright": "^1.48.0",

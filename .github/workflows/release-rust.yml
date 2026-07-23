@@ -1,29 +1,49 @@
 name: Release Rust
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - mdi-core/**
-      - .github/workflows/release-rust.yml
   workflow_dispatch:
 
-# Publishing is deliberately limited to the canonical crate. The JNI crate is
-# an Android implementation detail (`publish = false`), and Swift/Python are
-# not releaseable implementations in this repository.
-concurrency: release-rust-${{ github.ref }}
+# Publishing here is deliberately limited to the canonical crate. The JNI
+# crate is an Android implementation detail (`publish = false`); the other
+# ecosystems have their own release workflows.
+concurrency: release-rust-${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   crates-io:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       id-token: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     defaults:
       run:
         working-directory: mdi-core
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Verify the manual release commit passed the complete CI gate
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$RELEASE_SHA" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
 
       - uses: dtolnay/rust-toolchain@stable
 

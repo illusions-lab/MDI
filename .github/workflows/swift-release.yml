@@ -42,6 +42,21 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Verify the complete CI gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_sha=$(git rev-parse HEAD)
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
@@ -108,6 +123,21 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Verify the complete CI gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_sha=$(git rev-parse HEAD)
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
 
       - name: Validate approved release inputs
         env:

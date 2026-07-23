@@ -224,7 +224,7 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(document).toContain('w:w="8391"');
 		expect(document).toContain('w:h="11906"');
 		expect(document).toContain('w:top="567" w:right="737" w:bottom="624" w:left="680"');
-		expect(document).toContain("<w:ruby ");
+  expect(document).toContain("<w:ruby>");
 		expect(document).toContain("<w:eastAsianLayout");
 		expect(header).toContain("PAGE");
 		expect(header).toContain("NUMPAGES");

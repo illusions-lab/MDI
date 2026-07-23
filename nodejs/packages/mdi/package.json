@@ -34,7 +34,6 @@
   "dependencies": {
     "@illusions-lab/mdi-core": "workspace:*",
     "@illusions-lab/mdi-export-profile": "workspace:*",
-    "@illusions-lab/mdi-to-docx": "workspace:*",
     "@illusions-lab/mdi-to-epub": "workspace:*",
     "@types/mdast": "^4.0.0",
     "yaml": "^2.0.0"

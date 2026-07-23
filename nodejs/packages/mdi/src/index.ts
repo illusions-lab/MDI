@@ -2,7 +2,9 @@ import {
 	parseMdiSyntaxJson,
 	renderHtml as renderHtmlFromRust,
 	renderEpub as renderEpubFromRust,
+	renderEpubWithProfile as renderEpubWithProfileFromRust,
 	renderDocx as renderDocxFromRust,
+	renderDocxWithProfile as renderDocxWithProfileFromRust,
 	renderText as renderTextFromRust,
 	renderTextFormat as renderTextFormatFromRust,
 	serializeMdi as serializeMdiFromRust,
@@ -129,6 +131,21 @@ export interface MdiDocument {
 	span: MdiSourceSpan;
 	frontmatter?: MdiFrontmatter;
 	children: MdiNode[];
+}
+
+/** Resolved front matter attached to mdast publication-adapter roots. */
+export interface MdiPublicationFrontmatter {
+	mdi: string;
+	title?: string;
+	author?: string;
+	lang: string;
+	date?: string;
+	writingMode: "horizontal" | "vertical";
+	pageProgression: "ltr" | "rtl";
+}
+
+export interface MdiPublicationRoot extends Root {
+	data?: Root["data"] & { frontmatter?: MdiPublicationFrontmatter };
 }
 
 /** A source-backed heading available to host navigation and chapter UIs. */
@@ -307,10 +324,15 @@ export async function renderEpubWithProfile(
 ): Promise<Uint8Array> {
 	assertSource(source);
 	assertEpubOptions(options);
-	const { mdiToEpub } = await import("@illusions-lab/mdi-to-epub");
 	const normalized = normalizeEpubOptions(options);
 	requireLayoutSystem(normalized.profile!);
-	return mdiToEpub(toPublicationMdast(parse(source).document), normalized);
+	const cover = normalized.cover;
+	return renderEpubWithProfileFromRust(
+		source,
+		JSON.stringify(normalized.profile),
+		cover?.data ?? new Uint8Array(),
+		cover?.mediaType,
+	);
 }
 
 /**
@@ -323,34 +345,9 @@ export async function renderDocxWithProfile(
 ): Promise<Uint8Array> {
 	assertSource(source);
 	assertPlainObject(profile, "profile");
-	prepareNodeDocxImport();
-	const { mdiToDocx } = await import("@illusions-lab/mdi-to-docx");
 	const normalized = normalizeDocxProfile(profile);
 	requireLayoutSystem(normalized);
-	return mdiToDocx(toPublicationMdast(parse(source).document), normalized);
-}
-
-/**
- * `docx` probes `globalThis.localStorage` while loading its deprecation shim.
- * Node 26 warns when that experimental getter is read without a persistence
- * file.  Give only that Node-only import a harmless, non-persistent value;
- * browser and Electron storage are left untouched.
- */
-function prepareNodeDocxImport(): void {
-	const nodeProcess = (globalThis as typeof globalThis & {
-		process?: { release?: { name?: string }; execArgv?: string[] };
-	}).process;
-	if (
-		nodeProcess?.release?.name === "node" &&
-		!nodeProcess.execArgv?.some((argument) => argument.startsWith("--localstorage-file="))
-	) {
-		const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-		if (descriptor?.configurable && descriptor.get)
-			Object.defineProperty(globalThis, "localStorage", {
-				value: undefined,
-				configurable: true,
-			});
-	}
+	return renderDocxWithProfileFromRust(source, JSON.stringify(normalized));
 }
 
 /**
@@ -362,9 +359,9 @@ function prepareNodeDocxImport(): void {
  * Convert a Rust-owned MDI document IR into mdast for publication adapters.
  * This performs no parsing and preserves the adapter node conventions.
  */
-export function toPublicationMdast(document: MdiDocument): Root {
+export function toPublicationMdast(document: MdiDocument): MdiPublicationRoot {
 	const children = document.children.map(toPublicationMdastNode) as unknown as Root["children"];
-	const tree = { type: "root", children } as Root;
+	const tree = { type: "root", children } as MdiPublicationRoot;
 	if (document.frontmatter) {
 		children.unshift({ type: "yaml", value: document.frontmatter.raw } as Root["children"][number]);
 		const frontmatter = publicationFrontmatter(document.frontmatter.raw);
@@ -407,7 +404,7 @@ function toPublicationMdastNode(node: MdiNode): Record<string, unknown> {
 	}
 }
 
-function publicationFrontmatter(raw: string): Record<string, unknown> {
+function publicationFrontmatter(raw: string): MdiPublicationFrontmatter {
 	let value: unknown;
 	try { value = parseYaml(raw); } catch { value = undefined; }
 	const source = isRecord(value) ? value : {};

@@ -7,7 +7,7 @@ on:
 
 jobs:
   nodejs:
-    name: Node.js
+    name: Node.js unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -164,3 +164,59 @@ jobs:
           flags: python
           name: python
           fail_ci_if_error: true
+
+  android:
+    name: Android
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  publication-contracts:
+    name: Publication contracts
+    needs: [nodejs, rust-native, swift, python, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: jetli/wasm-pack-action@v0.4.0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @illusions-lab/mdi-to-pdf exec playwright install --with-deps chromium
+
+      - name: Install LibreOffice DOCX consumer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libreoffice-writer
+
+      - name: Install the official W3C EPUBCheck validator
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          echo "EPUBCHECK_JAR=$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar" >> "$GITHUB_ENV"
+
+      - run: pnpm build
+      - run: pnpm test:contracts

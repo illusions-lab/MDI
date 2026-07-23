@@ -1,6 +1,6 @@
 [package]
 name = "mdi-core"
-version = "2.0.3"
+version = "2.0.4"
 description = "Language-neutral parser for MDI 2.0 syntax"
 edition = "2024"
 rust-version = "1.85"
@@ -19,6 +19,7 @@ markdown = { version = "1.0.0", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+time = { version = "=0.3.41", features = ["formatting"] }
 unicode-segmentation = "1.12.0"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 wasm-bindgen = { version = "0.2", optional = true }

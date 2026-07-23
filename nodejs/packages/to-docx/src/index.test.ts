@@ -21,7 +21,7 @@ describe("mdiToDocx", () =>
     );
     const document = await zip.file("word/document.xml")!.async("string");
     expect(document).toContain("<w:document");
-    expect(document).toContain("<w:ruby ");
+    expect(document).toContain("<w:ruby>");
     expect(document).toContain("<w:eastAsianLayout");
     expect(document).not.toContain("<undefined>");
     expect(document).not.toContain("</undefined>");
@@ -47,7 +47,7 @@ describe("DOCX heading styles", () => {
     }
     expect(styles).toContain('w:rFonts w:ascii="Noto Serif JP"');
     expect(styles).toContain('w:styleId="MdiQuote"');
-    expect(styles).toContain('w:styleId="MdiList"');
+    expect(styles).toContain('w:styleId="ListParagraph"');
     expect(styles).toContain('w:styleId="MdiCode"');
     expect(styles).toContain('w:styleId="MdiThematicBreak"');
   });
@@ -93,7 +93,7 @@ describe("DOCX print defaults", () => {
     expect(document).toContain('w:w="16838"'); // A4 landscape width in twips
     expect(document).toContain('w:h="11906"'); // A4 landscape height in twips
     expect(document).toContain('w:top="1753" w:right="1587" w:bottom="1753" w:left="1587"');
-    expect(document).toContain("<w:ruby ");
+    expect(document).toContain("<w:ruby>");
     expect(document).toContain("<w:eastAsianLayout");
     expect(document).toContain('<w:footnoteReference w:id="1"/>');
     expect(footnotes).toContain("縦書きの脚注");
@@ -108,17 +108,22 @@ describe("DOCX print defaults", () => {
     const document = await zip.file("word/document.xml")!.async("string");
     expect(document).toContain('<w:pStyle w:val="Heading1"/>');
     expect(document).toContain(
-      '<w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="11"/><w:hpsRaise w:val="18"/><w:hpsBaseText w:val="21"/>'
+      '<w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="11"/><w:hpsRaise w:val="18"/><w:hpsBaseText w:val="21"/><w:lid w:val="ja-JP"/>'
     );
   });
 
-  it("writes mirror-margin settings for books and flips the gutter for right-bound vertical text", async () => {
+  it("writes schema-ordered mirror-margin settings for books", async () => {
     const vertical = await JSZip.loadAsync(
       await mdiToDocx(parse("---\nwriting-mode: vertical\n---\n本文"))
     );
     const verticalSettings = await vertical.file("word/settings.xml")!.async("string");
     expect(verticalSettings).toContain("<w:mirrorMargins");
-    expect(verticalSettings).toContain("<w:rtlGutter");
+    expect(verticalSettings).not.toContain("<w:rtlGutter");
+    expect(verticalSettings.indexOf("<w:mirrorMargins")).toBeLessThan(
+      verticalSettings.indexOf("<w:evenAndOddHeaders")
+    );
+    expect(verticalSettings).not.toContain("<undefined>");
+    expect(verticalSettings).not.toContain("</undefined>");
 
     const word = await JSZip.loadAsync(
       await mdiToDocx(parse("本文"), { layout: { system: "word" } })
@@ -130,6 +135,25 @@ describe("DOCX print defaults", () => {
 });
 
 describe("mdiToDocx edge cases", () => {
+  it("rejects every invalid adapter input shape", async () => {
+    await expect(mdiToDocx(null as never)).rejects.toThrow(
+      "tree must be an mdast root",
+    );
+    await expect(
+      mdiToDocx({ type: "paragraph", children: [] } as never),
+    ).rejects.toThrow("tree must be an mdast root");
+    await expect(
+      mdiToDocx({ type: "root", children: null } as never),
+    ).rejects.toThrow("tree must be an mdast root");
+
+    const tree = parse("text");
+    for (const profile of [null, 1, []]) {
+      await expect(mdiToDocx(tree, profile as never)).rejects.toThrow(
+        "profile must be an object",
+      );
+    }
+  });
+
 	it("maps landscape, footer dash page numbers, and ordinary first-line indentation", async () => {
 		const zip = await JSZip.loadAsync(
 			await mdiToDocx(parse("indented paragraph"), {
@@ -174,7 +198,9 @@ describe("mdiToDocx edge cases", () => {
 		expect(document).toContain("w:i");
 		expect(document).toContain("w:b");
 		expect(document).toContain("w:type=\"page\"");
-		expect(document).not.toContain("missing");
+  // Re-parsing an edited mdast tree through the canonical Rust source path
+  // keeps an unresolved Markdown footnote reference as readable literal text.
+  expect(document).toContain("[^missing]");
 	});
 
 	it("keeps supported GFM list, table, and inline content", async () => {
@@ -188,7 +214,7 @@ describe("mdiToDocx edge cases", () => {
     const document = await zip.file("word/document.xml")!.async("string");
     expect(document).toContain("done");
     expect(document).toContain("<w:strike/>");
-    expect(document).toContain("<w:ruby ");
+    expect(document).toContain("<w:ruby>");
     expect(document).toContain("dropped");
     expect(document).toContain("w:tbl");
     expect(document).toContain('w:type="dxa"');
@@ -225,7 +251,7 @@ describe("mdiToDocx edge cases", () => {
     expect(document).toContain('w:pStyle w:val="MdiQuote"');
     expect(document).toContain('w:pStyle w:val="MdiCode"');
     expect(document).toContain('w:pStyle w:val="MdiThematicBreak"');
-    expect(document).toContain('w:pStyle w:val="MdiList"');
+    expect(document).toContain('w:pStyle w:val="ListParagraph"');
     expect(document).toContain("const value = 1;");
   });
 
@@ -248,10 +274,10 @@ describe("mdiToDocx edge cases", () => {
     const document = await zip.file("word/document.xml")!.async("string");
     // Word's only native emphasis mark is a dot; MDI's default boten maps to it.
     expect(document).toContain('<w:em w:val="dot"/>');
-    // -0.1em at the default 12pt (24 half-points) is -24 signed twips.
-    expect(document).toContain('<w:spacing w:val="-24"/>');
+    // -0.1em at the canonical 10pt body size is -20 signed twips.
+    expect(document).toContain('<w:spacing w:val="-20"/>');
     // Warichu is deliberately a visible small-text fallback, not fake two-line XML.
-    expect(document).toContain('<w:sz w:val="14"/>');
+    expect(document).toContain('<w:sz w:val="12"/>');
     expect(document).toContain("note");
     // There is no arbitrary-run OOXML no-break feature; its source is still present.
     expect(document).toContain("keep together");
@@ -297,7 +323,7 @@ describe("mdiToDocx edge cases", () => {
     expect(document).toContain('w:top="567"');
     expect(document).toContain('<w:t xml:space="preserve">　　</w:t>');
     expect(document).toContain("paragraph");
-    expect(header).toContain(">PAGE<");
+    expect(header).toContain("> PAGE <");
     expect(header).toContain("NUMPAGES");
   });
 
@@ -311,7 +337,7 @@ describe("mdiToDocx edge cases", () => {
     const styles = await zip.file("word/styles.xml")!.async("string");
     // 12 pt is 24 half-points; 1.5 lines is 360 twentieths of a point.
     expect(styles).toContain('<w:sz w:val="24"/>');
-    expect(styles).toContain('<w:spacing w:after="120" w:line="360"');
+    expect(styles).toContain('<w:spacing w:line="360" w:after="120"');
     // H1 is scaled relative to the explicit body size, rather than a fixed 11 pt.
     expect(styles).toMatch(/w:styleId="Heading1"[\s\S]*?w:sz w:val="43"/);
   });

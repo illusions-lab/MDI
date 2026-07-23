@@ -13,6 +13,7 @@
     "docs:build": "pnpm run build && pnpm --filter docs build",
     "build": "node scripts/verify-publication-layouts.mjs && turbo run build",
     "test": "turbo run test",
+    "test:contracts": "node nodejs/scripts/test-publication-contracts.mjs",
     "test:coverage": "node nodejs/scripts/check-node-coverage.mjs",
     "typecheck": "turbo run typecheck",
     "changeset": "changeset",
@@ -23,8 +24,11 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
     "@vitest/coverage-v8": "^2.1.0",
+    "pdfjs-dist": "^6.1.200",
+    "playwright": "^1.48.0",
     "turbo": "^2.1.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "vnu-jar": "^25.11.1"
   }
 }

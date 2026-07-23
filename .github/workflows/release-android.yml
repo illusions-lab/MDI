@@ -1,27 +1,45 @@
 name: Release Android
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - android/**
-      - mdi-android-jni/**
-      - mdi-core/**
-      - .github/workflows/release-android.yml
   workflow_dispatch:
 
 # The Android package is a Kotlin/JNI distribution. It is published to GitHub
 # Packages with the short-lived GITHUB_TOKEN; it is not a crates.io artifact.
-concurrency: release-android-${{ github.ref }}
+concurrency: release-android-${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   github-packages:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       packages: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Verify the manual release commit passed the complete CI gate
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$RELEASE_SHA" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
 
       - uses: actions/setup-java@v4
         with:

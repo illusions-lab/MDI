@@ -1,13 +1,7 @@
-import JSZip from "jszip";
-import { toHtml } from "hast-util-to-html";
+import { renderEpubWithProfile } from "@illusions-lab/mdi-core";
+import type { ExportProfile } from "@illusions-lab/mdi-export-profile";
+import { mdastToMdiSource } from "mdast-util-mdi";
 import type { Root } from "mdast";
-import type { RootContent as HastRootContent } from "hast";
-import { MDI_STYLESHEET, mdiToHast } from "@illusions-lab/mdi-to-hast";
-import {
-  resolvePrintProfile,
-  type ResolvedExportProfile,
-  type ExportProfile,
-} from "@illusions-lab/mdi-export-profile";
 
 export const MDI_SPEC_VERSION = "2.0";
 
@@ -15,230 +9,46 @@ export interface EpubCover {
   data: Uint8Array;
   mediaType: "image/jpeg" | "image/png";
 }
+
 export interface EpubExportOptions {
   profile?: ExportProfile;
   cover?: EpubCover;
 }
 
-/** Builds a reflowable EPUB 3 with profile-driven metadata, cover, chapters and typography. */
+/**
+ * Preserve the mdast-facing package API while delegating the actual EPUB
+ * package to the single Rust implementation shared by every binding.
+ */
 export async function mdiToEpub(
   tree: Root,
-  options: EpubExportOptions = {}
+  options: EpubExportOptions = {},
 ): Promise<Buffer> {
-  const profile = resolvePrintProfile(
-    options.profile,
-    tree.data?.frontmatter?.writingMode
-  );
-  const zip = new JSZip();
-  const { hast, frontmatter } = mdiToHast(tree);
-  const title = profile.metadata.title ?? frontmatter?.title ?? "Untitled";
-  const author = profile.metadata.author ?? frontmatter?.author;
-  const lang = profile.metadata.language ?? frontmatter?.lang ?? "ja";
-  const identifier = profile.metadata.identifier ?? crypto.randomUUID();
-  const chapters = splitChapters(hast.children, profile.epub.chapterSplitLevel);
+  if (!tree || tree.type !== "root" || !Array.isArray(tree.children))
+    throw new TypeError("tree must be an mdast root");
+  if (!options || typeof options !== "object" || Array.isArray(options))
+    throw new TypeError("options must be an object");
+  if (options.profile !== undefined && (
+    !options.profile ||
+    typeof options.profile !== "object" ||
+    Array.isArray(options.profile)
+  ))
+    throw new TypeError("profile must be an object");
+  if (options.cover !== undefined) {
+    if (!options.cover || typeof options.cover !== "object" || Array.isArray(options.cover))
+      throw new TypeError("cover must be an object");
+    if (!(options.cover.data instanceof Uint8Array))
+      throw new TypeError("cover.data must be a Uint8Array");
+    if (options.cover.mediaType !== "image/jpeg" && options.cover.mediaType !== "image/png")
+      throw new TypeError("cover.mediaType must be image/jpeg or image/png");
+  }
+
   const cover = options.cover;
-  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
-  zip.file(
-    "META-INF/container.xml",
-    '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+  return Buffer.from(
+    renderEpubWithProfile(
+      mdastToMdiSource(tree),
+      JSON.stringify(options.profile ?? {}),
+      cover?.data ?? new Uint8Array(),
+      cover?.mediaType,
+    ),
   );
-  zip.file("OEBPS/style.css", epubStyles(profile));
-  zip.file(
-    "OEBPS/nav.xhtml",
-    xhtml(
-      "Contents",
-      lang,
-      `<nav epub:type="toc" id="toc"><ol>${chapters
-        .map(
-          (chapter, i) =>
-            `<li><a href="chapter-${i + 1}.xhtml">${xml(
-              chapter.title || `Chapter ${i + 1}`
-            )}</a></li>`
-        )
-        .join("")}</ol></nav>`
-    )
-  );
-  chapters.forEach((chapter, index) =>
-    zip.file(
-      `OEBPS/chapter-${index + 1}.xhtml`,
-      xhtml(
-        chapter.title || title,
-        lang,
-        xhtmlBody(chapter.children)
-      )
-    )
-  );
-  if (cover) {
-    zip.file(
-      `OEBPS/cover.${cover.mediaType === "image/png" ? "png" : "jpg"}`,
-      cover.data
-    );
-    zip.file(
-      "OEBPS/cover.xhtml",
-      xhtml(
-        title,
-        lang,
-        `<img src="cover.${
-          cover.mediaType === "image/png" ? "png" : "jpg"
-        }" alt="${xml(title)}"/>`
-      )
-    );
-  }
-  const metadata = `<dc:identifier id="book-id">${xml(
-    identifier
-  )}</dc:identifier><dc:title>${xml(title)}</dc:title><dc:language>${xml(
-    lang
-  )}</dc:language>${author ? `<dc:creator>${xml(author)}</dc:creator>` : ""}${
-    profile.metadata.publisher
-      ? `<dc:publisher>${xml(profile.metadata.publisher)}</dc:publisher>`
-      : ""
-  }${
-    profile.metadata.date ?? frontmatter?.date
-      ? `<dc:date>${xml(
-          String(profile.metadata.date ?? frontmatter?.date)
-        )}</dc:date>`
-      : ""
-  }`;
-  const coverManifest = cover
-    ? `<item id="cover-image" href="cover.${
-        cover.mediaType === "image/png" ? "png" : "jpg"
-      }" media-type="${
-        cover.mediaType
-      }" properties="cover-image"/><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`
-    : "";
-  const manifest = `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="css" href="style.css" media-type="text/css"/>${coverManifest}${chapters
-    .map(
-      (_, i) =>
-        `<item id="chapter-${i + 1}" href="chapter-${
-          i + 1
-        }.xhtml" media-type="application/xhtml+xml"/>`
-    )
-    .join("")}`;
-  const spine = `${cover ? '<itemref idref="cover"/>' : ""}${chapters
-    .map((_, i) => `<itemref idref="chapter-${i + 1}"/>`)
-    .join("")}`;
-  zip.file(
-    "OEBPS/package.opf",
-    `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">${metadata}</metadata><manifest>${manifest}</manifest><spine${
-      profile.typesetting.writingMode === "vertical"
-        ? ' page-progression-direction="rtl"'
-        : ""
-    }>${spine}</spine></package>`
-  );
-  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-}
-
-interface Chapter {
-  title: string;
-  children: HastRootContent[];
-}
-function splitChapters(
-  children: HastRootContent[],
-  level: "h1" | "h2" | "h3" | "none"
-): Chapter[] {
-  if (level === "none")
-    return [
-      { title: "", children: children.filter((child) => !isPagebreak(child)) },
-    ];
-  const chapters: Chapter[] = [{ title: "", children: [] }];
-  const splitTag = level;
-  for (const child of children) {
-    if (isPagebreak(child)) {
-      if (chapters.at(-1)!.children.length)
-        chapters.push({ title: "", children: [] });
-      continue;
-    }
-    if (
-      child.type === "element" &&
-      child.tagName === splitTag &&
-      chapters.at(-1)!.children.length
-    )
-      chapters.push({ title: textContent(child), children: [child] });
-    else {
-      if (child.type === "element" && child.tagName === splitTag)
-        chapters.at(-1)!.title = textContent(child);
-      chapters.at(-1)!.children.push(child);
-    }
-  }
-  return chapters.filter((chapter) => chapter.children.length > 0);
-}
-function isPagebreak(node: HastRootContent): boolean {
-  return (
-    node.type === "element" &&
-    node.tagName === "div" &&
-    Array.isArray(node.properties?.className) &&
-    node.properties.className.includes("mdi-pagebreak")
-  );
-}
-function textContent(node: HastRootContent): string {
-  return node.type === "text"
-    ? node.value
-    : node.type === "element"
-    ? node.children.map(textContent).join("")
-    : "";
-}
-function epubStyles(profile: ResolvedExportProfile): string {
-  const mode =
-    profile.typesetting.writingMode === "vertical"
-      ? "writing-mode:vertical-rl;-webkit-writing-mode:vertical-rl;text-orientation:mixed;"
-      : "";
-  const fontSize = profile.typesetting.fontSize === undefined
-    ? ""
-    : `font-size:${profile.typesetting.fontSize}pt;`;
-  const lineSpacing = profile.typesetting.lineSpacing ?? 1.8;
-  // EPUB uses CSS first-line indentation. It is the interoperable equivalent
-  // of the literal ideographic-space prefix used by DOCX, and keeps copied
-  // text free from synthetic characters.
-  const fullwidthIndent = profile.typesetting.fullwidthSpaceIndent
-    ? "--mdi-fullwidth-space-indent:1;"
-    : "";
-  return `body{font-family:${css(
-    profile.typesetting.fontFamily
-  )};${fontSize}${mode}line-height:${lineSpacing};margin:1em}p{${fullwidthIndent}text-indent:${
-    profile.typesetting.textIndentEm
-  }em;margin:.3em 0}${MDI_STYLESHEET}`;
-}
-function xhtml(title: string, lang: string, body: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${xml(
-    lang
-  )}" lang="${xml(lang)}"><head><meta charset="UTF-8"/><title>${xml(
-    title
-  )}</title><link rel="stylesheet" type="text/css" href="style.css"/></head><body>${body}</body></html>`;
-}
-
-/**
- * `hast-util-to-html` deliberately emits HTML's compact boolean-attribute
- * notation (for example, `data-footnote-ref`).  EPUB content documents are
- * XHTML, where every attribute needs an explicit value.  Normalise these in
- * the HAST tree before serialization so ordinary attribute values, including
- * aria-label values containing spaces, remain intact.
- */
-function xhtmlBody(children: HastRootContent[]): string {
-  normalizeXhtmlDataAttributes(children);
-  return toHtml(
-    { type: "root", children },
-    { closeSelfClosing: true, tightSelfClosing: true }
-  );
-}
-
-function normalizeXhtmlDataAttributes(nodes: HastRootContent[]): void {
-  for (const node of nodes) {
-    if (node.type !== "element") continue;
-    for (const [name, value] of Object.entries(node.properties ?? {})) {
-      if (name.startsWith("data") && value === true) {
-        node.properties![name] = "";
-      }
-    }
-    normalizeXhtmlDataAttributes(node.children);
-  }
-}
-
-function xml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll('"', "&quot;");
-}
-function css(value: string): string {
-  return value.replace(/[{}<>;]/g, "") || "serif";
 }

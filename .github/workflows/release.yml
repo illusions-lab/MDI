@@ -1,24 +1,44 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-  # Keeps the normal main-push release path intact while allowing a logged,
-  # idempotent recovery run if GitHub ever drops a push event.
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
       id-token: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
+
+      - name: Verify the manual release commit passed the complete CI gate
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$RELEASE_SHA" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
 
       - uses: jetli/wasm-pack-action@v0.4.0
 
@@ -37,12 +57,19 @@ jobs:
 
       - run: npm install --global npm@^11.5.1
 
+      - name: Resolve the already-released first-parent baseline
+        id: base
+        run: |
+          base_sha=$(git rev-parse "${RELEASE_SHA}^")
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
+
       - name: Calculate next patch versions
         id: versions
         run: node nodejs/scripts/compute-release-versions.mjs
         env:
-          # A manual recovery run with no base SHA safely releases no packages.
-          RELEASE_BASE_SHA: ${{ github.event.before || github.sha }}
+          # Main is protected by CI and normally advances by one merge/squash
+          # commit, so its first parent is the exact already-released baseline.
+          RELEASE_BASE_SHA: ${{ steps.base.outputs.sha }}
 
       - name: Publish next patch versions
         id: publish
