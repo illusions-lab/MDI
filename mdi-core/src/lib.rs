@@ -4370,6 +4370,71 @@ mod tests {
     }
 
     #[test]
+    fn configured_docx_renders_every_supported_block_and_inline_style() {
+        let source = r#"# Heading
+
+> Quote with *italic*, **bold**, and `inline code`.
+>
+> ```text
+> quoted code
+> ```
+
+```rust
+let first = 1;
+let second = 2;
+```
+
+---
+
+First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.png), ![](empty.png),
+[[warichu:small print]], [[kern:0.1em:spaced]], and {東京|とう.きょう}.
+
+[same link](https://example.com) and [same target](https://example.com)
+"#;
+        let bytes = render_docx_with_profile(
+            source,
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "typesetting":{"writingMode":"horizontal","fontSize":12},
+                "pagination":{"charactersPerLine":10,"linesPerPage":10,"gridMode":"strict","pageNumbers":{"enabled":true,"format":"simple","position":"bottom-left"}}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        for marker in [
+            "MdiQuote",
+            "MdiCode",
+            "MdiThematicBreak",
+            "<w:i/>",
+            "<w:b/>",
+            "<w:strike/>",
+            "Courier New",
+            "<w:br/>",
+            "[Image: cover]",
+            "[Image]",
+            "<w:spacing w:val=\"24\"/>",
+            "<w:ruby>",
+            "w:charSpace=",
+        ] {
+            assert!(document.contains(marker), "missing DOCX marker: {marker}");
+        }
+        assert_eq!(document.matches("<w:hyperlink r:id=\"rId1\">").count(), 2);
+
+        let mut footer = String::new();
+        zip.by_name("word/footer1.xml")
+            .unwrap()
+            .read_to_string(&mut footer)
+            .unwrap();
+        assert!(footer.contains("<w:jc w:val=\"left\"/>"));
+        assert!(footer.contains("> PAGE <"));
+    }
+
+    #[test]
     fn renders_pdf_with_an_available_native_chromium() {
         let Some(chromium_path) = find_chromium() else {
             return;
