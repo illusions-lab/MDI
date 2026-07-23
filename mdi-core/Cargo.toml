@@ -27,5 +27,11 @@ js-sys = { version = "0.3", optional = true }
 [features]
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
+# wasm-pack's bundled wasm-opt currently rejects the multi-table module emitted
+# by the stable Rust toolchain used in CI. rustc's release optimization remains
+# enabled; skip only that incompatible post-processing pass.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lints.rust]
 unsafe_code = "deny"
