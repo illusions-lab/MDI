@@ -30,18 +30,9 @@ jobs:
       - name: Verify the crate that will be published
         run: cargo package --locked
 
-      # crates.io must have this repository configured as a trusted publisher.
-      # Exchange GitHub's OIDC token for a short-lived registry token; no
-      # long-lived registry token is stored in this workflow.
-      - name: Authenticate with crates.io
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-
-      - name: Publish the manifest version when it is new
-        id: publish
+      - name: Check whether the manifest version exists
+        id: check
         shell: bash
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           status=$(
@@ -54,21 +45,37 @@ jobs:
           case "$status" in
             200)
               echo "mdi-core@${version} is already on crates.io; skipping."
-              echo "published=false" >> "$GITHUB_OUTPUT"
+              echo "exists=true" >> "$GITHUB_OUTPUT"
               ;;
             404)
-              cargo publish --locked
-              echo "published=true" >> "$GITHUB_OUTPUT"
-              echo "version=${version}" >> "$GITHUB_OUTPUT"
+              echo "exists=false" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unexpected crates.io response while checking mdi-core@${version}: HTTP ${status}" >&2
               exit 1
               ;;
           esac
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # crates.io must have this repository configured as a trusted publisher.
+      # Exchange GitHub's OIDC token for a short-lived registry token; no
+      # long-lived registry token is stored in this workflow.
+      - name: Authenticate with crates.io
+        if: steps.check.outputs.exists == 'false'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish the manifest version when it is new
+        if: steps.check.outputs.exists == 'false'
+        id: publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          cargo publish --locked
+          echo "version=${{ steps.check.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Tag the published crate
-        if: steps.publish.outputs.published == 'true'
+        if: steps.publish.outcome == 'success'
         run: |
           git tag "mdi-core@${{ steps.publish.outputs.version }}"
           git push origin "mdi-core@${{ steps.publish.outputs.version }}"
