@@ -541,6 +541,7 @@ fn ruby_xml(node: &Value, base_size: i64) -> String {
 }
 
 fn table_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context) -> String {
+    let vertical = profile.typesetting.writing_mode == "vertical";
     let rows = children(node);
     let columns = rows
         .iter()
@@ -558,6 +559,13 @@ fn table_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Contex
     let usable =
         mm_to_twips(width - profile.pagination.margins.left - profile.pagination.margins.right);
     let column_width = usable / columns as i64;
+    let borders = "<w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/><w:left w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/><w:right w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"000000\"/></w:tblBorders>";
+    let direction = if vertical { "<w:bidiVisual/>" } else { "" };
+    let cell_direction = if vertical {
+        "<w:textDirection w:val=\"tbRl\"/>"
+    } else {
+        ""
+    };
     let grid = (0..columns)
         .map(|_| format!("<w:gridCol w:w=\"{column_width}\"/>"))
         .collect::<String>();
@@ -577,14 +585,14 @@ fn table_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Contex
                         },
                         (profile.typesetting.font_size * 2.0).round() as i64,
                     );
-                    format!("<w:tc><w:tcPr><w:tcW w:w=\"{column_width}\" w:type=\"dxa\"/></w:tcPr><w:p>{content}</w:p></w:tc>")
+                    format!("<w:tc><w:tcPr><w:tcW w:w=\"{column_width}\" w:type=\"dxa\"/>{cell_direction}</w:tcPr><w:p>{content}</w:p></w:tc>")
                 })
                 .collect::<String>();
             format!("<w:tr>{cells}</w:tr>")
         })
         .collect::<String>();
     format!(
-        "<w:tbl><w:tblPr><w:tblW w:w=\"{usable}\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>{rows_xml}</w:tbl>"
+        "<w:tbl><w:tblPr>{direction}<w:tblW w:w=\"{usable}\" w:type=\"dxa\"/>{borders}<w:tblLayout w:type=\"fixed\"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>{rows_xml}</w:tbl>"
     )
 }
 

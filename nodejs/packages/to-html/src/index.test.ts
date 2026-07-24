@@ -14,6 +14,8 @@ describe("mdiToHtml", () => it("wraps rendered MDI in a vertical HTML document",
 	expect(html).toContain('<html lang="ja" style="writing-mode: vertical-rl;">');
 	expect(html).toContain("<title>雪女</title>");
 	expect(html).toContain("<style>");
+	expect(html).toContain("document.addEventListener('wheel'");
+	expect(html).toContain("window.scrollBy({left:-delta,behavior:'auto'})");
 	expect(html).toContain('<ruby class="mdi-ruby">東京<rp>（</rp><rt>とうきょう</rt>');
 }));
 
@@ -38,6 +40,7 @@ describe("mdiToHtml edge cases", () => {
 		expect(html).toContain('<html lang="en">');
 		expect(html).toContain("<title>Horizontal</title>");
 		expect(html).not.toContain("writing-mode:");
+		expect(html).not.toContain("document.addEventListener('wheel'");
 	});
 
 	it("defaults the language when only other front matter fields are present", () => {

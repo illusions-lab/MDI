@@ -220,6 +220,22 @@ describe("mdiToDocx edge cases", () => {
     expect(document).toContain('w:type="dxa"');
   });
 
+  it("renders bordered right-to-left tables with vertical cell text", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToDocx(
+        parse(
+          "---\nwriting-mode: vertical\n---\n\n| 見出し 1 | 見出し 2 |\n| --- | --- |\n| セル | 東京 |"
+        )
+      )
+    );
+    const document = await zip.file("word/document.xml")!.async("string");
+    expect(document).toContain("<w:bidiVisual/>");
+    expect(document).toContain('<w:textDirection w:val="tbRl"/>');
+    expect(document).toContain("<w:tblBorders>");
+    expect(document).toContain('<w:top w:val="single" w:sz="4" w:color="000000"/>');
+    expect(document).toContain('<w:insideV w:val="single" w:sz="4" w:color="000000"/>');
+  });
+
   it("preserves inline code, image alt text, links, and footnote references", async () => {
     const zip = await JSZip.loadAsync(
       await mdiToDocx(

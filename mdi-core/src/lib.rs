@@ -1147,6 +1147,15 @@ pub fn render_html_document(document: &Document) -> String {
     } else {
         ""
     };
+    // Browsers keep wheel input on the physical vertical axis, while a
+    // vertical-rl document overflows horizontally. Translate ordinary wheel
+    // movement into the reading axis so a standalone exported document is
+    // comfortable to read without a horizontal scrollbar drag.
+    let wheel_scroll = if vertical {
+        VERTICAL_WHEEL_SCROLL_SCRIPT
+    } else {
+        ""
+    };
     let mut body = String::new();
     let mut footnotes = Vec::new();
     for child in &document.children {
@@ -1176,7 +1185,7 @@ pub fn render_html_document(document: &Document) -> String {
         body.push_str("</ol></section>");
     }
     format!(
-        "<!DOCTYPE html><html lang=\"{}\"{}><head><meta charset=\"utf-8\">{}<style>{}</style></head><body>{}</body></html>",
+        "<!DOCTYPE html><html lang=\"{}\"{}><head><meta charset=\"utf-8\">{}<style>{}</style>{wheel_scroll}</head><body>{}</body></html>",
         escape_html(lang),
         writing_mode,
         title,
@@ -2538,6 +2547,8 @@ fn css_value(value: &str) -> String {
 /// The base stylesheet is intentionally shipped by the core alongside the
 /// semantic HTML. Hosts may add presentation CSS, but not reinterpret nodes.
 pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
+
+const VERTICAL_WHEEL_SCROLL_SCRIPT: &str = "<script>(function(){document.addEventListener('wheel',function(event){if(event.defaultPrevented||event.ctrlKey||event.shiftKey)return;var delta=event.deltaY;if(event.deltaMode===1)delta*=16;else if(event.deltaMode===2)delta*=window.innerWidth;if(!delta)return;var root=document.scrollingElement;var before=root.scrollLeft;window.scrollBy({left:-delta,behavior:'auto'});if(root.scrollLeft!==before)event.preventDefault()},{passive:false})})()</script>";
 
 #[derive(Debug, Clone)]
 pub struct EpubCover {
@@ -4492,6 +4503,11 @@ mod tests {
         assert!(html.contains("<h1>題</h1>"));
         assert!(html.contains("<ruby class=\"mdi-ruby\">東京<rp>（</rp><rt>とうきょう</rt>"));
         assert!(html.contains("<span class=\"mdi-tcy\">12</span>"));
+        assert!(html.contains("document.addEventListener('wheel'"));
+        assert!(html.contains("window.scrollBy({left:-delta,behavior:'auto'})"));
+
+        let horizontal = render_html("本文");
+        assert!(!horizontal.contains("document.addEventListener('wheel'"));
     }
 
     #[test]
