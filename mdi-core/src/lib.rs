@@ -4939,6 +4939,50 @@ mod tests {
     }
 
     #[test]
+    fn configured_docx_applies_table_direction_rules() {
+        let vertical_table = render_docx_with_profile(
+            "| 項目 | 値 |\n| --- | --- |\n| セル | 縦書き |",
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "typesetting":{"writingMode":"vertical","fontSize":10.5},
+                "pagination":{"pageSize":"A5","charactersPerLine":10,"linesPerPage":10,"gridMode":"typographic"}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(vertical_table)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(document.contains("<w:tblPr><w:bidiVisual/>"));
+        assert!(document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:tblBorders>"));
+        assert!(document.contains("<w:top w:val=\"single\""));
+        assert!(document.contains("<w:insideV w:val=\"single\""));
+
+        let horizontal_table = render_docx_with_profile(
+            "| Item | Value |\n| --- | --- |\n| Cell | Horizontal |",
+            r#"{
+                "layout":{"system":"word"},
+                "typesetting":{"writingMode":"horizontal","fontSize":11},
+                "pagination":{"pageSize":"A4","charactersPerLine":20,"linesPerPage":20,"gridMode":"typographic"}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(horizontal_table)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(!document.contains("<w:bidiVisual/>"));
+        assert!(!document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:tblBorders>"));
+        assert!(document.contains("<w:top w:val=\"single\""));
+    }
+
+    #[test]
     fn configured_docx_rejects_word_limits_and_uses_typographic_spacing() {
         let oversized = render_docx_with_profile(
             "text",
