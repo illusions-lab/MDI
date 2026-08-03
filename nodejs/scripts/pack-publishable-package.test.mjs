@@ -105,6 +105,16 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       { cwd: consumerDirectory, stdio: "inherit" }
     );
 
+    // The consumer install may resolve the package's caret-ranged Playwright
+    // dependency to a newer browser revision than the workspace lockfile.
+    // Install the browser through that exact consumer dependency so this
+    // contract tests the artifact a user actually installed.
+    execFileSync(
+      join(consumerDirectory, "node_modules", ".bin", "playwright"),
+      ["install", "chromium"],
+      { cwd: consumerDirectory, stdio: "inherit" }
+    );
+
     const installed = JSON.parse(
       readFileSync(
         join(consumerDirectory, "node_modules", "@illusions-lab", "mdi", "package.json"),
