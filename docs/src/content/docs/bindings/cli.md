@@ -9,19 +9,50 @@ description: "Export a .mdi file from the shell, with one shared profile for EPU
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
+mdi novel.mdi
 mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
+mdi check novel.mdi
+mdi update --check
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi check <input.mdi>
+mdi update [--check] [--yes]
 ```
 
-`<input.mdi>` is UTF-8. `--to` is required; `-o` overrides the derived output path and cannot be used with `txt-all`; `--config` points to an [export profile](/ecosystem/export-profiles/) JSON file. Success prints `Written <path>` and exits `0`. Any argument, input, profile, renderer, or output failure writes one message to stderr and exits `1`.
+`<input.mdi>` is UTF-8. The shorthand command defaults to HTML, so
+`mdi novel.mdi` writes `novel.html`. `build` remains compatible with the
+explicit form; its default is also HTML. `--to` selects one of `html`, `json`,
+`pdf`, `epub`, `docx`, `txt`, `txt-ruby`, `narou`, `kakuyomu`, `aozora`,
+`note`, or `txt-all`. If `--to` is omitted, a recognized `-o` extension selects
+the format (`.html`, `.json`, `.pdf`, `.epub`, `.docx`, or `.txt`). An explicit
+format that conflicts with the output extension is rejected. `-o` overrides the
+derived output path and cannot be used with `txt-all`; `--config` points to an
+[export profile](/ecosystem/export-profiles/) JSON file. Success prints
+`Written <path>` and exits `0`. Any argument, input, profile, renderer, or
+output failure writes one message to stderr and exits `1`.
+
+`mdi --version`, `mdi --help`, and `mdi -h` show the installed version or full
+command reference. `mdi check` parses the document and prints source-backed
+diagnostics. Warnings still exit `0`; an error diagnostic exits `1`.
+
+`mdi update --check` reports the installed and npm registry versions without
+installing anything. `mdi update` asks `Proceed? [y/N]` before running the
+global npm install, while `mdi update --yes` is intended for explicitly
+authorized automation. Non-interactive sessions never install implicitly and
+print the install command instead. Normal CLI invocations perform a
+best-effort, once-per-day cached registry check in the background; failures do
+not change the command result and update notices go to stderr, so JSON and
+other stdout pipelines remain valid. Set `MDI_NO_UPDATE_CHECK=1` to disable
+the background check.
 
 ## Which output you get
 
 | `--to` | Default | Renderer and profile behavior |
 | --- | --- | --- |
+| `json` | `novel.json` | Pretty-printed versioned MDI IR envelope, including parser diagnostics. |
 | `html` | `novel.html` | Rust semantic standalone HTML; no page profile is applied. |
 | `pdf` | `novel.pdf` | Rust HTML plus local Chromium; consumes the print profile. |
 | `epub` | `novel.epub` | Baseline Rust EPUB without `--config`; configured profile export with metadata, typography, chapter split, and optional cover with `--config`. |

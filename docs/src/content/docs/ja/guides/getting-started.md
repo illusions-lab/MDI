@@ -38,7 +38,8 @@ npm install --global @illusions-lab/mdi-cli
 実行します。
 
 ```bash
-mdi build novel.mdi --to html
+mdi novel.mdi                    # HTML の既定出力
+mdi build novel.mdi --to html    # 明示形式も利用可能
 ```
 
 ```text
@@ -48,12 +49,13 @@ Written /path/to/novel.html
 CLI 自身の使用方法メッセージそのままの、完全なコマンド形式です。
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
 ```
 
 | フラグ | 意味 |
 | --- | --- |
-| `--to <format>` | 必須。上記のいずれかの形式。 |
+| `--to <format>` | 任意。上記のいずれかの形式。省略時は `html`。 |
 | `-o <path>` | 省略可。出力パス。指定しない場合、入力ファイルのそばに形式の拡張子で保存されます ―― `novel.mdi --to pdf` は `novel.pdf` を、`--to txt-ruby` は `novel_ruby.txt` を書き出します（CLI はテキストの各バリアントを `<stem>_<variant>.txt` と命名し、プレーンな `txt` にはサフィックスがありません）。 |
 | `--config <path>` | 省略可。ページサイズ、フォント、マージン、テキストの字下げを制御する[エクスポート・プロファイル](/ja/ecosystem/export-profiles/) JSON ファイルへのパス。 |
 
@@ -72,6 +74,13 @@ mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―�
 mdi build novel.mdi --to note                           # novel_note.txt    ―― note エディタ入力、UTF-8
 mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
 ```
+
+Parser diagnostics は `mdi check novel.mdi` で確認できます。warning は status
+`0`、error diagnostic は status `1` です。`mdi --version` は version を表示し、
+`mdi update --check` は npm を確認するだけ、`mdi update --yes` は明示的に許可した
+自動更新に使えます。通常の実行でも一日一回だけバックグラウンド確認を行いますが、
+失敗しても command の結果には影響しません。CI では `MDI_NO_UPDATE_CHECK=1` で
+通知を無効化できます。
 
 ### 各形式で実際に何が起きるか
 
@@ -96,7 +105,7 @@ mdi build novel.mdi --to svg
 ```
 
 ```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
+Usage: mdi <command> [options]
 ```
 
 認識できない `--to` の値（や、その他の不正な引数列）は、意味を推測しようとせず、上記の使用方法を表示して終了コード `1` を返します。

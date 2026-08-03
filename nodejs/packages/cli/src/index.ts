@@ -15,8 +15,21 @@ import {
   type EpubCover,
 } from "@illusions-lab/mdi";
 
+export {
+  CACHE_TTL_MS,
+  PACKAGE_NAME,
+  REGISTRY_URL,
+  compareVersions,
+  currentVersion,
+  defaultCacheFile,
+  installLatest,
+  latestVersion,
+} from "./version.js";
+export type { VersionCache, VersionServiceOptions } from "./version.js";
+
 export const MDI_SPEC_VERSION = "2.0";
 export type OutputFormat =
+  | "json"
   | "html"
   | "pdf"
   | "epub"
@@ -84,6 +97,12 @@ export async function build(
     await writeFile(destination, renderHtml(source));
     return resolve(destination);
   }
+  if (format === "json") {
+    const destination =
+      resolvedOptions.output ?? defaultOutputPath(input, format, format);
+    await writeFile(destination, `${JSON.stringify(parse(source), null, 2)}\n`, "utf8");
+    return resolve(destination);
+  }
   const result =
     format === "pdf"
       ? await (
@@ -132,6 +151,62 @@ export interface CliArgs {
   output?: string;
   config?: string;
 }
+
+export type CliCommand =
+  | { command: "build"; args: CliArgs }
+  | { command: "check"; input: string }
+  | { command: "update"; checkOnly: boolean; yes: boolean }
+  | { command: "version" }
+  | { command: "help" };
+
+const OUTPUT_EXTENSIONS: Record<string, OutputFormat> = {
+  html: "html", htm: "html", json: "json", pdf: "pdf", epub: "epub",
+  docx: "docx", txt: "txt",
+};
+
+/** Parse the public command line, including shorthand `mdi input.mdi`. */
+export function parseCommand(argv: string[]): CliCommand | undefined {
+  if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") return { command: "help" };
+  if (argv[0] === "build" && (argv[1] === "-h" || argv[1] === "--help")) return { command: "help" };
+  if (argv[0] === "--version" || argv[0] === "-v") return argv.length === 1 ? { command: "version" } : undefined;
+  if (argv[0] === "check") {
+    return argv.length === 2 && !argv[1].startsWith("-") ? { command: "check", input: argv[1] } : undefined;
+  }
+  if (argv[0] === "update") {
+    let checkOnly = false;
+    let yes = false;
+    for (const option of argv.slice(1)) {
+      if (option === "--check") checkOnly = true;
+      else if (option === "--yes" || option === "-y") yes = true;
+      else if (option === "-h" || option === "--help") return { command: "help" };
+      else return undefined;
+    }
+    return { command: "update", checkOnly, yes };
+  }
+  if (argv[0] !== "build" && !argv[0].toLowerCase().endsWith(".mdi")) return undefined;
+  const buildArgv = argv[0] === "build" ? argv.slice(1) : argv;
+  if (buildArgv.length === 0) return undefined;
+  const input = buildArgv[0];
+  let format: OutputFormat | undefined;
+  let output: string | undefined;
+  let config: string | undefined;
+  for (let index = 1; index < buildArgv.length; index += 1) {
+    const flag = buildArgv[index];
+    if (flag === "-h" || flag === "--help") return { command: "help" };
+    const value = buildArgv[index + 1];
+    if (!value || value.startsWith("-")) return undefined;
+    if (flag === "--to" && !format && isFormat(value)) format = value;
+    else if ((flag === "-o" || flag === "--output") && !output) output = value;
+    else if (flag === "--config" && !config) config = value;
+    else return undefined;
+    index += 1;
+  }
+  const inferred = format ?? (output ? OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] : "html");
+  if (!inferred) return undefined;
+  if (output && format && OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] &&
+      OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] !== format) return undefined;
+  return { command: "build", args: { input, format: inferred, ...(output ? { output } : {}), ...(config ? { config } : {}) } };
+}
 export function parseArgs(args: string[]): CliArgs | undefined {
   const [input, ...tail] = args;
   if (!input) return undefined;
@@ -143,7 +218,7 @@ export function parseArgs(args: string[]): CliArgs | undefined {
     const value = tail[index + 1];
     if (!value) return undefined;
     if (flag === "--to" && isFormat(value) && !format) format = value;
-    else if (flag === "-o" && !output) output = value;
+    else if ((flag === "-o" || flag === "--output") && !output) output = value;
     else if (flag === "--config" && !config) config = value;
     else return undefined;
   }
@@ -234,6 +309,7 @@ function isTextFormat(format: OutputFormat): format is TextOutputFormat {
 
 function isFormat(value: string): value is OutputFormat {
   return (
+    value === "json" ||
     value === "html" ||
     value === "pdf" ||
     value === "epub" ||
