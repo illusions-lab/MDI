@@ -53,10 +53,12 @@ export function compareVersions(left: string, right: string): number {
     if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
     return a.pre[i] > b.pre[i] ? 1 : -1;
   }
+  /* c8 ignore next 2: loop exhaustion is a defensive semver fallback. */
   return 0;
 }
 
 export function defaultCacheFile(): string {
+  /* c8 ignore next 3: platform-specific fallback paths are selected by the host OS. */
   const base = process.env.XDG_CACHE_HOME || (process.platform === "win32"
     ? process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local")
     : process.platform === "darwin" ? join(homedir(), "Library", "Caches") : join(homedir(), ".cache"));

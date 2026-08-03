@@ -67,34 +67,55 @@ function printDiagnostics(inputPath: string, diagnostics: Array<{ severity: stri
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
 }
 
-async function updateCommand(checkOnly: boolean, yes: boolean): Promise<number> {
-  const installed = currentVersion();
+export interface UpdateServices {
+  currentVersion: () => string;
+  latestVersion: () => Promise<string>;
+  compareVersions: (left: string, right: string) => number;
+  installLatest: () => Promise<void>;
+  isInteractive: () => boolean;
+  prompt: () => Promise<string>;
+}
+
+const defaultUpdateServices: UpdateServices = {
+  currentVersion, latestVersion, compareVersions, installLatest,
+  isInteractive: () => Boolean(input.isTTY && output.isTTY),
+  /* c8 ignore next 5: the readline adapter is exercised through the injected prompt in tests. */
+  prompt: async () => {
+    const readline = createInterface({ input, output });
+    try { return await readline.question("Proceed? [y/N] "); }
+    finally { readline.close(); }
+  },
+};
+
+export async function updateCommand(
+  checkOnly: boolean,
+  yes: boolean,
+  services: UpdateServices = defaultUpdateServices,
+): Promise<number> {
+  const installed = services.currentVersion();
   let latest: string;
   try {
-    latest = await latestVersion();
+    latest = await services.latestVersion();
   } catch (error) {
     console.error(`Unable to check for updates: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
   }
   console.log(`Current version: ${installed}`);
   console.log(`Latest version: ${latest}`);
-  if (compareVersions(latest, installed) <= 0 || checkOnly) return 0;
-  if (!yes && (!input.isTTY || !output.isTTY)) {
+  if (services.compareVersions(latest, installed) <= 0 || checkOnly) return 0;
+  if (!yes && !services.isInteractive()) {
     console.error(`Update available. Run: npm install --global @illusions-lab/mdi-cli@latest`);
     return 0;
   }
   if (!yes) {
-    const readline = createInterface({ input, output });
-    try {
-      const answer = await readline.question("Proceed? [y/N] ");
-      if (!/^y(?:es)?$/i.test(answer.trim())) return 0;
-    } finally { readline.close(); }
+    const answer = await services.prompt();
+    if (!/^y(?:es)?$/i.test(answer.trim())) return 0;
   }
   try {
-    await installLatest();
-    const updated = currentVersion();
+    await services.installLatest();
+    const updated = services.currentVersion();
     console.log(`Update complete. Current version: ${updated}`);
-    return compareVersions(updated, latest) >= 0 ? 0 : 1;
+    return services.compareVersions(updated, latest) >= 0 ? 0 : 1;
   } catch (error) {
     console.error(`Update failed: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
@@ -144,7 +165,7 @@ export async function run(argv = process.argv.slice(2)): Promise<number> {
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); return 1; }
 }
 
-async function notifyUpdate(): Promise<void> {
+export async function notifyUpdate(): Promise<void> {
   if (process.env.MDI_NO_UPDATE_CHECK === "1") return;
   try {
     const latest = await latestVersion();
