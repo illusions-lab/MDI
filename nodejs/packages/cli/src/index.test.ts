@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,8 +7,9 @@ import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import iconv from "iconv-lite";
-import { build, loadExportProfile, parseArgs } from "./index.js";
-import { isCliEntrypoint, run as runCli, setCliExitCode } from "./cli.js";
+import { build, loadExportProfile, parseArgs, parseCommand } from "./index.js";
+import { isCliEntrypoint, notifyUpdate, run as runCli, setCliExitCode, updateCommand, type UpdateServices } from "./cli.js";
+import { compareVersions, currentVersion, installLatest, latestVersion } from "./version.js";
 
 const runCommand = promisify(execFile);
 
@@ -63,6 +64,12 @@ describe("parseArgs", () => {
       input: "book.mdi",
       format: "html",
     }));
+  it("parses JSON output", () =>
+    expect(parseArgs(["book.mdi", "--to", "json", "-o", "book.json"])).toEqual({
+      input: "book.mdi",
+      format: "json",
+      output: "book.json",
+    }));
   it("rejects malformed and unrecognized argument forms", () => {
     for (const args of [
       [],
@@ -102,6 +109,179 @@ describe("parseArgs", () => {
       });
     }
   );
+});
+
+describe("public command parser", () => {
+  it("supports shorthand HTML and output-extension inference", () => {
+    expect(parseCommand(["book.mdi"])).toEqual({ command: "build", args: { input: "book.mdi", format: "html" } });
+    expect(parseCommand(["book.mdi", "-o", "result.epub"])).toEqual({
+      command: "build", args: { input: "book.mdi", format: "epub", output: "result.epub" },
+    });
+    expect(parseCommand(["build", "book.mdi"])).toEqual({ command: "build", args: { input: "book.mdi", format: "html" } });
+  });
+
+  it("rejects an explicit format that conflicts with the output extension", () => {
+    expect(parseCommand(["book.mdi", "--to", "json", "-o", "result.html"])).toBeUndefined();
+    expect(parseCommand(["book.mdi", "--to", "txt-ruby", "-o", "result.txt"])).toEqual({
+      command: "build", args: { input: "book.mdi", format: "txt-ruby", output: "result.txt" },
+    });
+    expect(parseCommand(["book.mdi", "--to", "json", "-o", "result.json"])).toEqual({
+      command: "build", args: { input: "book.mdi", format: "json", output: "result.json" },
+    });
+  });
+
+  it("reports the reason for a format/output conflict", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(runCli(["book.mdi", "--to", "json", "-o", "result.html"])).resolves.toBe(1);
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("conflicts with the output filename extension"));
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("recognizes check, update, version, and help commands", () => {
+    expect(parseCommand(["check", "book.mdi"])).toEqual({ command: "check", input: "book.mdi" });
+    expect(parseCommand(["update", "--check"])).toEqual({ command: "update", checkOnly: true, yes: false });
+    expect(parseCommand(["update", "--yes"])).toEqual({ command: "update", checkOnly: false, yes: true });
+    expect(parseCommand(["--version"])).toEqual({ command: "version" });
+    expect(parseCommand(["--help"])).toEqual({ command: "help" });
+    expect(parseCommand(["update", "--help"])).toEqual({ command: "help" });
+    expect(parseCommand(["update", "--unknown"])).toBeUndefined();
+    expect(parseCommand(["book.mdi", "--config", "profile.json"])).toEqual({ command: "build", args: { input: "book.mdi", format: "html", config: "profile.json" } });
+    expect(parseCommand(["book.mdi", "--config", "profile.json", "--unknown", "value"])).toBeUndefined();
+  });
+});
+
+describe("version service", () => {
+  it("reads the installed package version", () => expect(currentVersion()).toBe("2.0.18"));
+
+  it.each([
+    ["2.1.0", "2.0.18", 1], ["2.0.18", "2.0.18", 0], ["2.0.17", "2.0.18", -1],
+    ["2.0.18-beta.1", "2.0.18", -1], ["2.0.18", "2.0.18-beta.1", 1],
+  ])("compares semver %s and %s", (left, right, expected) => expect(compareVersions(left, right)).toBe(expected));
+
+  it("handles prerelease identifier ordering and unequal lengths", () => {
+    expect(compareVersions("1.0.0-alpha", "1.0.0-alpha.1")).toBe(-1);
+    expect(compareVersions("1.0.0-alpha.1", "1.0.0-alpha")).toBe(1);
+    expect(compareVersions("1.0.0-alpha.2", "1.0.0-alpha.10")).toBe(-1);
+    expect(compareVersions("1.0.0-alpha.10", "1.0.0-alpha.2")).toBe(1);
+    expect(compareVersions("1.0.0-alpha", "1.0.0-beta")).toBe(-1);
+    expect(compareVersions("1.0.0-beta", "1.0.0-alpha")).toBe(1);
+    expect(compareVersions("1.0.0+build.2", "v1.0.0+build.1")).toBe(0);
+  });
+
+  it("uses a fresh registry result once and then the daily cache", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-version-cache-"));
+    try {
+      const cacheFile = join(directory, "update-check.json");
+      const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ "dist-tags": { latest: "9.9.9" } }), { status: 200 }));
+      const now = () => Date.parse("2026-08-02T00:00:00.000Z");
+      await expect(latestVersion({ cacheFile, fetchImpl, now })).resolves.toBe("9.9.9");
+      await expect(latestVersion({ cacheFile, fetchImpl, now: () => now() + 60_000 })).resolves.toBe("9.9.9");
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes an expired cache and reports registry errors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-version-expired-"));
+    try {
+      const cacheFile = join(directory, "update-check.json");
+      await writeFile(cacheFile, JSON.stringify({ registryUrl: "https://registry.example", checkedAt: "2020-01-01T00:00:00.000Z", latestVersion: "1.0.0" }));
+      const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ "dist-tags": {} }), { status: 200 }));
+      await expect(latestVersion({ registryUrl: "https://registry.example", cacheFile, fetchImpl, now: () => Date.parse("2026-08-02T00:00:00.000Z") })).rejects.toThrow("dist-tags.latest");
+      await expect(latestVersion({ registryUrl: "https://registry.example", cacheFile, fetchImpl: vi.fn(async () => new Response("", { status: 503 })) })).rejects.toThrow("HTTP 503");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the npm installer without a shell and reports failures", async () => {
+    const makeChild = (code: number) => {
+      const child = { once: (event: string, callback: (value?: number) => void) => {
+        if (event === "exit") queueMicrotask(() => callback(code));
+        return child;
+      } } as never;
+      return child;
+    };
+    const spawnImpl = vi.fn(() => makeChild(0));
+    await expect(installLatest({ spawnImpl: spawnImpl as never })).resolves.toBeUndefined();
+    expect(spawnImpl).toHaveBeenCalledWith("npm", ["install", "--global", "@illusions-lab/mdi-cli@latest"], expect.objectContaining({ shell: false }));
+    await expect(installLatest({ spawnImpl: vi.fn(() => makeChild(1)) as never })).rejects.toThrow("status 1");
+  });
+});
+
+describe("update command", () => {
+  const services = (overrides: Partial<UpdateServices> = {}): UpdateServices => ({
+    currentVersion: () => "1.0.0",
+    latestVersion: async () => "2.0.0",
+    compareVersions: (left, right) => left === right ? 0 : left > right ? 1 : -1,
+    installLatest: async () => undefined,
+    isInteractive: () => false,
+    prompt: async () => "n",
+    ...overrides,
+  });
+
+  it("checks without installing and handles non-interactive updates", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(updateCommand(true, false, services())).resolves.toBe(0);
+      await expect(updateCommand(false, false, services())).resolves.toBe(0);
+      await expect(updateCommand(false, false, services({ isInteractive: () => true, prompt: async () => "n" }))).resolves.toBe(0);
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("npm install --global"));
+      expect(log).toHaveBeenCalledWith("Current version: 1.0.0");
+    } finally { log.mockRestore(); error.mockRestore(); }
+  });
+
+  it("runs the public update check through the default services", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await expect(runCli(["update", "--check"])).resolves.toBe(0);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Current version:"));
+    } finally { log.mockRestore(); }
+  });
+
+  it("updates with yes and reports install/check failures", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const install = vi.fn(async () => undefined);
+      let version = "1.0.0";
+      await expect(updateCommand(false, true, services({ installLatest: install, currentVersion: () => version }))).resolves.toBe(1);
+      version = "2.0.0";
+      await expect(updateCommand(false, true, services({ installLatest: install, currentVersion: () => version }))).resolves.toBe(0);
+      version = "1.0.0";
+      await expect(updateCommand(false, false, services({ isInteractive: () => true, prompt: async () => "yes", installLatest: install, currentVersion: () => version }))).resolves.toBe(1);
+      await expect(updateCommand(false, true, services({ latestVersion: async () => { throw new Error("offline"); } }))).resolves.toBe(1);
+      await expect(updateCommand(false, true, services({ installLatest: async () => { throw new Error("denied"); } }))).resolves.toBe(1);
+    } finally { log.mockRestore(); error.mockRestore(); }
+  });
+
+  it("notifies from cache and can be disabled", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-notify-"));
+    const oldCacheHome = process.env.XDG_CACHE_HOME;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      process.env.XDG_CACHE_HOME = directory;
+      await mkdir(join(directory, "mdi"), { recursive: true });
+      await writeFile(join(directory, "mdi", "update-check.json"), JSON.stringify({ registryUrl: "https://registry.npmjs.org/%40illusions-lab%2Fmdi-cli", checkedAt: new Date().toISOString(), latestVersion: "99.0.0" }));
+      delete process.env.MDI_NO_UPDATE_CHECK;
+      await notifyUpdate();
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("99.0.0"));
+      process.env.MDI_NO_UPDATE_CHECK = "1";
+      error.mockClear();
+      await notifyUpdate();
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      if (oldCacheHome === undefined) delete process.env.XDG_CACHE_HOME; else process.env.XDG_CACHE_HOME = oldCacheHome;
+      delete process.env.MDI_NO_UPDATE_CHECK;
+      error.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CLI executable entrypoint", () => {
@@ -345,6 +525,50 @@ describe("build edge cases", () => {
 
 describe("CLI command output", () => {
 
+  it("writes the versioned parser IR as pretty JSON", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-json-command-"));
+    try {
+      const input = join(directory, "book.mdi");
+      const output = join(directory, "book.json");
+      await writeFile(input, "# Book\n\n本文");
+      await expect(runCli(["build", input, "--to", "json"])).resolves.toBe(0);
+      const result = JSON.parse(await readFile(output, "utf8"));
+      expect(result.irVersion).toBe("1.0");
+      expect(result.syntaxVersion).toBe("2.0");
+      expect(result.document.children[0].type).toBe("heading");
+      expect(result.diagnostics).toEqual([]);
+      expect(await readFile(output, "utf8")).toContain("\n  \"irVersion\":");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("prints help for -h and --help", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await expect(runCli(["-h"])).resolves.toBe(0);
+      await expect(runCli(["build", "-h"])).resolves.toBe(0);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("mdi build <input.mdi>"));
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("json       Write the versioned MDI document IR"));
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("prints parser warnings from check without failing", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-check-command-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const input = join(directory, "book.mdi");
+      await writeFile(input, '---\nmdi: "3.0"\n---\n本文');
+      await expect(runCli(["check", input])).resolves.toBe(0);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("warning: mdi.version.unsupported"));
+    } finally {
+      log.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("accepts --to note and writes the UTF-8 default output", async () => {
     const directory = await mkdtemp(join(tmpdir(), "mdi-cli-note-command-"));
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -412,7 +636,7 @@ describe("CLI command output", () => {
         input,
         "--to",
         "html",
-      ]);
+      ], { env: { ...process.env, MDI_NO_UPDATE_CHECK: "1" } });
       expect(stderr).toBe("");
       expect(stdout).toBe(`Written ${output}\n`);
       expect(await readFile(output, "utf8")).toContain("<h1>Book</h1>");
@@ -433,7 +657,7 @@ describe("CLI command output", () => {
         input,
         "--to",
         "docx",
-      ]);
+      ], { env: { ...process.env, MDI_NO_UPDATE_CHECK: "1" } });
       expect(stderr).toBe("");
       expect(stdout).toBe(`Written ${output}\n`);
       expect((await readFile(output)).subarray(0, 2).toString()).toBe("PK");

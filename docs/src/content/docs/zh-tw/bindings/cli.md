@@ -9,19 +9,37 @@ description: 從 shell 匯出 .mdi，並以一份 export profile 控制 EPUB、D
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
+mdi novel.mdi
 mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
+mdi check novel.mdi
+mdi update --check
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi check <input.mdi>
+mdi update [--check] [--yes]
 ```
 
-input 為 UTF-8。`--to` 必填；`-o` 覆寫 output path 且不可與 `txt-all` 併用；`--config` 是 [export profile](/zh-tw/ecosystem/export-profiles/) JSON。成功輸出 `Written <path>` 並以 status `0` 結束；argument/input/profile/renderer/output failure 會在 stderr 寫一行並以 status `1` 結束。
+input 為 UTF-8。`--to` 可省略，預設為 HTML；若沒有 `--to`，也可由 `-o`
+的 `.html`、`.json`、`.pdf`、`.epub`、`.docx` 或 `.txt` 副檔名推斷格式。
+明確 format 與副檔名衝突時會報錯。`txt-all` 不可搭配 `-o`；`--config` 是
+[export profile](/zh-tw/ecosystem/export-profiles/) JSON。成功輸出 `Written <path>`
+並以 status `0` 結束；argument/input/profile/renderer/output failure 會在 stderr
+寫一行並以 status `1` 結束。
+
+`mdi check` 會解析文件並輸出 parser diagnostics：warning 仍回傳 `0`，error
+diagnostic 回傳 `1`。`mdi --version`/`--help` 顯示版本或完整說明；
+`mdi update --check` 只檢查，`mdi update --yes` 直接更新。一般執行會在背景以
+每日快取檢查 npm registry；檢查失敗不影響原命令。CI 可設定
+`MDI_NO_UPDATE_CHECK=1` 關閉提示。
 
 ## 每種 format 的設定
 
 | `--to` | 預設 | renderer 與 profile |
 | --- | --- | --- |
+| `json` | `novel.json` | 輸出包含 parser diagnostics 的 versioned MDI IR envelope，使用美化 JSON。 |
 | `html` | `novel.html` | Rust semantic standalone HTML；不使用 page profile。 |
 | `pdf` | `novel.pdf` | Rust HTML + local Chromium；使用 print profile。 |
 | `epub` | `novel.epub` | 無 config 為 Rust baseline；有 config 則用 metadata/type/chapter/cover。 |

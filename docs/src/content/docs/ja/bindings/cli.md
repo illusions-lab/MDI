@@ -9,19 +9,35 @@ description: 一つの export profile を EPUB、DOCX、PDF、text に適用し�
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
+mdi novel.mdi
 mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
+mdi check novel.mdi
+mdi update --check
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi check <input.mdi>
+mdi update [--check] [--yes]
 ```
 
-input は UTF-8 です。`--to` は必須、`-o` は output path を上書きし `txt-all` とは併用不可、`--config` は [export profile](/ja/ecosystem/export-profiles/) JSON です。成功は `Written <path>` と status `0`、argument/input/profile/renderer/output の failure は stderr 一行と status `1` です。
+input は UTF-8 です。`--to` は省略でき、既定は HTML です。`-o` の
+拡張子（`.html`、`.json`、`.pdf`、`.epub`、`.docx`、`.txt`）も format を
+推定します。明示した format と拡張子が衝突する場合は reject されます。
+`txt-all` は `-o` と併用できません。`--config` は [export profile](/ja/ecosystem/export-profiles/) JSON です。成功は `Written <path>` と status `0`、argument/input/profile/renderer/output の failure は stderr 一行と status `1` です。
+
+`mdi check` は parser diagnostics を表示します。warning は status `0`、error
+diagnostic は status `1` です。`mdi --version`/`--help` は version/help を表示し、
+`mdi update --check` は確認だけ、`mdi update --yes` は確認なしの更新です。
+通常の実行時も一日一回だけ npm registry を確認しますが、失敗しても本来の
+command には影響しません。CI では `MDI_NO_UPDATE_CHECK=1` で無効化できます。
 
 ## format ごとの設定
 
 | `--to` | default | renderer と profile |
 | --- | --- | --- |
+| `json` | `novel.json` | parser diagnostics を含む versioned MDI IR envelope を pretty print する。 |
 | `html` | `novel.html` | Rust semantic standalone HTML。page profile は使わない。 |
 | `pdf` | `novel.pdf` | Rust HTML + local Chromium。print profile を使う。 |
 | `epub` | `novel.epub` | config なしは Rust baseline。config があれば metadata/type/chapter/cover を使う。 |

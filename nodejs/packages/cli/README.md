@@ -1,6 +1,6 @@
 # `@illusions-lab/mdi-cli`
 
-Command-line interface for building complete `.mdi` documents through the
+Command-line interface for converting `.mdi` documents through the
 Rust-authoritative MDI engine.
 
 ## Install
@@ -9,38 +9,42 @@ Rust-authoritative MDI engine.
 npm install --global @illusions-lab/mdi-cli
 ```
 
-## Build a document
+## Common commands
 
 ```sh
-mdi build input.mdi --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|note|txt-all \
-  [--config export.json] [-o output]
+mdi book.mdi                         # HTML: book.html
+mdi book.mdi --to json               # JSON IR: book.json
+mdi build book.mdi --to epub -o book.epub
+mdi check book.mdi                   # print parser diagnostics
+mdi --version
+mdi update --check
 ```
 
-HTML, EPUB, DOCX, and text output call `mdi-core` directly through the
-JavaScript binding. With `--config`, Rust also validates and applies EPUB/DOCX
-metadata, typography, chapter splitting, cover art, page geometry, and
-numbering. PDF receives Rust-prepared HTML and print data, then uses Chromium
-solely for page layout; Chromium never receives or parses MDI source.
+`build` remains fully supported. The default output is HTML; an explicit
+`--to` takes precedence over the default, and a recognized `-o` extension can
+select the format (`.html`, `.json`, `.epub`, `.docx`, `.pdf`, `.txt`). A
+conflicting explicit format and output extension is rejected.
 
-`txt-all` writes every text variant next to the input and does not accept `-o`.
-The `narou`, `kakuyomu`, `aozora`, and `note` variants are contract-tested
-against their platform-owned notation manuals. note output is UTF-8 editor
-input; Aozora output is Shift_JIS with CRLF;
-an unencodable character fails explicitly instead of being replaced with `?`.
+Supported formats are `html`, `json`, `pdf`, `epub`, `docx`, `txt`, `txt-ruby`,
+`narou`, `kakuyomu`, `aozora`, `note`, and `txt-all`.
 
-## Examples
+## Updates and CI
+
+`mdi update` checks npm for the latest CLI and asks before installing it.
+`mdi update --check` never installs; `mdi update --yes` is suitable for an
+explicitly authorized automation job. Non-interactive sessions only print the
+install command. Every normal CLI invocation performs a best-effort daily
+cached update check in the background; registry errors never affect the
+command or its stdout. Set `MDI_NO_UPDATE_CHECK=1` to disable that check.
+
+For CI diagnostics, use:
 
 ```sh
-# Rust renders semantic HTML.
-mdi build novel.mdi --to html -o public/novel.html
-
-# Rust produces EPUB and DOCX archives.
-mdi build novel.mdi --to epub
-mdi build novel.mdi --to docx
-
-# PDF uses Rust HTML and Chromium only for print layout.
-mdi build novel.mdi --to pdf --config print.json
+MDI_NO_UPDATE_CHECK=1 mdi check book.mdi
 ```
+
+`check` exits 0 for no diagnostics or warnings and exits 1 when an error
+diagnostic is present.
 
 ## Architecture
 
@@ -49,10 +53,5 @@ EPUB, DOCX, and text call the Rust engine through `@illusions-lab/mdi`.
 Profile defaults, validation, paper dimensions, and print CSS also come from
 Rust. The host-specific step is launching Chromium for PDF.
 
-## Documentation
-
-- [CLI guide](https://mdi.illusions.app/bindings/cli/)
-- [Export profiles](https://mdi.illusions.app/ecosystem/export-profiles/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
-
-Part of the [MDI repository](https://github.com/illusions-lab/MDI). MIT licensed.
+See the [CLI guide](https://mdi.illusions.app/bindings/cli/) for the complete
+format and export-profile reference.
