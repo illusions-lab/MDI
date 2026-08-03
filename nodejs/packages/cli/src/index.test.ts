@@ -236,6 +236,14 @@ describe("update command", () => {
     } finally { log.mockRestore(); error.mockRestore(); }
   });
 
+  it("runs the public update check through the default services", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await expect(runCli(["update", "--check"])).resolves.toBe(0);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Current version:"));
+    } finally { log.mockRestore(); }
+  });
+
   it("updates with yes and reports install/check failures", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
