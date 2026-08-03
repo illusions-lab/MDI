@@ -10,6 +10,7 @@ import { compareVersions, currentVersion, installLatest, latestVersion } from ".
 const FORMAT_BY_EXTENSION: Record<string, string> = {
   html: "html", htm: "html", json: "json", pdf: "pdf", epub: "epub", docx: "docx", txt: "txt",
 };
+const TEXT_FORMATS = new Set(["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]);
 
 export const HELP = `Usage: mdi <command> [options]
 Usage: mdi build <input.mdi> --to <format>
@@ -108,7 +109,10 @@ function hasOutputFormatConflict(argv: string[]): boolean {
   const output = argv[outputIndex + 1];
   if (!format || !output) return false;
   const extension = output.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase();
-  return Boolean(extension && FORMAT_BY_EXTENSION[extension] && FORMAT_BY_EXTENSION[extension] !== format);
+  const extensionFormat = extension && FORMAT_BY_EXTENSION[extension];
+  return Boolean(extensionFormat && !(
+    extensionFormat === format || (extensionFormat === "txt" && TEXT_FORMATS.has(format))
+  ));
 }
 
 /** Execute the CLI command adapter. */

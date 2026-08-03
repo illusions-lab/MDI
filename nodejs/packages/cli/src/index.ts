@@ -164,6 +164,14 @@ const OUTPUT_EXTENSIONS: Record<string, OutputFormat> = {
   docx: "docx", txt: "txt",
 };
 
+const TEXT_FORMAT_NAMES = new Set<OutputFormat>([
+  "txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note",
+]);
+
+function formatsMatchOutputExtension(format: OutputFormat, extensionFormat: OutputFormat): boolean {
+  return format === extensionFormat || (extensionFormat === "txt" && TEXT_FORMAT_NAMES.has(format));
+}
+
 /** Parse the public command line, including shorthand `mdi input.mdi`. */
 export function parseCommand(argv: string[]): CliCommand | undefined {
   if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") return { command: "help" };
@@ -204,7 +212,7 @@ export function parseCommand(argv: string[]): CliCommand | undefined {
   const inferred = format ?? (output ? OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] : "html");
   if (!inferred) return undefined;
   if (output && format && OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] &&
-      OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] !== format) return undefined;
+      !formatsMatchOutputExtension(format, OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()])) return undefined;
   return { command: "build", args: { input, format: inferred, ...(output ? { output } : {}), ...(config ? { config } : {}) } };
 }
 export function parseArgs(args: string[]): CliArgs | undefined {

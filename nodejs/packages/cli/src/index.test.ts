@@ -122,6 +122,9 @@ describe("public command parser", () => {
 
   it("rejects an explicit format that conflicts with the output extension", () => {
     expect(parseCommand(["book.mdi", "--to", "json", "-o", "result.html"])).toBeUndefined();
+    expect(parseCommand(["book.mdi", "--to", "txt-ruby", "-o", "result.txt"])).toEqual({
+      command: "build", args: { input: "book.mdi", format: "txt-ruby", output: "result.txt" },
+    });
     expect(parseCommand(["book.mdi", "--to", "json", "-o", "result.json"])).toEqual({
       command: "build", args: { input: "book.mdi", format: "json", output: "result.json" },
     });
