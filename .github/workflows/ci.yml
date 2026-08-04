@@ -246,7 +246,7 @@ jobs:
         run: |
           cargo test --release --test large_document_performance "${{ matrix.test }}" -- \
             --ignored --nocapture --test-threads=1 | tee performance.log
-          grep '^PERF_RESULT ' performance.log > "performance-${{ matrix.test }}.jsonl"
+          sed -n 's/.*PERF_RESULT //p' performance.log > "performance-${{ matrix.test }}.jsonl"
 
       - name: Upload case result
         uses: actions/upload-artifact@v4
