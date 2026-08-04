@@ -30,6 +30,26 @@ console.log(result.headings); // depth、text、span を持つ source-order head
 
 `renderHtml(source)` は MDI stylesheet 付き standalone HTML を返します。app が外側の page を持つなら `{ bodyOnly: true }` を使います。semantic HTML は stable な `mdi-ruby`、`mdi-tcy`、`mdi-em`、`mdi-pagebreak` 等の class を付けます。
 
+## Browser の初期化
+
+browser では synchronous API を呼ぶ前に、WebAssembly runtime を一度だけ
+`await` してください。`initializeMdi()` は single-flight かつ idempotent です。
+同時呼び出しは一つの初期化を共有します。Node.js は eager load のため直ちに
+resolve します。
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+`browser` export condition を使う Vite などの bundler は web facade を選び、
+private な WASM asset を自動で emit します。generated wasm-pack loader を直接
+import しないでください。browser の初期化が失敗しても、`initializeMdi()` を
+再度呼べば安全に retry できます。
+
 ## baseline と設定付き EPUB/DOCX
 
 一引数の API は synchronous Rust baseline export です。

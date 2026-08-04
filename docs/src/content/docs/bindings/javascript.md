@@ -31,6 +31,26 @@ console.log(html.headings);  // source-order heading text, depth, and spans
 
 `renderHtml(source)` returns a standalone document with the MDI stylesheet. Pass `{ bodyOnly: true }` when the application owns the outer page. `renderHtmlWithDiagnostics` also exposes headings, so navigation and chapter controls need not scrape generated HTML. The stable MDI classes (`mdi-ruby`, `mdi-tcy`, `mdi-em`, `mdi-pagebreak`, and related classes) are part of that semantic HTML.
 
+## Browser initialization
+
+In a browser, await the WebAssembly runtime once before calling the synchronous
+API. `initializeMdi()` is single-flight and idempotent: concurrent calls share
+one initialization, and Node.js resolves it immediately because its runtime is
+loaded eagerly.
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+Vite and other bundlers that honor the `browser` export condition select the
+web facade and emit its private WASM asset automatically. Do not import the
+generated wasm-pack loader directly. A failed browser initialization can be
+retried safely by calling `initializeMdi()` again.
+
 ## Choose the export level
 
 The one-argument EPUB and DOCX calls are synchronous Rust baseline exports:
