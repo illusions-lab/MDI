@@ -26,7 +26,7 @@ console.log(result.output);   // <body> 的 semantic contents
 console.log(result.headings); // source-order heading 的 depth、text、span
 ```
 
-`parse` 回傳 Rust-owned `document`、`diagnostics` 與 UTF-8 byte span。目前唯一已實作 diagnostic code 為 `mdi.version.unsupported`；多數格式錯誤採 literal fallback，不會 throw。`prepareRender(source)` 也適合 parse-first workflow。`*WithDiagnostics` 會保留 output 與 parser result，但不會自動把 warning 變成 error。
+`parse` 回傳 Rust-owned `document`、`diagnostics` 與 UTF-8 byte span。多數格式錯誤採 literal fallback，不會 throw；完整 warning 清單見[診斷](/zh-tw/core/diagnostics/)。`prepareRender(source)` 也適合 parse-first workflow。`*WithDiagnostics` 會保留 output 與 parser result，但不會自動把 warning 變成 error。
 
 `renderHtml(source)` 回傳含 MDI stylesheet 的 standalone HTML；app 擁有外層頁面時傳 `{ bodyOnly: true }`。semantic HTML 有穩定的 `mdi-ruby`、`mdi-tcy`、`mdi-em`、`mdi-pagebreak` 等 class。
 
@@ -47,6 +47,29 @@ const canonical = serializeMdi("{東京|とうきょう} ^12^");
 Vite 與其他遵循 `browser` export condition 的 bundler 會自動選擇 web facade 並
 emit 私有 WASM asset。不要直接 import generated wasm-pack loader。若 browser
 初始化失敗，可再次呼叫 `initializeMdi()` 安全地重試。
+
+## 建立純文字搜尋索引
+
+`getMdiTextBlocks(source)` 只在 Rust parse 一次，回傳依 source order 排列的 text
+blocks、完整 document IR 與 diagnostics。`3:18` 表示第三個 block 的第十八個
+Unicode grapheme。Ruby 讀音會作為可搜尋的獨立 annotation channel，而 `anchor`
+仍指回正文 base text 的 range。
+
+```ts
+import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
+const paragraph = result.blocks[1];
+const match = { start: "2:1", end: "2:3" } as const;
+
+console.log(paragraph.text); // 東京
+console.log(paragraph.annotations[0].text); // とうきょう
+console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source spans
+```
+
+`sourceMap.synthetic` 指出 projection 額外加入的 separator，例如 table 的 tab 與
+row newline；它們不會偽造 source span。`parseMdiTextPosition`、
+`formatMdiTextPosition`、`formatMdiTextRange` 是 canonical 座標格式的無狀態 helper。
 
 ## baseline 與可設定 EPUB/DOCX
 

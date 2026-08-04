@@ -79,6 +79,29 @@ Applications should treat the IR version as a wire-protocol version. They
 must not infer grammar rules from object shapes or silently accept an
 unsupported version.
 
+## Searchable text blocks
+
+`getMdiTextBlocks(source)` returns Rust-projected heading, paragraph, list,
+blockquote, code, table, footnote, and HTML text in source order. Positions
+such as `3:18` count one-based Unicode grapheme clusters; ruby readings are a
+separate annotation channel anchored to the base-text range.
+
+```ts
+import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("{東京|とうきょう}");
+const block = result.blocks[0];
+console.log(block.text); // 東京
+console.log(block.annotations[0].anchor); // { start: "1:1", end: "1:3" }
+console.log(sourceSpansForTextRange(block, { start: "1:1", end: "1:3" }));
+```
+
+Each source-derived grapheme is represented by a `sourceMap.runs` boundary;
+table tabs/newlines and multi-paragraph joiners appear in `synthetic` and do
+not receive invented source spans. `parseMdiTextPosition`,
+`formatMdiTextPosition`, and `formatMdiTextRange` provide stateless coordinate
+helpers.
+
 ## Rendering
 
 Rendering starts from the same Rust IR. Canonical MDI, plain text, HTML, EPUB,

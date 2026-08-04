@@ -69,7 +69,7 @@ There is currently **no `render_pdf`** in this binding — see "What this bindin
 
 ## Diagnostics and error handling
 
-Ordinary malformed MDI syntax never raises — it's handled by each construct's literal-fallback rule, exactly like every other binding, and `diagnostics` in the returned dict reports the one currently-implemented case (`mdi.version.unsupported`; see [Diagnostics](/core/diagnostics/)):
+Ordinary malformed MDI syntax never raises — it's handled by each construct's literal-fallback rule, exactly like every other binding. See [Diagnostics](/core/diagnostics/) for the complete warning list:
 
 ```python
 result = mdi.parse("---\nmdi: '3.0'\n---\n\n本文")

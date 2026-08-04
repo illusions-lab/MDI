@@ -26,6 +26,10 @@ let html = render_html(source);
 ```
 
 Use `parse_output` when you also need parser capabilities and diagnostics.
+Use `get_mdi_text_blocks` when a search or annotation index needs source-order
+plaintext blocks with one-based Unicode-grapheme coordinates and exact UTF-8
+source maps. The result includes the same document IR and diagnostics, and the
+source is parsed only once.
 When rendering one parsed document in multiple formats, use the
 `*_document` functions, such as `render_html_document`, to avoid parsing it
 again.

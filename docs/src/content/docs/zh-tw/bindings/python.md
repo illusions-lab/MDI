@@ -61,7 +61,7 @@ mdi.parse_mdi_syntax  # deprecated alias
 
 ## 診斷與錯誤處理
 
-一般格式不正確的 MDI 不會 raise，而以 literal fallback 處理；回傳 dict 的 `diagnostics` 唯一已實作 code 是 `mdi.version.unsupported`（見[診斷](/zh-tw/core/diagnostics/)）：
+一般格式不正確的 MDI 不會 raise，而以 literal fallback 處理；回傳 dict 的 `diagnostics` warning 完整清單見[診斷](/zh-tw/core/diagnostics/)：
 
 ```python
 result = mdi.parse("---\nmdi: '3.0'\n---\n\n本文")

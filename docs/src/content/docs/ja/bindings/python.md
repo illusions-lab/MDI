@@ -49,7 +49,7 @@ mdi.parse_mdi_syntax  # deprecated alias
 
 ## Diagnostic と error handling
 
-不正な MDI 記法は例外ではなく literal fallback と diagnostics で扱います。現在実装されている diagnostic は [唯一の `mdi.version.unsupported`](/ja/core/diagnostics/) です。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX archive writer の実際の失敗だけは `mdi.MdiRenderError` です。`mdi.parse()` を diagnostics の代わりに `try`/`except` で包まないでください。
+不正な MDI 記法は例外ではなく literal fallback と diagnostics で扱います。warning の全一覧は [Diagnostics](/ja/core/diagnostics/) を参照してください。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX archive writer の実際の失敗だけは `mdi.MdiRenderError` です。`mdi.parse()` を diagnostics の代わりに `try`/`except` で包まないでください。
 
 ```python
 mdi.parse(None)                              # TypeError

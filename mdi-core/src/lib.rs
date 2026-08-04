@@ -17,12 +17,18 @@ use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 mod docx;
 mod publication_profile;
+mod text_projection;
 pub use publication_profile::{
     ChromiumPrintPage, ChromiumPrintPageNumbers, ChromiumPrintProfile, Margins, PageNumbers,
     PageSizeDimensions, ResolvedEpub, ResolvedExportProfile, ResolvedLayout, ResolvedPagination,
     ResolvedText, ResolvedTypesetting, apply_pdf_profile, apply_pdf_profile_json, page_dimensions,
     page_size_catalog_json, prepare_chromium_print_profile, prepare_chromium_print_profile_json,
     prepare_chromium_print_profile_resolved, resolve_export_profile, resolve_export_profile_json,
+};
+pub use text_projection::{
+    MDI_TEXT_PROJECTION_VERSION, MdiAnnotationSourceMap, MdiTextAnnotation, MdiTextBlock,
+    MdiTextBlockKind, MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap,
+    MdiTextSourceRun, get_mdi_text_blocks, get_mdi_text_blocks_json,
 };
 
 /// MDI syntax version implemented by this crate.
@@ -276,15 +282,33 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parse_document_unchecked(source)
+    }))
+    .unwrap_or_else(|_| literal_fallback_document(source))
+}
+
+fn parse_document_unchecked(source: &str) -> Document {
+    // markdown-rs 1.0 can corrupt its mdast parent stack when a document
+    // contains a second frontmatter-shaped fence later in the body. On Wasm,
+    // that panic aborts before `catch_unwind` can recover, so reject this
+    // malformed shape before entering the dependency and preserve it literally.
+    if has_late_frontmatter_like_block(source) {
+        return literal_fallback_document(source);
+    }
     let prepared = prepare_block_markers(source);
     let mut constructs = markdown::Constructs::gfm();
-    constructs.frontmatter = true;
+    // `markdown-rs`' frontmatter state machine is only relevant when a YAML
+    // fence starts the document. Enabling it for arbitrary later `---` lines
+    // can panic on malformed combinations instead of returning an error.
+    constructs.frontmatter = source.starts_with("---\n") || source.starts_with("---\r\n");
     let options = markdown::ParseOptions {
         constructs,
         ..markdown::ParseOptions::default()
     };
-    let tree = markdown::to_mdast(&prepared.markdown, &options)
-        .expect("MDI does not enable MDX, so Markdown parsing cannot fail");
+    let Ok(tree) = markdown::to_mdast(&prepared.markdown, &options) else {
+        return literal_fallback_document(source);
+    };
     let mut root = serde_json::to_value(tree).expect("markdown AST is serializable");
     let frontmatter = extract_frontmatter(&root, source);
     annotate_and_lower(&mut root, source, false);
@@ -308,6 +332,73 @@ pub fn parse_document(source: &str) -> Document {
             end_byte: source.len() as u32,
         },
         frontmatter,
+        children,
+    }
+}
+
+fn has_late_frontmatter_like_block(source: &str) -> bool {
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    for line in source.split_inclusive('\n') {
+        let without_lf = line.strip_suffix('\n').unwrap_or(line);
+        let content = without_lf.strip_suffix('\r').unwrap_or(without_lf);
+        lines.push((offset, content));
+        offset += line.len();
+    }
+    if offset < source.len() {
+        lines.push((offset, &source[offset..]));
+    }
+
+    let mut index = 0;
+    let mut frontmatter_blocks = 0;
+    while index < lines.len() {
+        if lines[index].1 != "---" {
+            index += 1;
+            continue;
+        }
+        let Some(close) = (index + 1..lines.len()).find(|candidate| lines[*candidate].1 == "---")
+        else {
+            break;
+        };
+        let yaml_like = lines[index + 1..close].iter().any(|(_, line)| {
+            line.split_once(':').is_some_and(|(key, _)| {
+                !key.is_empty()
+                    && key.chars().all(|character| {
+                        character.is_ascii_alphanumeric() || "_-".contains(character)
+                    })
+            })
+        });
+        if yaml_like {
+            frontmatter_blocks += 1;
+            if lines[index].0 != 0 || frontmatter_blocks > 1 {
+                return true;
+            }
+            index = close + 1;
+        } else {
+            index += 1;
+        }
+    }
+    false
+}
+
+fn literal_fallback_document(source: &str) -> Document {
+    let span = SourceSpan {
+        start_byte: 0,
+        end_byte: source.len() as u32,
+    };
+    let children = if source.is_empty() {
+        Vec::new()
+    } else {
+        vec![serde_json::json!({
+            "type": "paragraph",
+            "children": [{ "type": "text", "value": source, "span": span }],
+            "span": span,
+            "_mdiParserRecovery": true,
+        })]
+    };
+    Document {
+        span,
+        frontmatter: None,
         children,
     }
 }
@@ -821,15 +912,24 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
     // still recognize the decoded spelling (notably `\|` inside a GFM table
     // cell), but its spans must refer to the original bytes.  Keep a mapping
     // from decoded byte boundaries back to the source range for that case.
-    let source_offsets = span
+    let raw_source = span
         .as_ref()
-        .and_then(|span| source.get(span.start_byte as usize..span.end_byte as usize))
-        .and_then(|raw| decoded_byte_offsets(rendered_value, raw));
-    if !looks_like_mdi(rendered_value) {
+        .and_then(|span| source.get(span.start_byte as usize..span.end_byte as usize));
+    let source_offsets = raw_source.and_then(|raw| decoded_byte_offsets(rendered_value, raw));
+    let raw_parts = raw_source
+        .filter(|raw| *raw != rendered_value && source_offsets.is_some() && looks_like_mdi(raw))
+        .map(parse_document_inline_parts)
+        .filter(|parts| {
+            parts
+                .iter()
+                .any(|(inline, _, _)| matches!(inline, Inline::Ruby { .. }))
+        });
+    if !looks_like_mdi(rendered_value) && raw_parts.is_none() {
         return;
     }
     let span = object.get("span").cloned();
-    let parsed = parse_inline_parts(rendered_value);
+    let parsing_raw = raw_parts.is_some();
+    let parsed = raw_parts.unwrap_or_else(|| parse_inline_parts(rendered_value));
     if let Some((Inline::Text(value), _, _)) = parsed.first()
         && parsed.len() == 1
         && value == rendered_value
@@ -845,14 +945,22 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
                     .get("startByte")
                     .and_then(serde_json::Value::as_u64);
                 if let Some(start_byte) = start_byte {
-                    let start = source_offsets
-                        .as_ref()
-                        .and_then(|offsets| source_offset(offsets, start))
-                        .unwrap_or(start);
-                    let end = source_offsets
-                        .as_ref()
-                        .and_then(|offsets| source_offset(offsets, end))
-                        .unwrap_or(end);
+                    let start = if parsing_raw {
+                        start
+                    } else {
+                        source_offsets
+                            .as_ref()
+                            .and_then(|offsets| source_offset(offsets, start))
+                            .unwrap_or(start)
+                    };
+                    let end = if parsing_raw {
+                        end
+                    } else {
+                        source_offsets
+                            .as_ref()
+                            .and_then(|offsets| source_offset(offsets, end))
+                            .unwrap_or(end)
+                    };
                     object.insert(
                         "span".to_owned(),
                         serde_json::json!(SourceSpan {
@@ -910,6 +1018,19 @@ fn extract_frontmatter(root: &serde_json::Value, source: &str) -> Option<Frontma
 }
 
 fn diagnostics(document: &Document) -> Vec<Diagnostic> {
+    if document.children.iter().any(|child| {
+        child
+            .get("_mdiParserRecovery")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+    }) {
+        return vec![Diagnostic {
+            severity: DiagnosticSeverity::Warning,
+            code: "mdi.parser.recovered".to_owned(),
+            message: "The parser recovered by projecting the source as literal text".to_owned(),
+            span: Some(document.span),
+        }];
+    }
     let Some(frontmatter) = document.frontmatter.as_ref() else {
         return Vec::new();
     };
@@ -2157,22 +2278,6 @@ fn render_text_node(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
     {
-        "text" | "inlineCode" | "code" | "html" | "tcy" => out.push_str(
-            node.get("value")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "ruby" => out.push_str(
-            node.get("base")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "image" => out.push_str(
-            node.get("alt")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "break" => out.push('\n'),
         "blank" => out.push('\n'),
         "pagebreak" => out.push_str("\n\x0C\n"),
         "heading" | "paragraph" | "blockquote" | "listItem" | "tableRow" => {
@@ -2183,7 +2288,12 @@ fn render_text_node(node: &serde_json::Value, out: &mut String) {
             render_text_children(node, out);
             out.push('\t');
         }
-        _ => render_text_children(node, out),
+        _ => match text_projection::plain_inline(node) {
+            text_projection::PlainInline::Value(value) => out.push_str(value),
+            text_projection::PlainInline::Break => out.push('\n'),
+            text_projection::PlainInline::Skip => {}
+            text_projection::PlainInline::Children => render_text_children(node, out),
+        },
     }
 }
 
@@ -3386,10 +3496,21 @@ pub fn parse_inlines(source: &str) -> Vec<Inline> {
         .collect()
 }
 
+fn parse_document_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
+    parse_inline_parts_with(source, true)
+}
+
 /// Parse MDI inline syntax and retain each node's raw byte range relative to
 /// `source`.  Escaped text deliberately retains the range of its spelling in
 /// the source even when its rendered value is shorter.
 fn parse_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
+    parse_inline_parts_with(source, false)
+}
+
+fn parse_inline_parts_with(
+    source: &str,
+    decode_commonmark_escapes: bool,
+) -> Vec<(Inline, usize, usize)> {
     let mut out = Vec::new();
     let mut text = String::new();
     let mut text_start = 0;
@@ -3405,7 +3526,7 @@ fn parse_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
                 index += slash.len_utf8();
                 continue;
             };
-            if is_escapable(next) {
+            if is_escapable(next) || (decode_commonmark_escapes && next.is_ascii_punctuation()) {
                 text.push(next);
             } else {
                 text.push(slash);
@@ -3864,10 +3985,11 @@ fn classify_block_macro(source: &str) -> BlockMacroClass {
 mod wasm {
     use super::{
         BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, TextFormat,
-        apply_pdf_profile_json, classify_block_macro, page_size_catalog_json, parse_json,
-        prepare_chromium_print_profile_json, render_docx, render_docx_with_profile, render_epub,
-        render_epub_with_profile, render_html, render_text, render_text_format,
-        resolve_export_profile_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
+        apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
+        page_size_catalog_json, parse_json, prepare_chromium_print_profile_json, render_docx,
+        render_docx_with_profile, render_epub, render_epub_with_profile, render_html, render_text,
+        render_text_format, resolve_export_profile_json, serialize_mdi, split_ruby, unescape_mdi,
+        unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
 
@@ -3877,6 +3999,12 @@ mod wasm {
     #[wasm_bindgen(js_name = parseMdiSyntaxJson)]
     pub fn wasm_parse_mdi_syntax_json(source: &str) -> String {
         parse_json(source)
+    }
+
+    /// Project source-order searchable text and exact UTF-8 source maps in Rust.
+    #[wasm_bindgen(js_name = getMdiTextBlocksJson)]
+    pub fn wasm_get_mdi_text_blocks_json(source: &str) -> String {
+        get_mdi_text_blocks_json(source)
     }
 
     /// Render source through the Rust parser and Rust HTML renderer.

@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { MDI_IR_VERSION, MDI_SPEC_VERSION, initializeMdi, parse, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, toPublicationMdast } from "./index.js";
+import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
 
 function assertValidSpans(node: { span?: { startByte: number; endByte: number }; children?: unknown[] }, source: string): void {
 	if (node.span) {
@@ -35,6 +35,45 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(result.document.children[0]).toMatchObject({ type: "paragraph", span: { startByte: 0, endByte: 10 } });
 	});
 
+	it("returns Rust-owned grapheme text blocks, ruby annotations, and source maps", () => {
+		const source = "# 序章\n\n我喜歡{東京|とうきょう}。\n\né 👩🏽‍💻";
+		const result = getMdiTextBlocks(source);
+
+		expect(result).toMatchObject({
+			projectionVersion: "1.0",
+			positionEncoding: "unicode-grapheme-cluster-1-based",
+			irVersion: MDI_IR_VERSION,
+			syntaxVersion: MDI_SPEC_VERSION,
+		});
+		expect(result.blocks.map(({ kind, text, range }) => ({ kind, text, range }))).toEqual([
+			{ kind: "heading", text: "序章", range: { start: "1:1", end: "1:3" } },
+			{ kind: "paragraph", text: "我喜歡東京。", range: { start: "2:1", end: "2:7" } },
+			{ kind: "paragraph", text: "é 👩🏽‍💻", range: { start: "3:1", end: "3:4" } },
+		]);
+		expect(result.blocks[1]!.annotations[0]).toMatchObject({
+			kind: "rubyReading",
+			text: "とうきょう",
+			anchor: { start: "2:4", end: "2:6" },
+		});
+		expect(sourceSpansForTextRange(result.blocks[1]!, { start: "2:4", end: "2:6" })).toEqual([
+			{
+				startByte: Buffer.byteLength("# 序章\n\n我喜歡{"),
+				endByte: Buffer.byteLength("# 序章\n\n我喜歡{東京"),
+			},
+		]);
+	});
+
+	it("formats positions and omits synthetic separators from source span lookup", () => {
+		expect(parseMdiTextPosition("3:18")).toEqual({ block: 3, character: 18 });
+		expect(formatMdiTextPosition({ block: 3, character: 18 })).toBe("3:18");
+		expect(formatMdiTextRange({ start: "3:18", end: "3:24" })).toBe("3:18-3:24");
+		expect(() => parseMdiTextPosition("3:0")).toThrow("Invalid MDI text position");
+
+		const table = getMdiTextBlocks("| a | b |\n| - | - |\n| c | d |").blocks[0]!;
+		expect(table.text).toBe("a\tb\nc\td");
+		expect(sourceSpansForTextRange(table, { start: "1:2", end: "1:3" })).toEqual([]);
+	});
+
 	it("exposes nested syntax decisions made by Rust", () => {
 		const result = parse("**第^12^話**\n\n| a | b |\n| - | - |\n| 1 | 2 |");
 		expect(result.document.children.map((node) => node.type)).toEqual(["paragraph", "table"]);
@@ -47,6 +86,7 @@ describe("Rust MDI JavaScript binding", () => {
 
 	it("rejects non-string input at the host boundary", () => {
 		expect(() => parse(null as never)).toThrow("source must be a string");
+		expect(() => getMdiTextBlocks(null as never)).toThrow("source must be a string");
 		expect(() => renderHtml({} as never)).toThrow("source must be a string");
 		expect(() => renderEpub(null as never)).toThrow("source must be a string");
 		expect(() => renderDocx(null as never)).toThrow("source must be a string");
