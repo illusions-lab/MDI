@@ -23,11 +23,18 @@ const HUNDRED_MILLION: usize = 100_000_000;
 fn book_source(characters: usize) -> String {
     const CHAPTER: &str =
         "# 第一章\n\n吾輩は{猫|ねこ}である。[[em:名前]]はまだない。第^12^話。\n\n";
-    const PARAGRAPH: &str = "東京の空は青く、{言葉|ことば}は静かに続く。\n\n";
+    const FILLER: &str = "本文は静かに続き、季節は移ろう。";
 
     let mut source = String::with_capacity(characters.saturating_mul(3));
     let chapter_characters = CHAPTER.chars().count();
-    let paragraph_characters = PARAGRAPH.chars().count();
+    // A long book has long prose paragraphs, not millions of two-sentence
+    // blocks.  Keep each paragraph around 2,000 characters while retaining
+    // representative MDI syntax at its beginning.
+    let paragraph = format!(
+        "東京の空は青く、{{言葉|ことば}}は[[em:静か]]に続く。第^12^話。{}\n\n",
+        FILLER.repeat(96)
+    );
+    let paragraph_characters = paragraph.chars().count();
     let mut used_characters = 0;
 
     let mut paragraphs = 0;
@@ -40,7 +47,7 @@ fn book_source(characters: usize) -> String {
             source.push_str(CHAPTER);
             used_characters += chapter_characters;
         }
-        source.push_str(PARAGRAPH);
+        source.push_str(&paragraph);
         used_characters += paragraph_characters;
         paragraphs += 1;
     }
