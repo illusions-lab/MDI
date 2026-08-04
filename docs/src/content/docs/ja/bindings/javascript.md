@@ -26,7 +26,7 @@ console.log(result.output);   // <body> の semantic contents
 console.log(result.headings); // depth、text、span を持つ source-order headings
 ```
 
-`parse` は Rust-owned `document`、`diagnostics`、UTF-8 byte span を返します。現時点で実装済み diagnostic code は `mdi.version.unsupported` だけです。構文の誤りの多くは throw ではなく literal fallback になります。`prepareRender(source)` も parse-first 用です。`*WithDiagnostics` は output と同じ parser result を返しますが、warning を error に変えるものではありません。
+`parse` は Rust-owned `document`、`diagnostics`、UTF-8 byte span を返します。構文の誤りの多くは throw ではなく literal fallback になります。warning の全一覧は [Diagnostics](/ja/core/diagnostics/) を参照してください。`prepareRender(source)` も parse-first 用です。`*WithDiagnostics` は output と同じ parser result を返しますが、warning を error に変えるものではありません。
 
 `renderHtml(source)` は MDI stylesheet 付き standalone HTML を返します。app が外側の page を持つなら `{ bodyOnly: true }` を使います。semantic HTML は stable な `mdi-ruby`、`mdi-tcy`、`mdi-em`、`mdi-pagebreak` 等の class を付けます。
 
@@ -49,6 +49,30 @@ const canonical = serializeMdi("{東京|とうきょう} ^12^");
 private な WASM asset を自動で emit します。generated wasm-pack loader を直接
 import しないでください。browser の初期化が失敗しても、`initializeMdi()` を
 再度呼べば安全に retry できます。
+
+## プレーンテキスト検索 index
+
+`getMdiTextBlocks(source)` は Rust で一度だけ parse し、source order の text
+block、完全な document IR、diagnostics を返します。`3:18` は三つ目の block の
+十八番目の Unicode grapheme を表します。ruby の reading は別 channel の
+annotation として検索でき、`anchor` は base text の range を指します。
+
+```ts
+import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
+const paragraph = result.blocks[1];
+const match = { start: "2:1", end: "2:3" } as const;
+
+console.log(paragraph.text); // 東京
+console.log(paragraph.annotations[0].text); // とうきょう
+console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source span
+```
+
+`sourceMap.synthetic` は table の tab や row newline など projection が追加した
+separator を示し、source span は作りません。`parseMdiTextPosition`、
+`formatMdiTextPosition`、`formatMdiTextRange` は canonical な座標表記用の
+stateless helper です。
 
 ## baseline と設定付き EPUB/DOCX
 

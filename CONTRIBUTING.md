@@ -69,7 +69,7 @@ Android work requires JDK 17+, the Android SDK/NDK, Rust Android targets, and `c
 4. Update the specification and user-facing documentation when public syntax, output, or APIs change.
 5. Run the checks relevant to the directories you touched before opening a PR.
 
-For JavaScript packages, add a Changeset when the change warrants a published package release. Do not add one for internal-only work, documentation-only changes, or test-only changes.
+For user-visible JavaScript package changes, update the public documentation and add focused tests. The release workflow calculates the next registry patch after the change merges to `main`; do not manually bump published npm package versions for an ordinary release. Internal-only, documentation-only, and test-only changes do not trigger package publication on their own.
 
 ## Pull request expectations
 

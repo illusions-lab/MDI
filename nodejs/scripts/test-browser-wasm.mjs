@@ -3,8 +3,10 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium, firefox, webkit } from "playwright";
 import { build } from "vite";
 import { packPublishablePackage } from "./pack-publishable-package.mjs";
@@ -41,6 +43,8 @@ try {
   await mkdir(fixtureRoot, { recursive: true });
   await writeFile(join(consumerDirectory, "package.json"), JSON.stringify({ name: "mdi-packed-browser-consumer", private: true, type: "module" }));
   execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], { cwd: consumerDirectory, stdio: "inherit" });
+  const consumerRequire = createRequire(join(consumerDirectory, "package.json"));
+  const packedMdi = await import(pathToFileURL(consumerRequire.resolve("@illusions-lab/mdi")).href);
   await writeFile(join(fixtureRoot, "index.html"), await readFile(resolve(repositoryRoot, "nodejs/browser-test/index.html")));
   await writeFile(join(fixtureRoot, "src.ts"), await readFile(resolve(repositoryRoot, "nodejs/browser-test/src.ts")));
 
@@ -102,7 +106,7 @@ try {
     const url = `http://127.0.0.1:${address.port}/mdi-editor/`;
     console.log("Running packed browser WASM contract in Chromium, Firefox, and WebKit");
     for (const [browserName, browserType] of browserTypes) {
-      await testBrowser(browserName, browserType, url, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
+      await testBrowser(browserName, browserType, url, packedMdi.getMdiTextBlocks, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
     }
     assert.equal(wasmRequests.length, browserTypes.length + (runRetry ? 2 : 0), "failed initialization must retry exactly once without duplicate concurrent loads");
     assert(wasmRequests.every(({ contentType }) => contentType === "application/wasm"), "WASM must be served with application/wasm");
@@ -114,21 +118,21 @@ try {
   await rm(outputDirectory, { recursive: true, force: true });
 }
 
-async function testBrowser(browserName, browserType, url, retryUrl) {
+async function testBrowser(browserName, browserType, url, getNodeProjection, retryUrl) {
   console.log(`Launching ${browserName}`);
   const browser = await browserType.launch({ headless: true });
   try {
-    await testPage(browserName, await browser.newPage(), url);
+    await testPage(browserName, await browser.newPage(), url, getNodeProjection);
     if (retryUrl) {
       retryFailureRemaining = 1;
-      await testPage(`${browserName} retry`, await browser.newPage(), retryUrl);
+      await testPage(`${browserName} retry`, await browser.newPage(), retryUrl, getNodeProjection);
     }
   } finally {
     await browser.close();
   }
 }
 
-async function testPage(browserName, page, url) {
+async function testPage(browserName, page, url, getNodeProjection) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error));
   await page.goto(url, { waitUntil: "networkidle" });
@@ -142,6 +146,20 @@ async function testPage(browserName, page, url) {
   const result = JSON.parse(await page.locator("#result").textContent());
   assert.equal(result.error, undefined, `${browserName}: ${result.error}`);
   assert.equal(result.irVersion, "1.0", browserName);
+  assert.equal(result.projectionVersion, "1.0", browserName);
+  assert.equal(
+    result.projectionJson,
+    JSON.stringify(getNodeProjection(result.projectionSource)),
+    `${browserName}: Node and browser must return byte-for-byte identical projection JSON`,
+  );
+  assert.equal(
+    result.recoveryProjectionJson,
+    JSON.stringify(getNodeProjection(result.recoverySource)),
+    `${browserName}: malformed recovery must match Node without trapping Wasm`,
+  );
+  assert.equal(result.recoveryDiagnostic?.code, "mdi.parser.recovered", browserName);
+  assert.equal(result.projectedBlocks[0]?.kind, "heading", browserName);
+  assert.equal(result.projectedBlocks[0]?.range?.start, "1:1", browserName);
   assert.equal(result.firstNode, "heading", browserName);
   assert.equal(result.hasFrontmatter, true, browserName);
   assert.equal(result.tableType, "table", browserName);

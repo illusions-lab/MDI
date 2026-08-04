@@ -27,7 +27,7 @@ console.log(html.output);    // semantic contents of <body>
 console.log(html.headings);  // source-order heading text, depth, and spans
 ```
 
-`parse()` returns Rust-owned `document`, `diagnostics`, and UTF-8-byte source spans. At present the only implemented diagnostic code is `mdi.version.unsupported`; malformed inline notation normally uses its literal fallback rather than throwing. `prepareRender(source)` is the same parse-first convenience for a host workflow. The `*WithDiagnostics` helpers return that parser result alongside output; they do not make an invalid document fail automatically.
+`parse()` returns Rust-owned `document`, `diagnostics`, and UTF-8-byte source spans. Malformed inline notation normally uses its literal fallback rather than throwing; see [Diagnostics](/core/diagnostics/) for the complete warning list. `prepareRender(source)` is the same parse-first convenience for a host workflow. The `*WithDiagnostics` helpers return that parser result alongside output; they do not make an invalid document fail automatically.
 
 `renderHtml(source)` returns a standalone document with the MDI stylesheet. Pass `{ bodyOnly: true }` when the application owns the outer page. `renderHtmlWithDiagnostics` also exposes headings, so navigation and chapter controls need not scrape generated HTML. The stable MDI classes (`mdi-ruby`, `mdi-tcy`, `mdi-em`, `mdi-pagebreak`, and related classes) are part of that semantic HTML.
 
@@ -50,6 +50,31 @@ Vite and other bundlers that honor the `browser` export condition select the
 web facade and emit its private WASM asset automatically. Do not import the
 generated wasm-pack loader directly. A failed browser initialization can be
 retried safely by calling `initializeMdi()` again.
+
+## Build a plaintext search index
+
+`getMdiTextBlocks(source)` parses once in Rust and returns source-order text
+blocks alongside the complete document IR and diagnostics. A position such as
+`3:18` means the eighteenth one-based Unicode grapheme in the third block.
+Ruby readings remain searchable annotations whose `anchor` points back to the
+base-text range.
+
+```ts
+import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
+const paragraph = result.blocks[1];
+const match = { start: "2:1", end: "2:3" } as const;
+
+console.log(paragraph.text); // 東京
+console.log(paragraph.annotations[0].text); // とうきょう
+console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source spans
+```
+
+`sourceMap.synthetic` identifies separators added by the projection, such as
+table tabs and row newlines; these deliberately produce no source span.
+`parseMdiTextPosition`, `formatMdiTextPosition`, and `formatMdiTextRange` are
+stateless helpers for the canonical coordinate spelling.
 
 ## Choose the export level
 

@@ -20,7 +20,7 @@ Diagnostics live in the `diagnostics` array of a parse result — they are alway
 
 ## Every diagnostic code today
 
-There is currently exactly **one** diagnostic code implemented in `mdi-core`:
+There are currently **two** diagnostic codes implemented in `mdi-core`:
 
 ### `mdi.version.unsupported`
 
@@ -42,6 +42,19 @@ mdi: "2.1"
 ```
 
 Per `SYNTAX.md`, encountering a newer-than-supported version is a **SHOULD warn and continue**, never a **MUST reject** — parsing proceeds on a best-effort basis using the rules the parser knows, and the rest of the document still produces a normal tree alongside this one diagnostic.
+
+### `mdi.parser.recovered`
+
+- **Severity:** `warning`
+- **When it fires:** a malformed, frontmatter-shaped sequence would trigger an
+  upstream Markdown parser failure. MDI preserves the complete source as one
+  literal text block instead of failing or trapping in WebAssembly.
+- **Span:** the complete document.
+- **Message:** `"The parser recovered by projecting the source as literal text"`.
+
+This is a defensive recovery path, not a normal syntax diagnostic. Ordinary
+malformed inline MDI continues to use its construct-specific literal fallback
+without adding a diagnostic.
 
 :::caution[Current implementation status]
 The comparison `mdi-core` uses today is a plain **string** comparison (`declared > MDI_SPEC_VERSION`), not a semantic version comparison. This is correct for every realistic case while MDI is at a single digit `major.minor`, but note it is not semver-aware in general — e.g. `"2.10"` would compare as lexicographically *less than* `"2.9"`. This is a known limitation of the current implementation, not a documented part of the spec's version-comparison rule.

@@ -46,7 +46,12 @@ This page lists only symbols present in [`mdi-core/src/lib.rs`](https://github.c
 
 ## Public data types
 
-`ParseOutput`, `ParserCapabilities`, `Diagnostic`, `DiagnosticSeverity`, `SourceSpan`, `Document`, `Frontmatter`, `FrontmatterEntry`, `PdfOptions`, `EpubCover`, `ResolvedExportProfile` and its nested profile/Chromium print types (current-generation API); `MdiSyntaxDocument`, `MdiBlock`, `PagebreakVariant`, `Inline`, `RubyReading` (the older, `parse_mdi_syntax`-only shape — `Inline`/`RubyReading` are also reused internally to build the current-generation `Document`'s MDI nodes, but their `serde` output is what appears inside `Document.children`, not `MdiSyntaxDocument`).
+`ParseOutput`, `ParserCapabilities`, `Diagnostic`, `DiagnosticSeverity`, `SourceSpan`, `Document`, `Frontmatter`, `FrontmatterEntry`, `MdiTextBlocksResult`, `MdiTextBlock`, `MdiTextPosition`, `MdiTextRange`, `MdiTextSourceMap`, `MdiTextSourceRun`, `MdiTextAnnotation`, `PdfOptions`, `EpubCover`, `ResolvedExportProfile` and its nested profile/Chromium print types (current-generation API); `MdiSyntaxDocument`, `MdiBlock`, `PagebreakVariant`, `Inline`, `RubyReading` (the older, `parse_mdi_syntax`-only shape — `Inline`/`RubyReading` are also reused internally to build the current-generation `Document`'s MDI nodes, but their `serde` output is what appears inside `Document.children`, not `MdiSyntaxDocument`).
+
+Use `get_mdi_text_blocks(source)` or `get_mdi_text_blocks_json(source)` for the
+Rust-owned plaintext search projection. It returns source-order blocks with
+one-based Unicode-grapheme positions, UTF-8 source-map boundaries, ruby reading
+annotations, and the same document/diagnostic envelope as `parse_output`.
 
 ## Not yet implemented
 

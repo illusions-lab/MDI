@@ -5,6 +5,7 @@ import type { Root } from "mdast";
 import { parse as parseYaml } from "yaml";
 
 const {
+	getMdiTextBlocksJson,
 	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
@@ -104,6 +105,9 @@ export const MDI_SPEC_VERSION = "2.0" as const;
 /** Version of the complete Rust-owned document IR. */
 export const MDI_IR_VERSION = "1.0" as const;
 
+/** Version of the Rust-owned searchable text projection. */
+export const MDI_TEXT_PROJECTION_VERSION = "1.0" as const;
+
 export interface MdiParserCapabilities {
 	mdi: boolean;
 	commonMark: boolean;
@@ -117,6 +121,66 @@ export interface MdiSourceSpan {
 	startByte: number;
 	/** Exclusive UTF-8 byte offset. */
 	endByte: number;
+}
+
+/** A canonical one-based `block:grapheme` text position. */
+export type MdiTextPosition = `${number}:${number}`;
+
+export interface MdiTextPositionValue {
+	block: number;
+	character: number;
+}
+
+export interface MdiTextRange {
+	/** Inclusive. */
+	start: MdiTextPosition;
+	/** Exclusive. */
+	end: MdiTextPosition;
+}
+
+export interface MdiTextSourceRun {
+	range: MdiTextRange;
+	/** One UTF-8 source boundary per grapheme, plus the final boundary. */
+	sourceBoundaries: number[];
+}
+
+export interface MdiTextSourceMap {
+	runs: MdiTextSourceRun[];
+	synthetic: MdiTextRange[];
+	unmapped: MdiTextRange[];
+}
+
+export type MdiAnnotationSourceMap = MdiTextSourceMap;
+
+export interface MdiTextAnnotation {
+	kind: "rubyReading";
+	text: string;
+	anchor: MdiTextRange;
+	span?: MdiSourceSpan;
+	sourceMap: MdiAnnotationSourceMap;
+}
+
+export interface MdiTextBlock {
+	/** One-based source-order block number. */
+	index: number;
+	kind: "heading" | "paragraph" | "listItem" | "blockquote" | "code" | "table" | "footnote" | "html" | "other";
+	text: string;
+	range: MdiTextRange;
+	span?: MdiSourceSpan;
+	sourceMap: MdiTextSourceMap;
+	annotations: MdiTextAnnotation[];
+	node: MdiNode;
+}
+
+export interface MdiTextBlocksResult {
+	projectionVersion: "1.0";
+	positionEncoding: "unicode-grapheme-cluster-1-based";
+	irVersion: typeof MDI_IR_VERSION;
+	syntaxVersion: typeof MDI_SPEC_VERSION;
+	capabilities: MdiParserCapabilities;
+	blocks: MdiTextBlock[];
+	document: MdiDocument;
+	diagnostics: MdiDiagnostic[];
 }
 
 export interface MdiDiagnostic {
@@ -217,6 +281,121 @@ export function parse(source: string): MdiSyntaxParseResult {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}
 	return result;
+}
+
+/**
+ * Parse once in Rust and return source-order plaintext blocks, annotations,
+ * and grapheme-precise UTF-8 source maps alongside the complete document IR.
+ */
+export function getMdiTextBlocks(source: string): MdiTextBlocksResult {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	const result = JSON.parse(getMdiTextBlocksJson(source)) as MdiTextBlocksResult;
+	if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
+		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
+	}
+	return result;
+}
+
+/** Parse and validate a canonical one-based `block:character` position. */
+export function parseMdiTextPosition(position: string): MdiTextPositionValue {
+	if (typeof position !== "string") throw new TypeError("position must be a string");
+	const match = /^([1-9]\d*):([1-9]\d*)$/.exec(position);
+	if (!match) throw new RangeError(`Invalid MDI text position: ${position}`);
+	const block = Number(match[1]);
+	const character = Number(match[2]);
+	if (!Number.isSafeInteger(block) || !Number.isSafeInteger(character)) {
+		throw new RangeError(`Invalid MDI text position: ${position}`);
+	}
+	return { block, character };
+}
+
+/** Format a validated one-based text position. */
+export function formatMdiTextPosition(position: MdiTextPositionValue): MdiTextPosition {
+	if (!position || typeof position !== "object") {
+		throw new TypeError("position must be an object");
+	}
+	if (!isPositiveSafeInteger(position.block) || !isPositiveSafeInteger(position.character)) {
+		throw new RangeError("position.block and position.character must be positive safe integers");
+	}
+	return `${position.block}:${position.character}`;
+}
+
+/** Format a canonical full `start-end` range such as `3:18-3:24`. */
+export function formatMdiTextRange(range: MdiTextRange): string {
+	if (!range || typeof range !== "object") throw new TypeError("range must be an object");
+	const start = parseMdiTextPosition(range.start);
+	const end = parseMdiTextPosition(range.end);
+	if (start.block !== end.block || end.character < start.character) {
+		throw new RangeError("range must be ordered within one text block");
+	}
+	return `${range.start}-${range.end}`;
+}
+
+/**
+ * Resolve a text range to its source-derived UTF-8 spans. Synthetic table or
+ * paragraph separators are deliberately omitted.
+ */
+export function sourceSpansForTextRange(
+	block: MdiTextBlock,
+	range: MdiTextRange,
+): MdiSourceSpan[] {
+	if (!block || typeof block !== "object") throw new TypeError("block must be an object");
+	const start = parseMdiTextPosition(range.start);
+	const end = parseMdiTextPosition(range.end);
+	if (start.block !== block.index || end.block !== block.index) {
+		throw new RangeError("range must belong to the supplied text block");
+	}
+	const blockEnd = parseMdiTextPosition(block.range.end).character;
+	if (end.character < start.character || start.character < 1 || end.character > blockEnd) {
+		throw new RangeError("range falls outside the supplied text block");
+	}
+
+	const spans: MdiSourceSpan[] = [];
+	let previousRunEnd = 1;
+	for (const run of block.sourceMap.runs) {
+		const runStartPosition = parseMdiTextPosition(run.range.start);
+		const runEndPosition = parseMdiTextPosition(run.range.end);
+		const runStart = runStartPosition.character;
+		const runEnd = runEndPosition.character;
+		const invalidRange = runStartPosition.block !== block.index
+			|| runEndPosition.block !== block.index
+			|| runEnd < runStart
+			|| runStart < previousRunEnd
+			|| runEnd > blockEnd;
+		const invalidBoundaries = run.sourceBoundaries.length !== runEnd - runStart + 1
+			|| run.sourceBoundaries.some((boundary) => !Number.isSafeInteger(boundary) || boundary < 0)
+			|| run.sourceBoundaries.some((boundary, index) => index > 0 && boundary < run.sourceBoundaries[index - 1]!)
+			|| (block.span !== undefined && run.sourceBoundaries.some(
+				(boundary) => boundary < block.span!.startByte || boundary > block.span!.endByte,
+			));
+		if (invalidRange || invalidBoundaries) {
+			throw new Error("Invalid MDI text source run");
+		}
+		previousRunEnd = runEnd;
+		const overlapStart = Math.max(start.character, runStart);
+		const overlapEnd = Math.min(end.character, runEnd);
+		for (let character = overlapStart; character < overlapEnd; character += 1) {
+			const offset = character - runStart;
+			appendMergedSourceSpan(spans, {
+				startByte: run.sourceBoundaries[offset]!,
+				endByte: run.sourceBoundaries[offset + 1]!,
+			});
+		}
+	}
+	return spans;
+}
+
+function appendMergedSourceSpan(spans: MdiSourceSpan[], next: MdiSourceSpan): void {
+	const previous = spans.at(-1);
+	if (previous?.endByte === next.startByte) {
+		previous.endByte = next.endByte;
+	} else {
+		spans.push(next);
+	}
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
 
 /** Render complete `.mdi` source to standalone semantic HTML in Rust. */

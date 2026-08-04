@@ -1,4 +1,4 @@
-import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -16,6 +16,15 @@ title: ブラウザ 😀
 | nested | [[em:MDI]] |
 `;
 const largeSource = `${source}\n\n${"段落 {東京|とうきょう} 😀\n\n".repeat(256)}`;
+const recoverySource = `[[no-break:^12^]]---
+mdi: '3.0'
+title: adversarial
+---
+---
+mdi: '3.0'
+title: adversarial
+---
+`;
 
 void run().catch((error: unknown) => {
   document.querySelector("#result")!.textContent = JSON.stringify({
@@ -38,6 +47,8 @@ async function run(): Promise<void> {
   }
 
   const parsed = parse(source);
+  const projection = getMdiTextBlocks(source);
+  const recoveryProjection = getMdiTextBlocks(recoverySource);
   const canonical = serializeMdi(source);
   const large = parse(largeSource);
   const unsupportedVersion = parse("---\nmdi: '3.0'\n---\n\nmalformed-version corpus");
@@ -48,6 +59,13 @@ async function run(): Promise<void> {
 
   document.querySelector("#result")!.textContent = JSON.stringify({
     irVersion: parsed.irVersion,
+    projectionVersion: projection.projectionVersion,
+    projectionSource: source,
+    projectionJson: JSON.stringify(projection),
+    recoverySource,
+    recoveryProjectionJson: JSON.stringify(recoveryProjection),
+    recoveryDiagnostic: recoveryProjection.diagnostics[0],
+    projectedBlocks: projection.blocks.map(({ kind, text, range }) => ({ kind, text, range })),
     firstNode: parsed.document.children[0]?.type,
     canonical,
     remarkOutput,
