@@ -25,6 +25,25 @@ console.log(result.document);
 console.log(result.diagnostics);
 ```
 
+### Browser initialization
+
+Browser applications must initialize the Rust WebAssembly module once before
+using the otherwise synchronous APIs. Repeated calls return the same pending
+initialization and are safe during hot reload or shared application startup:
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+Vite and other browser-condition-aware bundlers select the web loader and emit
+its WASM asset automatically. Node.js keeps its existing eager, synchronous
+WASM loading behavior; `initializeMdi()` resolves immediately there, so shared
+startup code can call it in both environments.
+
 ## What the binding does
 
 The package has deliberately narrow responsibilities:

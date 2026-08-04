@@ -1,22 +1,39 @@
-import {
-	parseMdiSyntaxJson,
-	renderHtml as renderHtmlFromRust,
-	renderEpub as renderEpubFromRust,
-	renderEpubWithProfile as renderEpubWithProfileFromRust,
-	renderDocx as renderDocxFromRust,
-	renderDocxWithProfile as renderDocxWithProfileFromRust,
-	renderText as renderTextFromRust,
-	renderTextFormat as renderTextFormatFromRust,
-	serializeMdi as serializeMdiFromRust,
-} from "@illusions-lab/mdi-core";
+import * as mdiCore from "@illusions-lab/mdi-core";
 import type { EpubCover, EpubExportOptions } from "@illusions-lab/mdi-to-epub";
-import {
-	requireLayoutSystem,
-	type ExportProfile,
-	type WritingMode,
-} from "@illusions-lab/mdi-export-profile";
+import type { ExportProfile, WritingMode } from "@illusions-lab/mdi-export-profile";
 import type { Root } from "mdast";
 import { parse as parseYaml } from "yaml";
+
+const {
+	parseMdiSyntaxJson,
+	renderHtml: renderHtmlFromRust,
+	renderEpub: renderEpubFromRust,
+	renderEpubWithProfile: renderEpubWithProfileFromRust,
+	renderDocx: renderDocxFromRust,
+	renderDocxWithProfile: renderDocxWithProfileFromRust,
+	renderText: renderTextFromRust,
+	renderTextFormat: renderTextFormatFromRust,
+	resolveExportProfileJson: resolveExportProfileJsonFromRust,
+	serializeMdi: serializeMdiFromRust,
+} = mdiCore;
+
+/**
+ * Initialize the shared MDI core runtime exactly once.
+ *
+ * Browser applications must await this before calling the synchronous parse
+ * or serialization APIs. In Node.js the WASM binding is loaded eagerly, so
+ * this remains a harmless resolved promise for portable application setup.
+ */
+export function initializeMdi(): Promise<void> {
+	return mdiCore.initializeMdiCore();
+}
+
+function requireLayoutSystem(profile: ExportProfile): void {
+	if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+		throw new Error("Export profile must be an object");
+	}
+	resolveExportProfileJsonFromRust(JSON.stringify(profile), undefined, true);
+}
 
 export type { EpubCover, EpubExportOptions, ExportProfile };
 

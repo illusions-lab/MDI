@@ -84,7 +84,16 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       );
 
     for (const tarball of tarballs) {
-      assert.doesNotMatch(JSON.stringify(packedManifest(tarball)), /workspace:/);
+      const manifest = packedManifest(tarball);
+      assert.doesNotMatch(JSON.stringify(manifest), /workspace:/);
+      if (manifest.name === "@illusions-lab/mdi-core") {
+        const files = execFileSync("tar", ["-tf", tarball], { encoding: "utf8" });
+        assert.match(files, /package\/dist\/generated\/node\/mdi_core_bg\.wasm/);
+        assert.match(files, /package\/dist\/generated\/web\/mdi_core_bg\.wasm/);
+        assert.match(files, /package\/dist\/web\/index\.js/);
+        assert.equal(manifest.exports["."].browser, "./dist/web/index.js");
+        assert.equal(manifest.exports["."].node, "./dist/node/index.js");
+      }
     }
 
     mkdirSync(consumerDirectory);

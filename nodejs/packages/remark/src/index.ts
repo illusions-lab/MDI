@@ -10,6 +10,7 @@ import { resolveFrontmatter } from "./frontmatter.js";
 
 export const MDI_SPEC_VERSION = "2.0";
 export type { MdiFrontmatter } from "./frontmatter.js";
+export { initializeMdi } from "@illusions-lab/mdi";
 
 /**
  * Unified ecosystem adapter for the Rust-owned MDI parser.
