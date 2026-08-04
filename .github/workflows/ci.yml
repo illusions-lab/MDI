@@ -218,9 +218,77 @@ jobs:
     uses: ./.github/workflows/android.yml
     secrets: inherit
 
+  large-document-performance:
+    name: Large document performance (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: 100k characters
+            test: hundred_thousand_character_book
+          - label: 1M characters
+            test: million_character_book
+          - label: 10M characters
+            test: ten_million_character_book
+          - label: 100M characters
+            test: hundred_million_character_book
+    defaults:
+      run:
+        working-directory: mdi-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Measure parse and canonical serialization throughput
+        run: |
+          cargo test --release --test large_document_performance "${{ matrix.test }}" -- \
+            --ignored --nocapture --test-threads=1 | tee performance.log
+          grep '^PERF_RESULT ' performance.log > "performance-${{ matrix.test }}.jsonl"
+
+      - name: Upload case result
+        uses: actions/upload-artifact@v4
+        with:
+          name: large-document-performance-${{ matrix.test }}
+          path: mdi-core/performance-${{ matrix.test }}.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
+  large-document-performance-report:
+    name: Large document performance report
+    needs: large-document-performance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download parallel case results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: large-document-performance-*
+          path: performance-results
+          merge-multiple: true
+
+      - name: Write traceable performance report
+        run: node scripts/write-large-document-performance-report.mjs performance-results performance-report
+
+      - name: Publish report in the workflow summary
+        run: cat performance-report/large-document-performance.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: large-document-performance-report-${{ github.run_id }}
+          path: performance-report/
+          if-no-files-found: error
+          retention-days: 90
+
   publication-contracts:
     name: Publication contracts
-    needs: [nodejs, rust-native, safari-browser, swift, python, android]
+    needs: [nodejs, rust-native, safari-browser, swift, python, android, large-document-performance-report]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -57,6 +57,22 @@ CI runs these publication contracts only after the Node.js, Rust, Swift,
 Python, and Android unit/coverage jobs have all passed. A renderer change is
 ready to merge only when both layers are green.
 
+### Large-document performance
+
+CI runs the Rust-authoritative parser and canonical serializer on book-like
+Japanese MDI inputs of exactly 100,000, 1,000,000, 10,000,000, and
+100,000,000 characters. The four cases use parallel runners. A final CI job
+publishes their commit-addressed JSON and Markdown report as an artifact and in
+the workflow summary, so performance changes can be compared across runs.
+
+To run one of the same cases locally when investigating a performance change:
+
+```sh
+cd mdi-core
+cargo test --release --test large_document_performance -- \
+  --ignored --nocapture --test-threads=1
+```
+
 ### Android
 
 Android work requires JDK 17+, the Android SDK/NDK, Rust Android targets, and `cargo-ndk`. See [android/README.md](./android/README.md) for setup and test commands.
