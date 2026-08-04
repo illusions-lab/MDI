@@ -105,24 +105,24 @@ fn run_case(characters: usize) {
 
 #[test]
 #[ignore = "run in the Large document performance CI job"]
-fn hundred_thousand_character_book() {
+fn case_100k() {
     run_case(HUNDRED_THOUSAND);
 }
 
 #[test]
 #[ignore = "run in the Large document performance CI job"]
-fn million_character_book() {
+fn case_1m() {
     run_case(MILLION);
 }
 
 #[test]
 #[ignore = "run in the Large document performance CI job"]
-fn ten_million_character_book() {
+fn case_10m() {
     run_case(TEN_MILLION);
 }
 
 #[test]
 #[ignore = "run in the Large document performance CI job"]
-fn hundred_million_character_book() {
+fn case_100m() {
     run_case(HUNDRED_MILLION);
 }

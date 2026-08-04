@@ -227,13 +227,13 @@ jobs:
       matrix:
         include:
           - label: 100k characters
-            test: hundred_thousand_character_book
+            test: case_100k
           - label: 1M characters
-            test: million_character_book
+            test: case_1m
           - label: 10M characters
-            test: ten_million_character_book
+            test: case_10m
           - label: 100M characters
-            test: hundred_million_character_book
+            test: case_100m
     defaults:
       run:
         working-directory: mdi-core
