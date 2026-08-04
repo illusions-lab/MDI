@@ -19,7 +19,7 @@ import {
   PAGE_SIZES,
   resolveExportProfile,
 } from "../packages/export-profile/dist/index.js";
-import { pageSizeCatalogJson } from "../packages/mdi-core/dist/node/index.js";
+import { pageSizeCatalogJson } from "../packages/mdi-core/dist/node/index.cjs";
 
 const rustPageDimensions = Object.fromEntries(JSON.parse(pageSizeCatalogJson()).map(({ key, widthMm, heightMm }) => [
   key,
