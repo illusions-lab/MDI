@@ -124,6 +124,10 @@ jobs:
       - run: pnpm build
       - name: Enable Safari remote automation
         run: safaridriver --enable || sudo safaridriver --enable
+      - name: Launch Safari.app for WebDriver
+        run: |
+          open -a Safari
+          sleep 5
       - run: pnpm test:safari
 
   swift:
