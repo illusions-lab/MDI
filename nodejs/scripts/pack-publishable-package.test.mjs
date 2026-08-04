@@ -92,7 +92,7 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
         assert.match(files, /package\/dist\/generated\/web\/mdi_core_bg\.wasm/);
         assert.match(files, /package\/dist\/web\/index\.js/);
         assert.equal(manifest.exports["."].browser, "./dist/web/index.js");
-        assert.equal(manifest.exports["."].node, "./dist/node/index.js");
+        assert.equal(manifest.exports["."].node, "./dist/node/index.cjs");
       }
     }
 

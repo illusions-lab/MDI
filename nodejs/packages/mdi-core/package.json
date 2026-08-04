@@ -10,14 +10,14 @@
   },
   "homepage": "https://mdi.illusions.app/bindings/javascript/",
   "bugs": "https://github.com/illusions-lab/MDI/issues",
-  "main": "./dist/node/index.js",
+  "main": "./dist/node/index.cjs",
   "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
       "browser": "./dist/web/index.js",
-      "node": "./dist/node/index.js",
-      "default": "./dist/node/index.js"
+      "node": "./dist/node/index.cjs",
+      "default": "./dist/node/index.cjs"
     },
     "./browser": {
       "types": "./dist/web/index.d.ts",
