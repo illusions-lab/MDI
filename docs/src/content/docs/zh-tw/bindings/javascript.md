@@ -30,6 +30,24 @@ console.log(result.headings); // source-order heading 的 depth、text、span
 
 `renderHtml(source)` 回傳含 MDI stylesheet 的 standalone HTML；app 擁有外層頁面時傳 `{ bodyOnly: true }`。semantic HTML 有穩定的 `mdi-ruby`、`mdi-tcy`、`mdi-em`、`mdi-pagebreak` 等 class。
 
+## Browser 初始化
+
+在 browser 中呼叫同步 API 前，先 `await` 一次 WebAssembly runtime。
+`initializeMdi()` 是 single-flight 且 idempotent：並行呼叫會共用同一個初始化；
+Node.js 因為 eager load，會立刻 resolve。
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+Vite 與其他遵循 `browser` export condition 的 bundler 會自動選擇 web facade 並
+emit 私有 WASM asset。不要直接 import generated wasm-pack loader。若 browser
+初始化失敗，可再次呼叫 `initializeMdi()` 安全地重試。
+
 ## baseline 與可設定 EPUB/DOCX
 
 一個參數的 API 是 synchronous Rust baseline export：
