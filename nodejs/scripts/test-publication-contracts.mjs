@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +19,13 @@ import {
   PAGE_SIZES,
   resolveExportProfile,
 } from "../packages/export-profile/dist/index.js";
+import { pageSizeCatalogJson } from "../packages/mdi-core/dist/node/index.cjs";
+
+const rustPageDimensions = Object.fromEntries(JSON.parse(pageSizeCatalogJson()).map(({ key, widthMm, heightMm }) => [
+  key,
+  { width: widthMm, height: heightMm },
+]));
+assert.deepEqual(PAGE_DIMENSIONS, rustPageDimensions, "export-profile snapshot must match Rust's publication catalogue");
 import {
   renderDocxWithProfile,
   renderEpubWithProfile,

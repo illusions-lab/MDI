@@ -29,10 +29,11 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
-      # to-pdf's tests print through a real headless Chromium.
-      - run: pnpm --filter @illusions-lab/mdi-to-pdf exec playwright install --with-deps chromium
+      # Browser WASM contracts run in all Playwright engines; to-pdf also uses Chromium.
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm typecheck
       - run: pnpm build
+      - run: pnpm test:browser
       - run: node --test nodejs/scripts/pack-publishable-package.test.mjs
       - run: pnpm test:coverage
 
@@ -101,6 +102,33 @@ jobs:
           flags: rust
           name: rust
           fail_ci_if_error: true
+
+  safari-browser:
+    name: Safari.app packed browser smoke
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Enable Safari remote automation
+        run: safaridriver --enable || sudo safaridriver --enable
+      - name: Launch Safari.app for WebDriver
+        run: |
+          open -a Safari
+          sleep 5
+      - run: pnpm test:safari
 
   swift:
     name: Swift
@@ -192,7 +220,7 @@ jobs:
 
   publication-contracts:
     name: Publication contracts
-    needs: [nodejs, rust-native, swift, python, android]
+    needs: [nodejs, rust-native, safari-browser, swift, python, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -10,13 +10,25 @@
   },
   "homepage": "https://mdi.illusions.app/bindings/javascript/",
   "bugs": "https://github.com/illusions-lab/MDI/issues",
-  "main": "./dist/mdi_core.js",
-  "types": "./dist/mdi_core.d.ts",
+  "main": "./dist/node/index.cjs",
+  "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "browser": "./dist/web/index.js",
+      "node": "./dist/node/index.cjs",
+      "default": "./dist/node/index.cjs"
+    },
+    "./browser": {
+      "types": "./dist/web/index.d.ts",
+      "default": "./dist/web/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "cd ../../../mdi-core && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target nodejs --out-dir ../nodejs/packages/mdi-core/dist -- --features wasm && node -e \"require('node:fs').rmSync('../nodejs/packages/mdi-core/dist/.gitignore', { force: true })\"",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cd ../../../mdi-core && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target nodejs --out-dir ../nodejs/packages/mdi-core/dist/node -- --features wasm && PATH=\"/opt/homebrew/opt/rustup/bin:$PATH\" wasm-pack build --release --target web --out-dir ../nodejs/packages/mdi-core/dist/web -- --features wasm && node -e \"const fs=require('node:fs'); for (const dir of ['node','web']) fs.rmSync('../nodejs/packages/mdi-core/dist/'+dir+'/.gitignore', { force: true })\" && node ../nodejs/packages/mdi-core/scripts/build-facade.mjs",
     "test": "vitest run --passWithNoTests"
   }
 }

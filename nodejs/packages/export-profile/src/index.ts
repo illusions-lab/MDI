@@ -1,7 +1,4 @@
-import {
-  pageSizeCatalogJson,
-  resolveExportProfileJson as resolveProfileInRust,
-} from "@illusions-lab/mdi-core";
+import { resolveExportProfileJson as resolveProfileInRust } from "@illusions-lab/mdi-core";
 
 export type WritingMode = "vertical" | "horizontal";
 export type PageNumberFormat = "simple" | "dash" | "fraction";
@@ -118,19 +115,22 @@ interface RustPageSizeDimensions {
   heightMm: number;
 }
 
-const pageSizeCatalog = JSON.parse(
-  pageSizeCatalogJson(),
-) as RustPageSizeDimensions[];
+/**
+ * A generated snapshot of config/publication-layouts.yaml.  It intentionally
+ * avoids a WASM call during module evaluation, so importing this package is
+ * safe before a browser application awaits initializeMdiCore().  The
+ * publication contract test compares it with the Rust catalogue.
+ */
+export const PAGE_DIMENSIONS = {
+  A0:{width:841,height:1189},A1:{width:594,height:841},A2:{width:420,height:594},A3:{width:297,height:420},A4:{width:210,height:297},A5:{width:148,height:210},A6:{width:105,height:148},A7:{width:74,height:105},A8:{width:52,height:74},A9:{width:37,height:52},A10:{width:26,height:37},
+  "JIS-B0":{width:1030,height:1456},"JIS-B1":{width:728,height:1030},"JIS-B2":{width:515,height:728},"JIS-B3":{width:364,height:515},"JIS-B4":{width:257,height:364},"JIS-B5":{width:182,height:257},"JIS-B6":{width:128,height:182},"JIS-B7":{width:91,height:128},"JIS-B8":{width:64,height:91},"JIS-B9":{width:45,height:64},"JIS-B10":{width:32,height:45},
+  "ISO-B0":{width:1000,height:1414},"ISO-B1":{width:707,height:1000},"ISO-B2":{width:500,height:707},"ISO-B3":{width:353,height:500},"ISO-B4":{width:250,height:353},"ISO-B5":{width:176,height:250},"ISO-B6":{width:125,height:176},"ISO-B7":{width:88,height:125},"ISO-B8":{width:62,height:88},"ISO-B9":{width:44,height:62},"ISO-B10":{width:31,height:44},
+  Bunko:{width:105,height:148},Shinsho:{width:103,height:182},Shirokuban:{width:127,height:188},Kikuban:{width:150,height:220},"A5-ban":{width:148,height:210},"B6-ban":{width:128,height:182},"AB-ban":{width:210,height:257},"Ju-ban":{width:182,height:206},"Kiku-tate":{width:152,height:218},Tankobon:{width:130,height:188},
+  Letter:{width:216,height:279},Legal:{width:216,height:356},Tabloid:{width:279,height:432},Executive:{width:184,height:267},Statement:{width:140,height:216},Folio:{width:210,height:330},Quarto:{width:203,height:254},"10x14":{width:254,height:356},
+  "Naga-3":{width:120,height:235},"Naga-4":{width:90,height:205},"Kaku-2":{width:240,height:332},"Kaku-3":{width:216,height:277},"Kaku-6":{width:162,height:229},"Kaku-8":{width:119,height:197},"You-4":{width:105,height:235},"You-6":{width:98,height:190},Hagaki:{width:100,height:148},"Ofuku-Hagaki":{width:200,height:148},"L-ban":{width:89,height:127},"2L-ban":{width:127,height:178},KG:{width:102,height:152},Cabinet:{width:130,height:180},B5:{width:176,height:250},B6:{width:125,height:176},
+} as const satisfies Record<PageSize, { width: number; height: number }>;
 
-/** Canonical physical dimensions supplied by the Rust core. */
-export const PAGE_DIMENSIONS = Object.fromEntries(
-  pageSizeCatalog.map(({ key, widthMm, heightMm }) => [
-    key,
-    { width: widthMm, height: heightMm },
-  ]),
-) as Record<PageSize, { width: number; height: number }>;
-
-export const PAGE_SIZES = pageSizeCatalog.map(({ key }) => key);
+export const PAGE_SIZES = Object.keys(PAGE_DIMENSIONS) as PageSize[];
 
 export const PAGE_SIZE_LABELS = {
   ja: {

@@ -26,6 +26,13 @@ generated WASM interface, such as a custom language binding or an integration
 that transports the Rust JSON IR directly. It is not a second JavaScript
 parser and does not contain a JavaScript grammar.
 
+Browser bundlers select the web-compatible runtime facade automatically through
+the package's `browser` export condition. The generated `.wasm` asset remains
+private implementation detail and is published alongside that facade. Low-level
+browser users must await `initializeMdiCore()` once; it is idempotent and Node
+resolves it immediately because Node initializes eagerly. Most applications
+should use `initializeMdi()` from `@illusions-lab/mdi` instead.
+
 ## Ownership boundary
 
 ```text

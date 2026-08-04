@@ -5,11 +5,12 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-// `mdi-core` is WebAssembly generated from Rust and is covered by the Rust
-// llvm-cov gate. Every package below owns TypeScript source and must meet the
-// same four-metric floor. Limiting coverage to src prevents generated dist/
+// Generated wasm-pack output is covered by Rust llvm-cov.  The authored core
+// runtime facade and every TypeScript package must meet the same four-metric
+// floor. Limiting coverage to src prevents generated dist/
 // and a previous HTML report from changing the result.
 const defaultPackages = [
+  "mdi-core",
   "cli",
   "export-profile",
   "mdast-util-mdi",
@@ -37,6 +38,9 @@ for (const packageName of selectedPackages) {
   }
 
   console.log(`\n=== Node coverage: ${packageName} ===`);
+  const coverageInclude = packageName === "mdi-core"
+    ? "src/runtime.js"
+    : "src/**/*.{ts,js}";
   execFileSync(
     "pnpm",
     [
@@ -48,7 +52,7 @@ for (const packageName of selectedPackages) {
       "--coverage",
       "--coverage.reporter=lcov",
       "--coverage.reporter=text",
-      "--coverage.include=src/**/*.ts",
+      `--coverage.include=${coverageInclude}`,
       "--coverage.thresholds.lines=90",
       "--coverage.thresholds.functions=90",
       "--coverage.thresholds.branches=90",

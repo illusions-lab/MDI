@@ -13,6 +13,8 @@
     "docs:build": "pnpm run build && pnpm --filter docs build",
     "build": "node scripts/verify-publication-layouts.mjs && turbo run build",
     "test": "turbo run test",
+    "test:browser": "node nodejs/scripts/test-browser-wasm.mjs",
+    "test:safari": "node nodejs/scripts/test-safari-wasm.mjs",
     "test:contracts": "node nodejs/scripts/test-publication-contracts.mjs",
     "test:coverage": "node nodejs/scripts/check-node-coverage.mjs",
     "typecheck": "turbo run typecheck",
@@ -28,6 +30,7 @@
     "playwright": "^1.48.0",
     "turbo": "^2.1.0",
     "typescript": "^5.6.0",
+    "vite": "^5.4.0",
     "vitest": "^2.1.0",
     "vnu-jar": "^25.11.1"
   }

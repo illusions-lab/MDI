@@ -28,7 +28,9 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import remarkMdi from "@illusions-lab/mdi-remark";
+import { initializeMdi } from "@illusions-lab/mdi";
 
+await initializeMdi(); // required in browsers; an immediate no-op in Node.js
 const processor = unified().use(remarkParse).use(remarkMdi).use(remarkStringify);
 const tree = processor.parse("{東京|とうきょう} ^12^");
 const output = String(await processor.process("[[em:傍点]]"));

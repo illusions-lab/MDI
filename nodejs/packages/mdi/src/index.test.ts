@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { MDI_IR_VERSION, MDI_SPEC_VERSION, parse, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, toPublicationMdast } from "./index.js";
+import { MDI_IR_VERSION, MDI_SPEC_VERSION, initializeMdi, parse, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, toPublicationMdast } from "./index.js";
 
 function assertValidSpans(node: { span?: { startByte: number; endByte: number }; children?: unknown[] }, source: string): void {
 	if (node.span) {
@@ -14,6 +14,11 @@ function assertValidSpans(node: { span?: { startByte: number; endByte: number };
 }
 
 describe("Rust MDI JavaScript binding", () => {
+	it("keeps portable initialization harmless in Node.js", async () => {
+		await initializeMdi();
+		expect(parse("Node remains synchronous").irVersion).toBe(MDI_IR_VERSION);
+	});
+
 	it("returns the complete Rust-owned document contract", () => {
 		const result = parse("第^12^話");
 
