@@ -21,7 +21,8 @@ const HUNDRED_MILLION: usize = 100_000_000;
 /// count.  It has headings, paragraphs, ruby, emphasis, and tate-chu-yoko so
 /// this exercises more than a repeated plain-text fast path.
 fn book_source(characters: usize) -> String {
-    const CHAPTER: &str = "# 第一章\n\n吾輩は{猫|ねこ}である。[[em:名前]]はまだない。第^12^話。\n\n";
+    const CHAPTER: &str =
+        "# 第一章\n\n吾輩は{猫|ねこ}である。[[em:名前]]はまだない。第^12^話。\n\n";
     const PARAGRAPH: &str = "東京の空は青く、{言葉|ことば}は静かに続く。\n\n";
 
     let mut source = String::with_capacity(characters.saturating_mul(3));
@@ -68,14 +69,20 @@ fn run_case(characters: usize) {
     let canonical = serialize_mdi_document(black_box(&document));
     let serialize_elapsed = serialize_started.elapsed();
 
-    assert!(!canonical.is_empty(), "canonical serialization was truncated");
+    assert!(
+        !canonical.is_empty(),
+        "canonical serialization was truncated"
+    );
     // The 100M case is intentionally large.  Release the parsed tree before
     // parsing its canonical form so round-trip validation does not retain two
     // complete document trees at once.
     drop(document);
     let reparsed = parse_document(black_box(&canonical));
     assert_eq!(reparsed.span.end_byte as usize, canonical.len());
-    assert!(!reparsed.children.is_empty(), "canonical document was truncated");
+    assert!(
+        !reparsed.children.is_empty(),
+        "canonical document was truncated"
+    );
 
     // Keep the result machine-readable for the workflow artifact.  Throughput
     // is reported instead of enforced: hosted runners have variable CPU shares.
