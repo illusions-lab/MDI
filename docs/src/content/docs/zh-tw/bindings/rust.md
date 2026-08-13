@@ -50,6 +50,13 @@ match render_pdf(source, &PdfOptions::default()) {
 
 `MDI_IR_VERSION` 與 `MDI_SPEC_VERSION` 為 exported `&'static str` constants；儲存 `ParseOutput` 後再載入時應檢查。`SourceSpan { start_byte: u32, end_byte: u32 }` 是 half-open UTF-8 byte range，詳見[診斷](/zh-tw/core/diagnostics/)。
 
+搜尋用 canonical text 可用 `get_mdi_text_blocks(source)`；反向查詢使用
+`resolve_mdi_source_span(source, span)`。它會驗證順序、範圍與 UTF-8 boundaries，
+回傳正文及 annotation 的最大 grapheme ranges、`Complete | Partial | None`
+coverage 和 `Exact | Overlap` relation。空 span、純結構 delimiter、synthetic 與
+unmapped source 都不會產生 range。Ruby 雙 channel 與多對一／不連續 mapping
+代表 round trip 通常不是雙射。
+
 ## 目前實作狀態
 
 Parsing、`serialize_mdi` 及所有 renderer（`render_html`、`render_text_format`、`render_epub`、`render_docx`、`render_pdf`）皆已實作，限制見 [Rust Core API 尚未實作項目](/zh-tw/core/rust-api/#尚未實作)。沒有獨立 `validate`/`normalize` API，分別由 `parse_output`/`serialize_mdi` 擔任。

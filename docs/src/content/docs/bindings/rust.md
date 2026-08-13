@@ -63,6 +63,15 @@ match render_pdf(source, &PdfOptions::default()) {
 
 `MDI_IR_VERSION` and `MDI_SPEC_VERSION` are `&'static str` constants exported directly — check them if you're persisting a `ParseOutput` and reloading it later, the same way any other binding must. `SourceSpan { start_byte: u32, end_byte: u32 }` is a half-open UTF-8 byte range, exactly as described in [Diagnostics and UTF-8 source spans](/core/diagnostics/) — being in Rust doesn't change the unit; it's still bytes, not `char` indices, because `str` in Rust is itself UTF-8 bytes and indexing by anything else would require an extra pass every binding would have to pay for.
 
+For searchable canonical text, use `get_mdi_text_blocks(source)`. Its inverse,
+`resolve_mdi_source_span(source, span)`, validates ordering, bounds, and UTF-8
+boundaries, then returns all maximal block-text and annotation grapheme ranges.
+Coverage is `Complete`, `Partial`, or `None`; matches are `Exact` only when the
+complete forward coverage equals the input. Empty spans return no matches, and
+structural, synthetic, or unmapped bytes do not gain invented ranges. Ruby's
+separate channels and multi-to-one/discontinuous mappings mean round trips are
+not generally bijective.
+
 ## Current implementation status
 
 Parsing (`parse_document`/`parse_output`), serialization (`serialize_mdi`), and every renderer (`render_html`, `render_text_format`, `render_epub`, `render_docx`, `render_pdf`) are implemented today, at the "baseline" level described on [Rust Core API status](/core/rust-api/#not-yet-implemented). There is no separate `validate`/`normalize` API distinct from `parse_output`/`serialize_mdi` — see that same page for exactly what's missing.

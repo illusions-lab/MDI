@@ -56,7 +56,7 @@ Unicode grapheme。Ruby 讀音會作為可搜尋的獨立 annotation channel，�
 仍指回正文 base text 的 range。
 
 ```ts
-import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
 const paragraph = result.blocks[1];
@@ -65,11 +65,21 @@ const match = { start: "2:1", end: "2:3" } as const;
 console.log(paragraph.text); // 東京
 console.log(paragraph.annotations[0].text); // とうきょう
 console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source spans
+console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
 ```
 
 `sourceMap.synthetic` 指出 projection 額外加入的 separator，例如 table 的 tab 與
 row newline；它們不會偽造 source span。`parseMdiTextPosition`、
 `formatMdiTextPosition`、`formatMdiTextRange` 是 canonical 座標格式的無狀態 helper。
+
+`resolveMdiSourceSpan(source, span)` 由 Rust 執行反向解析。輸入是 half-open UTF-8
+byte uint32，必須有序、位於 source 範圍內且落在 code-point boundaries。結果依
+block、正文優先、零基底 annotation index 排序，coverage 為
+`complete | partial | none`。只有 match 的完整 forward coverage 恰等於輸入時
+才是 `exact`，其餘交集為 `overlap`。Ruby base 與 reading 是獨立 channel；空
+span 不視為 caret，也不回傳鄰近 range。純結構 delimiter、synthetic 與 unmapped
+byte 不會取得虛構 range，因此 annotation、多對一 token、partial grapheme、
+discontinuous mapping 等情況不保證 round trip 是雙射。
 
 ## baseline 與可設定 EPUB/DOCX
 

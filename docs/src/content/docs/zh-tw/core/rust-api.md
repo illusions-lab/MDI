@@ -46,7 +46,12 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 
 ## Public data types
 
-`ParseOutput`、`ParserCapabilities`、`Diagnostic`、`DiagnosticSeverity`、`SourceSpan`、`Document`、`Frontmatter`、`FrontmatterEntry`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` 與其 nested profile/Chromium print types（目前 API）；`MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading`（較舊、只供 `parse_mdi_syntax` 的 shape；`Inline`/`RubyReading` 也在內部用來建立目前 `Document` 的 MDI nodes）。
+`ParseOutput`、`ParserCapabilities`、`Diagnostic`、`DiagnosticSeverity`、`SourceSpan`、`Document`、`Frontmatter`、`FrontmatterEntry`、`MdiTextBlocksResult`、`MdiSourceSpanTextResolution`、`MdiSourceSpanTextMatch`、`MdiSourceSpanCoverage`、`MdiSourceSpanRelation`、`MdiSourceSpanResolutionError`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` 與其 nested profile/Chromium print types（目前 API）；`MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading`（較舊、只供 `parse_mdi_syntax` 的 shape；`Inline`/`RubyReading` 也在內部用來建立目前 `Document` 的 MDI nodes）。
+
+`get_mdi_text_blocks(source)` 提供 grapheme canonical text projection；
+`resolve_mdi_source_span(source, span)` 把 half-open UTF-8 source span 反解為正文與
+ruby annotation ranges。Coverage、relation、boundary、delimiter、synthetic/unmapped
+及 round-trip 限制請參閱 [Rust 綁定](/zh-tw/bindings/rust/)。
 
 ## 尚未實作
 

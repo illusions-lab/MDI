@@ -3,6 +3,7 @@ use crate::{
     SourceSpan, diagnostics, parse_document,
 };
 use serde::Serialize;
+use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) enum PlainInline<'a> {
@@ -135,6 +136,75 @@ pub struct MdiTextAnnotation {
     pub source_map: MdiAnnotationSourceMap,
 }
 
+/// Result of resolving one half-open UTF-8 source span back to canonical text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MdiSourceSpanTextResolution {
+    pub projection_version: &'static str,
+    pub source_span: SourceSpan,
+    pub coverage: MdiSourceSpanCoverage,
+    pub matches: Vec<MdiSourceSpanTextMatch>,
+}
+
+/// How much of a non-empty source span belongs to mapped graphemes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MdiSourceSpanCoverage {
+    Complete,
+    Partial,
+    None,
+}
+
+/// Relationship between a canonical match's forward source coverage and the
+/// requested source span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MdiSourceSpanRelation {
+    Exact,
+    Overlap,
+}
+
+/// A maximal adjacent canonical range in either block text or one annotation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum MdiSourceSpanTextMatch {
+    BlockText {
+        block_index: u32,
+        range: MdiTextRange,
+        relation: MdiSourceSpanRelation,
+    },
+    Annotation {
+        block_index: u32,
+        annotation_index: u32,
+        range: MdiTextRange,
+        relation: MdiSourceSpanRelation,
+    },
+}
+
+/// Validation error returned by [`resolve_mdi_source_span`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MdiSourceSpanResolutionError {
+    Reversed,
+    OutOfBounds,
+    NotUtf8Boundary,
+}
+
+impl fmt::Display for MdiSourceSpanResolutionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Reversed => "source span startByte must not exceed endByte",
+            Self::OutOfBounds => "source span falls outside the UTF-8 source length",
+            Self::NotUtf8Boundary => "source span endpoints must be UTF-8 code-point boundaries",
+        })
+    }
+}
+
+impl std::error::Error for MdiSourceSpanResolutionError {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UnitMap {
     Mapped(SourceSpan),
@@ -261,6 +331,207 @@ pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
 pub fn get_mdi_text_blocks_json(source: &str) -> String {
     serde_json::to_string(&get_mdi_text_blocks(source))
         .expect("serializing the MDI text projection cannot fail")
+}
+
+/// Resolve a half-open UTF-8 source span to every mapped canonical grapheme
+/// range. Block text and annotation text are independent channels.
+pub fn resolve_mdi_source_span(
+    source: &str,
+    span: SourceSpan,
+) -> Result<MdiSourceSpanTextResolution, MdiSourceSpanResolutionError> {
+    validate_source_span(source, span)?;
+    if span.start_byte == span.end_byte {
+        return Ok(MdiSourceSpanTextResolution {
+            projection_version: MDI_TEXT_PROJECTION_VERSION,
+            source_span: span,
+            coverage: MdiSourceSpanCoverage::None,
+            matches: Vec::new(),
+        });
+    }
+
+    let projection = get_mdi_text_blocks(source);
+    let mut matches = Vec::new();
+    let mut covered = Vec::new();
+    for block in &projection.blocks {
+        resolve_source_map_channel(
+            block.index,
+            None,
+            &block.source_map,
+            span,
+            &mut matches,
+            &mut covered,
+        );
+        for (annotation_index, annotation) in block.annotations.iter().enumerate() {
+            resolve_source_map_channel(
+                block.index,
+                Some(annotation_index as u32),
+                &annotation.source_map,
+                span,
+                &mut matches,
+                &mut covered,
+            );
+        }
+    }
+
+    let covered = merged_intervals(covered);
+    let coverage = if covered.is_empty() {
+        MdiSourceSpanCoverage::None
+    } else if covered.len() == 1
+        && covered[0].start_byte == span.start_byte
+        && covered[0].end_byte == span.end_byte
+    {
+        MdiSourceSpanCoverage::Complete
+    } else {
+        MdiSourceSpanCoverage::Partial
+    };
+    Ok(MdiSourceSpanTextResolution {
+        projection_version: MDI_TEXT_PROJECTION_VERSION,
+        source_span: span,
+        coverage,
+        matches,
+    })
+}
+
+/// JSON boundary for language bindings.
+pub fn resolve_mdi_source_span_json(
+    source: &str,
+    span: SourceSpan,
+) -> Result<String, MdiSourceSpanResolutionError> {
+    let resolution = resolve_mdi_source_span(source, span)?;
+    Ok(serde_json::to_string(&resolution)
+        .expect("serializing an MDI source-span resolution cannot fail"))
+}
+
+fn validate_source_span(
+    source: &str,
+    span: SourceSpan,
+) -> Result<(), MdiSourceSpanResolutionError> {
+    if span.start_byte > span.end_byte {
+        return Err(MdiSourceSpanResolutionError::Reversed);
+    }
+    let start = span.start_byte as usize;
+    let end = span.end_byte as usize;
+    if end > source.len() {
+        return Err(MdiSourceSpanResolutionError::OutOfBounds);
+    }
+    if !source.is_char_boundary(start) || !source.is_char_boundary(end) {
+        return Err(MdiSourceSpanResolutionError::NotUtf8Boundary);
+    }
+    Ok(())
+}
+
+fn resolve_source_map_channel(
+    block_index: u32,
+    annotation_index: Option<u32>,
+    map: &MdiTextSourceMap,
+    requested: SourceSpan,
+    matches: &mut Vec<MdiSourceSpanTextMatch>,
+    covered: &mut Vec<SourceSpan>,
+) {
+    let mut current_start = None;
+    let mut current_end = 0;
+    let mut current_spans = Vec::new();
+
+    let flush = |start: &mut Option<u32>,
+                 end: &mut u32,
+                 spans: &mut Vec<SourceSpan>,
+                 matches: &mut Vec<MdiSourceSpanTextMatch>| {
+        let Some(start_character) = start.take() else {
+            return;
+        };
+        let relation = if intervals_equal_span(spans, requested) {
+            MdiSourceSpanRelation::Exact
+        } else {
+            MdiSourceSpanRelation::Overlap
+        };
+        let range = MdiTextRange {
+            start: MdiTextPosition {
+                block: block_index,
+                character: start_character,
+            },
+            end: MdiTextPosition {
+                block: block_index,
+                character: *end,
+            },
+        };
+        matches.push(match annotation_index {
+            Some(annotation_index) => MdiSourceSpanTextMatch::Annotation {
+                block_index,
+                annotation_index,
+                range,
+                relation,
+            },
+            None => MdiSourceSpanTextMatch::BlockText {
+                block_index,
+                range,
+                relation,
+            },
+        });
+        spans.clear();
+    };
+
+    for run in &map.runs {
+        let run_start = run.range.start.character;
+        for (offset, boundaries) in run.source_boundaries.windows(2).enumerate() {
+            let character = run_start + offset as u32;
+            let unit_span = SourceSpan {
+                start_byte: boundaries[0],
+                end_byte: boundaries[1],
+            };
+            if unit_span.start_byte < requested.end_byte
+                && requested.start_byte < unit_span.end_byte
+            {
+                if current_start.is_some() && character != current_end {
+                    flush(
+                        &mut current_start,
+                        &mut current_end,
+                        &mut current_spans,
+                        matches,
+                    );
+                }
+                current_start.get_or_insert(character);
+                current_end = character + 1;
+                current_spans.push(unit_span);
+                covered.push(SourceSpan {
+                    start_byte: unit_span.start_byte.max(requested.start_byte),
+                    end_byte: unit_span.end_byte.min(requested.end_byte),
+                });
+            } else if current_start.is_some() && character == current_end {
+                flush(
+                    &mut current_start,
+                    &mut current_end,
+                    &mut current_spans,
+                    matches,
+                );
+            }
+        }
+    }
+    flush(
+        &mut current_start,
+        &mut current_end,
+        &mut current_spans,
+        matches,
+    );
+}
+
+fn intervals_equal_span(intervals: &[SourceSpan], span: SourceSpan) -> bool {
+    let merged = merged_intervals(intervals.to_vec());
+    merged.len() == 1 && merged[0] == span
+}
+
+fn merged_intervals(mut intervals: Vec<SourceSpan>) -> Vec<SourceSpan> {
+    intervals.sort_unstable_by_key(|span| (span.start_byte, span.end_byte));
+    let mut merged: Vec<SourceSpan> = Vec::new();
+    for interval in intervals {
+        if let Some(previous) = merged.last_mut()
+            && interval.start_byte <= previous.end_byte
+        {
+            previous.end_byte = previous.end_byte.max(interval.end_byte);
+        } else {
+            merged.push(interval);
+        }
+    }
+    merged
 }
 
 impl Collector<'_> {

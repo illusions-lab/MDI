@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 
 const {
 	getMdiTextBlocksJson,
+	resolveMdiSourceSpanJson,
 	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
@@ -183,6 +184,36 @@ export interface MdiTextBlocksResult {
 	diagnostics: MdiDiagnostic[];
 }
 
+export type MdiSourceSpanCoverage = "complete" | "partial" | "none";
+export type MdiSourceSpanRelation = "exact" | "overlap";
+
+export interface MdiSourceSpanBlockTextMatch {
+	kind: "blockText";
+	blockIndex: number;
+	range: MdiTextRange;
+	relation: MdiSourceSpanRelation;
+}
+
+export interface MdiSourceSpanAnnotationMatch {
+	kind: "annotation";
+	blockIndex: number;
+	/** Zero-based index in the containing block's annotations array. */
+	annotationIndex: number;
+	range: MdiTextRange;
+	relation: MdiSourceSpanRelation;
+}
+
+export type MdiSourceSpanTextMatch =
+	| MdiSourceSpanBlockTextMatch
+	| MdiSourceSpanAnnotationMatch;
+
+export interface MdiSourceSpanTextResolution {
+	projectionVersion: "1.0";
+	sourceSpan: MdiSourceSpan;
+	coverage: MdiSourceSpanCoverage;
+	matches: MdiSourceSpanTextMatch[];
+}
+
 export interface MdiDiagnostic {
 	severity: "warning" | "error";
 	code: string;
@@ -294,6 +325,59 @@ export function getMdiTextBlocks(source: string): MdiTextBlocksResult {
 		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
 	}
 	return result;
+}
+
+/**
+ * Resolve a half-open UTF-8 source span to all mapped canonical block and
+ * annotation ranges. Mapping semantics are implemented exclusively in Rust.
+ */
+export function resolveMdiSourceSpan(
+	source: string,
+	span: MdiSourceSpan,
+): MdiSourceSpanTextResolution {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	assertSourceSpanInput(span);
+	const utf8 = utf8SourceBoundaries(source);
+	if (span.startByte > span.endByte) {
+		throw new RangeError("span.startByte must not exceed span.endByte");
+	}
+	if (span.endByte > utf8.length) {
+		throw new RangeError("span falls outside the UTF-8 source length");
+	}
+	if (!utf8.boundaries.has(span.startByte) || !utf8.boundaries.has(span.endByte)) {
+		throw new RangeError("span endpoints must be UTF-8 code-point boundaries");
+	}
+	const result = JSON.parse(
+		resolveMdiSourceSpanJson(source, span.startByte, span.endByte),
+	) as MdiSourceSpanTextResolution;
+	if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
+		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
+	}
+	return result;
+}
+
+function assertSourceSpanInput(span: MdiSourceSpan): void {
+	if (!span || typeof span !== "object" || Array.isArray(span)) {
+		throw new TypeError("span must be an object");
+	}
+	if (typeof span.startByte !== "number" || typeof span.endByte !== "number") {
+		throw new TypeError("span.startByte and span.endByte must be numbers");
+	}
+	const isUint32 = (value: number): boolean => Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
+	if (!isUint32(span.startByte) || !isUint32(span.endByte)) {
+		throw new RangeError("span.startByte and span.endByte must be uint32 values");
+	}
+}
+
+function utf8SourceBoundaries(source: string): { length: number; boundaries: Set<number> } {
+	let length = 0;
+	const boundaries = new Set<number>([0]);
+	for (const character of source) {
+		const codePoint = character.codePointAt(0)!;
+		length += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+		boundaries.add(length);
+	}
+	return { length, boundaries };
 }
 
 /** Parse and validate a canonical one-based `block:character` position. */

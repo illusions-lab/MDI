@@ -106,7 +106,7 @@ try {
     const url = `http://127.0.0.1:${address.port}/mdi-editor/`;
     console.log("Running packed browser WASM contract in Chromium, Firefox, and WebKit");
     for (const [browserName, browserType] of browserTypes) {
-      await testBrowser(browserName, browserType, url, packedMdi.getMdiTextBlocks, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
+      await testBrowser(browserName, browserType, url, packedMdi.getMdiTextBlocks, packedMdi.resolveMdiSourceSpan, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
     }
     assert.equal(wasmRequests.length, browserTypes.length + (runRetry ? 2 : 0), "failed initialization must retry exactly once without duplicate concurrent loads");
     assert(wasmRequests.every(({ contentType }) => contentType === "application/wasm"), "WASM must be served with application/wasm");
@@ -118,21 +118,21 @@ try {
   await rm(outputDirectory, { recursive: true, force: true });
 }
 
-async function testBrowser(browserName, browserType, url, getNodeProjection, retryUrl) {
+async function testBrowser(browserName, browserType, url, getNodeProjection, resolveNodeSourceSpan, retryUrl) {
   console.log(`Launching ${browserName}`);
   const browser = await browserType.launch({ headless: true });
   try {
-    await testPage(browserName, await browser.newPage(), url, getNodeProjection);
+    await testPage(browserName, await browser.newPage(), url, getNodeProjection, resolveNodeSourceSpan);
     if (retryUrl) {
       retryFailureRemaining = 1;
-      await testPage(`${browserName} retry`, await browser.newPage(), retryUrl, getNodeProjection);
+      await testPage(`${browserName} retry`, await browser.newPage(), retryUrl, getNodeProjection, resolveNodeSourceSpan);
     }
   } finally {
     await browser.close();
   }
 }
 
-async function testPage(browserName, page, url, getNodeProjection) {
+async function testPage(browserName, page, url, getNodeProjection, resolveNodeSourceSpan) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error));
   await page.goto(url, { waitUntil: "networkidle" });
@@ -156,6 +156,11 @@ async function testPage(browserName, page, url, getNodeProjection) {
     result.recoveryProjectionJson,
     JSON.stringify(getNodeProjection(result.recoverySource)),
     `${browserName}: malformed recovery must match Node without trapping Wasm`,
+  );
+  assert.equal(
+    result.sourceResolutionJson,
+    JSON.stringify(resolveNodeSourceSpan(result.projectionSource, result.sourceResolutionSpan)),
+    `${browserName}: Node and browser must return byte-for-byte identical source resolution JSON`,
   );
   assert.equal(result.recoveryDiagnostic?.code, "mdi.parser.recovered", browserName);
   assert.equal(result.projectedBlocks[0]?.kind, "heading", browserName);
