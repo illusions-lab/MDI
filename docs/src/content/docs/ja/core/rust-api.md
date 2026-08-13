@@ -44,7 +44,12 @@ description: 現在 mdi-core/src/lib.rs に実在する public symbol の一覧�
 
 ## Public data types
 
-current-generation API は `ParseOutput`、`ParserCapabilities`、`Diagnostic`、`SourceSpan`、`Document`、`Frontmatter`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` とその nested profile/Chromium print types です。旧 shape は `MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading` です。
+current-generation API は `ParseOutput`、`ParserCapabilities`、`Diagnostic`、`SourceSpan`、`Document`、`Frontmatter`、`MdiTextBlocksResult`、`MdiSourceSpanTextResolution`、`MdiSourceSpanTextMatch`、`MdiSourceSpanCoverage`、`MdiSourceSpanRelation`、`MdiSourceSpanResolutionError`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` とその nested profile/Chromium print types です。旧 shape は `MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading` です。
+
+`get_mdi_text_blocks(source)` は grapheme 単位の canonical text projection を返し、
+`resolve_mdi_source_span(source, span)` は half-open UTF-8 source span を本文と ruby
+annotation の range に逆引きします。coverage、relation、boundary、delimiter、
+synthetic/unmapped、round-trip の制約は [Rust binding](/ja/bindings/rust/) を参照してください。
 
 ## Not yet implemented
 

@@ -26,9 +26,12 @@ pub use publication_profile::{
     prepare_chromium_print_profile_resolved, resolve_export_profile, resolve_export_profile_json,
 };
 pub use text_projection::{
-    MDI_TEXT_PROJECTION_VERSION, MdiAnnotationSourceMap, MdiTextAnnotation, MdiTextBlock,
-    MdiTextBlockKind, MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap,
-    MdiTextSourceRun, get_mdi_text_blocks, get_mdi_text_blocks_json,
+    MDI_TEXT_PROJECTION_VERSION, MdiAnnotationSourceMap, MdiSourceSpanCoverage,
+    MdiSourceSpanRelation, MdiSourceSpanResolutionError, MdiSourceSpanTextMatch,
+    MdiSourceSpanTextResolution, MdiTextAnnotation, MdiTextBlock, MdiTextBlockKind,
+    MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap, MdiTextSourceRun,
+    get_mdi_text_blocks, get_mdi_text_blocks_json, resolve_mdi_source_span,
+    resolve_mdi_source_span_json,
 };
 
 /// MDI syntax version implemented by this crate.
@@ -3984,12 +3987,12 @@ fn classify_block_macro(source: &str) -> BlockMacroClass {
 #[cfg(feature = "wasm")]
 mod wasm {
     use super::{
-        BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, TextFormat,
+        BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, SourceSpan, TextFormat,
         apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
         page_size_catalog_json, parse_json, prepare_chromium_print_profile_json, render_docx,
         render_docx_with_profile, render_epub, render_epub_with_profile, render_html, render_text,
-        render_text_format, resolve_export_profile_json, serialize_mdi, split_ruby, unescape_mdi,
-        unescape_ruby,
+        render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
+        serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
 
@@ -4005,6 +4008,23 @@ mod wasm {
     #[wasm_bindgen(js_name = getMdiTextBlocksJson)]
     pub fn wasm_get_mdi_text_blocks_json(source: &str) -> String {
         get_mdi_text_blocks_json(source)
+    }
+
+    /// Resolve a half-open UTF-8 source span to canonical text ranges in Rust.
+    #[wasm_bindgen(js_name = resolveMdiSourceSpanJson)]
+    pub fn wasm_resolve_mdi_source_span_json(
+        source: &str,
+        start_byte: u32,
+        end_byte: u32,
+    ) -> Result<String, JsValue> {
+        resolve_mdi_source_span_json(
+            source,
+            SourceSpan {
+                start_byte,
+                end_byte,
+            },
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     /// Render source through the Rust parser and Rust HTML renderer.

@@ -30,6 +30,11 @@ Use `get_mdi_text_blocks` when a search or annotation index needs source-order
 plaintext blocks with one-based Unicode-grapheme coordinates and exact UTF-8
 source maps. The result includes the same document IR and diagnostics, and the
 source is parsed only once.
+Use `resolve_mdi_source_span` for the inverse lookup: a validated half-open
+UTF-8 source span becomes ordered canonical block-text and ruby-annotation
+ranges. Its `complete`, `partial`, or `none` coverage reports whether every
+requested source byte belongs to at least one mapped grapheme; synthetic and
+unmapped projection text never creates a match.
 When rendering one parsed document in multiple formats, use the
 `*_document` functions, such as `render_html_document`, to avoid parsing it
 again.

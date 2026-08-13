@@ -1,6 +1,7 @@
 export {
   applyPdfProfileJson, blockMacroAmount, blockMacroKind, blockMacroVariant,
   getMdiTextBlocksJson, pageSizeCatalogJson, parseMdiSyntaxJson, prepareChromiumPrintProfileJson,
+  resolveMdiSourceSpanJson,
   renderDocx, renderDocxWithProfile, renderEpub, renderEpubWithProfile,
   renderHtml, renderText, renderTextFormat, resolveExportProfileJson,
   resolveRuby, serializeMdi, unescapeMdi, unescapeRubyText,

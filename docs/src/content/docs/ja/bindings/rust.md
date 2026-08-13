@@ -49,6 +49,14 @@ match mdi_core::render_pdf(source, &mdi_core::PdfOptions::default()) {
 
 `MDI_IR_VERSION` と `MDI_SPEC_VERSION` は exported constant です。永続化した `ParseOutput` を読み直すなら version を確認してください。`SourceSpan { start_byte, end_byte }` は UTF-8 byte の半開 range で、`char` index ではありません。
 
+検索用 canonical text は `get_mdi_text_blocks(source)`、逆引きは
+`resolve_mdi_source_span(source, span)` を使います。後者は順序、範囲、UTF-8
+boundary を検証し、本文と annotation の maximal grapheme range、
+`Complete | Partial | None` coverage、`Exact | Overlap` relation を返します。
+空 span、純構造 delimiter、synthetic、unmapped source は range を作りません。
+Ruby の別 channel や multi-to-one/discontinuous mapping により、round trip は
+一般に bijection ではありません。
+
 ## 現在の実装状況
 
 parse、`serialize_mdi`、HTML/TXT/EPUB/DOCX/PDF renderer はすべて実装済みです。baseline の正確な範囲は [Rust Core API](/ja/core/rust-api/#not-yet-implemented) を参照してください。

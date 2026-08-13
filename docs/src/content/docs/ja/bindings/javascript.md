@@ -58,7 +58,7 @@ block、完全な document IR、diagnostics を返します。`3:18` は三つ�
 annotation として検索でき、`anchor` は base text の range を指します。
 
 ```ts
-import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
 const paragraph = result.blocks[1];
@@ -67,12 +67,23 @@ const match = { start: "2:1", end: "2:3" } as const;
 console.log(paragraph.text); // 東京
 console.log(paragraph.annotations[0].text); // とうきょう
 console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source span
+console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
 ```
 
 `sourceMap.synthetic` は table の tab や row newline など projection が追加した
 separator を示し、source span は作りません。`parseMdiTextPosition`、
 `formatMdiTextPosition`、`formatMdiTextRange` は canonical な座標表記用の
 stateless helper です。
+
+`resolveMdiSourceSpan(source, span)` は Rust で逆引きします。入力は half-open
+UTF-8 byte の uint32 で、source 内・昇順・code-point boundary でなければ
+なりません。結果は block 順、本文優先、zero-based annotation 順の canonical
+range と `complete | partial | none` coverage です。forward coverage 全体が入力と
+一致する match だけが `exact`、それ以外は `overlap` です。ruby base と reading
+は別 channel です。空 span は caret と解釈せず match を返しません。純粋な構造
+delimiter、synthetic、unmapped byte に range は作られないため、annotation、
+multi-to-one token、partial grapheme、discontinuous mapping を含む round trip は
+一般には bijection ではありません。
 
 ## baseline と設定付き EPUB/DOCX
 

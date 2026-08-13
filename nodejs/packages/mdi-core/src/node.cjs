@@ -14,6 +14,7 @@ exports.blockMacroKind = bindings.blockMacroKind;
 exports.blockMacroVariant = bindings.blockMacroVariant;
 exports.pageSizeCatalogJson = bindings.pageSizeCatalogJson;
 exports.getMdiTextBlocksJson = bindings.getMdiTextBlocksJson;
+exports.resolveMdiSourceSpanJson = bindings.resolveMdiSourceSpanJson;
 exports.parseMdiSyntaxJson = bindings.parseMdiSyntaxJson;
 exports.prepareChromiumPrintProfileJson = bindings.prepareChromiumPrintProfileJson;
 exports.renderDocx = bindings.renderDocx;

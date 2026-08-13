@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
+import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, resolveMdiSourceSpan, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
 
 function assertValidSpans(node: { span?: { startByte: number; endByte: number }; children?: unknown[] }, source: string): void {
 	if (node.span) {
@@ -72,6 +72,48 @@ describe("Rust MDI JavaScript binding", () => {
 		const table = getMdiTextBlocks("| a | b |\n| - | - |\n| c | d |").blocks[0]!;
 		expect(table.text).toBe("a\tb\nc\td");
 		expect(sourceSpansForTextRange(table, { start: "1:2", end: "1:3" })).toEqual([]);
+	});
+
+	it("resolves UTF-8 source spans to ordered block and annotation ranges", () => {
+		const source = "前{東京|とうきょう}後";
+		const startByte = Buffer.byteLength("前");
+		const endByte = Buffer.byteLength("前{東京|とうきょう}");
+		expect(resolveMdiSourceSpan(source, { startByte, endByte })).toEqual({
+			projectionVersion: "1.0",
+			sourceSpan: { startByte, endByte },
+			coverage: "partial",
+			matches: [
+				{
+					kind: "blockText",
+					blockIndex: 1,
+					range: { start: "1:2", end: "1:4" },
+					relation: "overlap",
+				},
+				{
+					kind: "annotation",
+					blockIndex: 1,
+					annotationIndex: 0,
+					range: { start: "1:1", end: "1:6" },
+					relation: "overlap",
+				},
+			],
+		});
+		expect(resolveMdiSourceSpan(source, { startByte: 0, endByte: 0 })).toMatchObject({
+			coverage: "none",
+			matches: [],
+		});
+	});
+
+	it("validates source-span types, uint32 values, bounds, order, and UTF-8 boundaries", () => {
+		expect(() => resolveMdiSourceSpan(null as never, { startByte: 0, endByte: 0 })).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpan("x", null as never)).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpan("x", { startByte: "0" as never, endByte: 0 })).toThrow(TypeError);
+		for (const invalid of [-1, 0.5, Number.NaN, 0x1_0000_0000]) {
+			expect(() => resolveMdiSourceSpan("x", { startByte: invalid, endByte: 0 })).toThrow(RangeError);
+		}
+		expect(() => resolveMdiSourceSpan("x", { startByte: 1, endByte: 0 })).toThrow(RangeError);
+		expect(() => resolveMdiSourceSpan("x", { startByte: 0, endByte: 2 })).toThrow(RangeError);
+		expect(() => resolveMdiSourceSpan("東京", { startByte: 1, endByte: 3 })).toThrow(RangeError);
 	});
 
 	it("exposes nested syntax decisions made by Rust", () => {

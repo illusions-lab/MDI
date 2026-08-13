@@ -46,12 +46,23 @@ This page lists only symbols present in [`mdi-core/src/lib.rs`](https://github.c
 
 ## Public data types
 
-`ParseOutput`, `ParserCapabilities`, `Diagnostic`, `DiagnosticSeverity`, `SourceSpan`, `Document`, `Frontmatter`, `FrontmatterEntry`, `MdiTextBlocksResult`, `MdiTextBlock`, `MdiTextPosition`, `MdiTextRange`, `MdiTextSourceMap`, `MdiTextSourceRun`, `MdiTextAnnotation`, `PdfOptions`, `EpubCover`, `ResolvedExportProfile` and its nested profile/Chromium print types (current-generation API); `MdiSyntaxDocument`, `MdiBlock`, `PagebreakVariant`, `Inline`, `RubyReading` (the older, `parse_mdi_syntax`-only shape — `Inline`/`RubyReading` are also reused internally to build the current-generation `Document`'s MDI nodes, but their `serde` output is what appears inside `Document.children`, not `MdiSyntaxDocument`).
+`ParseOutput`, `ParserCapabilities`, `Diagnostic`, `DiagnosticSeverity`, `SourceSpan`, `Document`, `Frontmatter`, `FrontmatterEntry`, `MdiTextBlocksResult`, `MdiTextBlock`, `MdiTextPosition`, `MdiTextRange`, `MdiTextSourceMap`, `MdiTextSourceRun`, `MdiTextAnnotation`, `MdiSourceSpanTextResolution`, `MdiSourceSpanTextMatch`, `MdiSourceSpanCoverage`, `MdiSourceSpanRelation`, `MdiSourceSpanResolutionError`, `PdfOptions`, `EpubCover`, `ResolvedExportProfile` and its nested profile/Chromium print types (current-generation API); `MdiSyntaxDocument`, `MdiBlock`, `PagebreakVariant`, `Inline`, `RubyReading` (the older, `parse_mdi_syntax`-only shape — `Inline`/`RubyReading` are also reused internally to build the current-generation `Document`'s MDI nodes, but their `serde` output is what appears inside `Document.children`, not `MdiSyntaxDocument`).
 
 Use `get_mdi_text_blocks(source)` or `get_mdi_text_blocks_json(source)` for the
 Rust-owned plaintext search projection. It returns source-order blocks with
 one-based Unicode-grapheme positions, UTF-8 source-map boundaries, ruby reading
 annotations, and the same document/diagnostic envelope as `parse_output`.
+
+Use `resolve_mdi_source_span(source, span)` to map a validated half-open UTF-8
+`SourceSpan` back to maximal canonical grapheme ranges. It returns block text
+before zero-based annotation channels in deterministic block order. Coverage
+is `Complete`, `Partial`, or `None`, and a range is `Exact` only when its full
+forward source coverage equals the requested span. Reversed, out-of-bounds, or
+non-code-point-boundary inputs return `MdiSourceSpanResolutionError`; an empty
+span is valid and has no matches. Pure structural, synthetic, and unmapped
+bytes do not create ranges. Ruby's two channels, multi-to-one tokens, partial
+graphemes, discontinuous mappings, and unmapped text mean this is not a general
+inverse of every forward lookup.
 
 ## Not yet implemented
 

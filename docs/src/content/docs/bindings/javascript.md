@@ -60,7 +60,7 @@ Ruby readings remain searchable annotations whose `anchor` points back to the
 base-text range.
 
 ```ts
-import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
 const paragraph = result.blocks[1];
@@ -69,12 +69,24 @@ const match = { start: "2:1", end: "2:3" } as const;
 console.log(paragraph.text); // 東京
 console.log(paragraph.annotations[0].text); // とうきょう
 console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source spans
+console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
 ```
 
 `sourceMap.synthetic` identifies separators added by the projection, such as
 table tabs and row newlines; these deliberately produce no source span.
 `parseMdiTextPosition`, `formatMdiTextPosition`, and `formatMdiTextRange` are
 stateless helpers for the canonical coordinate spelling.
+
+`resolveMdiSourceSpan(source, span)` performs the inverse lookup in Rust. The
+span is half-open UTF-8 bytes and must use uint32 values in source order, stay
+within the source, and end on code-point boundaries. It returns ordered
+`blockText` and zero-based `annotation` matches plus `complete`, `partial`, or
+`none` coverage. Ruby base/readings are independent channels. A match is
+`exact` only when its full forward coverage equals the input; otherwise it is
+`overlap`. Empty spans return no caret-like neighbor. Structural delimiters,
+synthetic separators, and unmapped text produce no invented canonical range,
+so forward/reverse mapping is not promised to be bijective across annotations,
+multi-to-one tokens, partial graphemes, discontinuities, or unmapped text.
 
 ## Choose the export level
 

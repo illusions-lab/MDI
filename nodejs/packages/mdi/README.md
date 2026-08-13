@@ -87,14 +87,27 @@ such as `3:18` count one-based Unicode grapheme clusters; ruby readings are a
 separate annotation channel anchored to the base-text range.
 
 ```ts
-import { getMdiTextBlocks, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("{東京|とうきょう}");
 const block = result.blocks[0];
 console.log(block.text); // 東京
 console.log(block.annotations[0].anchor); // { start: "1:1", end: "1:3" }
 console.log(sourceSpansForTextRange(block, { start: "1:1", end: "1:3" }));
+console.log(resolveMdiSourceSpan("{東京|とうきょう}", { startByte: 1, endByte: 7 }));
 ```
+
+`resolveMdiSourceSpan` accepts half-open UTF-8 byte offsets and returns ordered
+`blockText` and `annotation` matches in canonical grapheme coordinates.
+`coverage` is `complete`, `partial`, or `none`; each match is `exact` only when
+its complete forward source coverage equals the requested span. Ruby base text
+and readings are separate channels, and annotation indexes are zero-based.
+Zero-width spans are valid and return no matches. Pure Markdown/MDI delimiters,
+synthetic separators, and unmapped text do not acquire invented ranges, though
+a delimiter token already owned by one projected grapheme (such as an explicit
+break) can match. Reverse and forward mapping are therefore not generally
+bijective, especially for annotations, multi-byte token mappings, partial
+graphemes, discontinuous runs, and synthetic or unmapped text.
 
 Each source-derived grapheme is represented by a `sourceMap.runs` boundary;
 table tabs/newlines and multi-paragraph joiners appear in `synthetic` and do
