@@ -57,6 +57,10 @@ boundary を検証し、本文と annotation の maximal grapheme range、
 Ruby の別 channel や multi-to-one/discontinuous mapping により、round trip は
 一般に bijection ではありません。
 
+diagnostics や decoration の一括処理には `resolve_mdi_source_spans(source,
+spans)` を使います。slice 全体を検証してから一度だけ parse/projection を行い、
+入力順に結果を返します。
+
 ## 現在の実装状況
 
 parse、`serialize_mdi`、HTML/TXT/EPUB/DOCX/PDF renderer はすべて実装済みです。baseline の正確な範囲は [Rust Core API](/ja/core/rust-api/#not-yet-implemented) を参照してください。

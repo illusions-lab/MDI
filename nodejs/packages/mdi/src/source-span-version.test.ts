@@ -4,12 +4,12 @@ vi.mock("@illusions-lab/mdi-core", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@illusions-lab/mdi-core")>();
 	return {
 		...original,
-		resolveMdiSourceSpanJson: () => JSON.stringify({
+		resolveMdiSourceSpansJson: () => JSON.stringify([{
 			projectionVersion: "9.9",
 			sourceSpan: { startByte: 0, endByte: 0 },
 			coverage: "none",
 			matches: [],
-		}),
+		}]),
 	};
 });
 

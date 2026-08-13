@@ -63,6 +63,7 @@ try {
   assert.equal(result.irVersion, "1.0");
   assert.equal(JSON.parse(result.sourceResolutionJson).projectionVersion, "1.0");
   assert(JSON.parse(result.sourceResolutionJson).matches.length > 0);
+  assert.equal(JSON.parse(result.sourceResolutionsJson).length, 2);
   assert.equal(result.hasFrontmatter, true);
   assert.equal(result.tableType, "table");
   assert(result.utf8Span?.endByte > result.utf8Span?.startByte);

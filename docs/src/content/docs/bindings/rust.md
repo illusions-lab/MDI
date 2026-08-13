@@ -72,6 +72,10 @@ structural, synthetic, or unmapped bytes do not gain invented ranges. Ruby's
 separate channels and multi-to-one/discontinuous mappings mean round trips are
 not generally bijective.
 
+For a diagnostics or decoration batch, use `resolve_mdi_source_spans(source,
+spans)`. It validates the full slice, parses/projects once, and returns the
+resolutions in input order.
+
 ## Current implementation status
 
 Parsing (`parse_document`/`parse_output`), serialization (`serialize_mdi`), and every renderer (`render_html`, `render_text_format`, `render_epub`, `render_docx`, `render_pdf`) are implemented today, at the "baseline" level described on [Rust Core API status](/core/rust-api/#not-yet-implemented). There is no separate `validate`/`normalize` API distinct from `parse_output`/`serialize_mdi` — see that same page for exactly what's missing.

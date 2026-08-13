@@ -64,6 +64,11 @@ bytes do not create ranges. Ruby's two channels, multi-to-one tokens, partial
 graphemes, discontinuous mappings, and unmapped text mean this is not a general
 inverse of every forward lookup.
 
+Use `resolve_mdi_source_spans(source, spans)` for batch work. It validates the
+whole slice before parsing, creates one projection, and resolves every span in
+input order against that shared projection. The matching JSON boundary is
+`resolve_mdi_source_spans_json`.
+
 ## Not yet implemented
 
 These exist as concepts in `ARCHITECTURE.md`/`SYNTAX.md` but have **no corresponding function in `mdi-core` today** — don't assume they exist because the architecture diagram mentions the concept:

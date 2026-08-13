@@ -1,7 +1,8 @@
 use mdi_core::{
     MdiSourceSpanCoverage, MdiSourceSpanRelation, MdiSourceSpanResolutionError,
-    MdiSourceSpanTextMatch, SourceSpan, get_mdi_text_blocks, resolve_mdi_source_span,
-    resolve_mdi_source_span_json,
+    MdiSourceSpanTextMatch, MdiTextBlockKind, SourceSpan, get_mdi_text_blocks,
+    resolve_mdi_source_span, resolve_mdi_source_span_json, resolve_mdi_source_spans,
+    resolve_mdi_source_spans_json,
 };
 
 fn span(start_byte: u32, end_byte: u32) -> SourceSpan {
@@ -146,6 +147,96 @@ fn validates_order_bounds_and_utf8_boundaries() {
         resolve_mdi_source_span("東京", span(1, 3)),
         Err(MdiSourceSpanResolutionError::NotUtf8Boundary)
     );
+}
+
+#[test]
+fn batch_resolution_preserves_order_and_matches_single_queries() {
+    let source = "前{東京|とうきょう}後\n\nsame same";
+    let tokyo_start = byte_offset(source, "東京");
+    let spans = [
+        span(0, 3),
+        span(tokyo_start, tokyo_start + 6),
+        span(source.len() as u32, source.len() as u32),
+    ];
+    let batch = resolve_mdi_source_spans(source, &spans).unwrap();
+    assert_eq!(batch.len(), spans.len());
+    for (resolution, requested) in batch.iter().zip(spans) {
+        assert_eq!(resolution.source_span, requested);
+        assert_eq!(
+            resolution,
+            &resolve_mdi_source_span(source, requested).unwrap()
+        );
+    }
+    assert_eq!(resolve_mdi_source_spans(source, &[]).unwrap(), Vec::new());
+    assert_eq!(
+        resolve_mdi_source_spans(source, &[spans[0], span(2, 1)]),
+        Err(MdiSourceSpanResolutionError::Reversed)
+    );
+
+    let json = resolve_mdi_source_spans_json(source, &spans).unwrap();
+    assert_eq!(json, resolve_mdi_source_spans_json(source, &spans).unwrap());
+    let wire: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(wire.as_array().unwrap().len(), spans.len());
+}
+
+#[test]
+fn repeated_identical_text_resolves_to_distinct_canonical_ranges() {
+    let source = "same same same";
+    for (start_byte, expected_start) in [(0, 1), (5, 6), (10, 11)] {
+        let resolution = resolve_mdi_source_span(source, span(start_byte, start_byte + 4)).unwrap();
+        assert!(matches!(
+            resolution.matches.as_slice(),
+            [MdiSourceSpanTextMatch::BlockText {
+                range,
+                relation: MdiSourceSpanRelation::Exact,
+                ..
+            }] if range.start.character == expected_start
+                && range.end.character == expected_start + 4
+        ));
+    }
+}
+
+#[test]
+fn resolves_every_searchable_block_family_including_footnotes() {
+    let source = concat!(
+        "# headingword\n\n",
+        "paragraphword\n\n",
+        "> quoteword\n\n",
+        "- listword\n\n",
+        "| tableword | x |\n| - | - |\n| y | z |\n\n",
+        "```text\ncodeword\n```\n\n",
+        "<section>htmlword</section>\n\n",
+        "body[^note]\n\n",
+        "[^note]: footnoteword",
+    );
+    let projection = get_mdi_text_blocks(source);
+    for (needle, expected_kind) in [
+        ("headingword", MdiTextBlockKind::Heading),
+        ("paragraphword", MdiTextBlockKind::Paragraph),
+        ("quoteword", MdiTextBlockKind::Blockquote),
+        ("listword", MdiTextBlockKind::ListItem),
+        ("tableword", MdiTextBlockKind::Table),
+        ("codeword", MdiTextBlockKind::Code),
+        ("htmlword", MdiTextBlockKind::Html),
+        ("footnoteword", MdiTextBlockKind::Footnote),
+    ] {
+        let start = byte_offset(source, needle);
+        let resolution = resolve_mdi_source_span(
+            source,
+            span(start, start + u32::try_from(needle.len()).unwrap()),
+        )
+        .unwrap();
+        let [MdiSourceSpanTextMatch::BlockText { block_index, .. }] = resolution.matches.as_slice()
+        else {
+            panic!("expected one block-text match for {needle}");
+        };
+        assert_eq!(
+            projection.blocks[usize::try_from(*block_index - 1).unwrap()].kind,
+            expected_kind,
+            "wrong block family for {needle}",
+        );
+        assert_eq!(resolution.coverage, MdiSourceSpanCoverage::Complete);
+    }
 }
 
 #[test]

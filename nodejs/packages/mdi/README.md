@@ -87,7 +87,7 @@ such as `3:18` count one-based Unicode grapheme clusters; ruby readings are a
 separate annotation channel anchored to the base-text range.
 
 ```ts
-import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, resolveMdiSourceSpans, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("{東京|とうきょう}");
 const block = result.blocks[0];
@@ -95,6 +95,7 @@ console.log(block.text); // 東京
 console.log(block.annotations[0].anchor); // { start: "1:1", end: "1:3" }
 console.log(sourceSpansForTextRange(block, { start: "1:1", end: "1:3" }));
 console.log(resolveMdiSourceSpan("{東京|とうきょう}", { startByte: 1, endByte: 7 }));
+console.log(resolveMdiSourceSpans("same same", [{ startByte: 0, endByte: 4 }, { startByte: 5, endByte: 9 }]));
 ```
 
 `resolveMdiSourceSpan` accepts half-open UTF-8 byte offsets and returns ordered
@@ -108,6 +109,9 @@ a delimiter token already owned by one projected grapheme (such as an explicit
 break) can match. Reverse and forward mapping are therefore not generally
 bijective, especially for annotations, multi-byte token mappings, partial
 graphemes, discontinuous runs, and synthetic or unmapped text.
+For multiple lookups against one document, use `resolveMdiSourceSpans`. It
+validates the full array, performs one Rust parse/projection, and preserves
+input order; repeated calls to the singular convenience API each parse anew.
 
 Each source-derived grapheme is represented by a `sourceMap.runs` boundary;
 table tabs/newlines and multi-paragraph joiners appear in `synthetic` and do

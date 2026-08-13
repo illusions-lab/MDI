@@ -50,6 +50,7 @@ current-generation API は `ParseOutput`、`ParserCapabilities`、`Diagnostic`�
 `resolve_mdi_source_span(source, span)` は half-open UTF-8 source span を本文と ruby
 annotation の range に逆引きします。coverage、relation、boundary、delimiter、
 synthetic/unmapped、round-trip の制約は [Rust binding](/ja/bindings/rust/) を参照してください。
+複数 span は `resolve_mdi_source_spans(source, spans)` で一度の parse/projection にまとめられます。
 
 ## Not yet implemented
 

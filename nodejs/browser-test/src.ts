@@ -1,4 +1,4 @@
-import { getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, serializeMdi } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -50,6 +50,7 @@ async function run(): Promise<void> {
   const projection = getMdiTextBlocks(source);
   const sourceResolutionSpan = parsed.document.children[1]!.span!;
   const sourceResolution = resolveMdiSourceSpan(source, sourceResolutionSpan);
+  const sourceResolutions = resolveMdiSourceSpans(source, [sourceResolutionSpan, { startByte: 0, endByte: 0 }]);
   const recoveryProjection = getMdiTextBlocks(recoverySource);
   const canonical = serializeMdi(source);
   const large = parse(largeSource);
@@ -66,6 +67,7 @@ async function run(): Promise<void> {
     projectionJson: JSON.stringify(projection),
     sourceResolutionSpan,
     sourceResolutionJson: JSON.stringify(sourceResolution),
+    sourceResolutionsJson: JSON.stringify(sourceResolutions),
     recoverySource,
     recoveryProjectionJson: JSON.stringify(recoveryProjection),
     recoveryDiagnostic: recoveryProjection.diagnostics[0],

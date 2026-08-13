@@ -35,6 +35,9 @@ UTF-8 source span becomes ordered canonical block-text and ruby-annotation
 ranges. Its `complete`, `partial`, or `none` coverage reports whether every
 requested source byte belongs to at least one mapped grapheme; synthetic and
 unmapped projection text never creates a match.
+For diagnostics or decoration batches, use `resolve_mdi_source_spans`; it
+validates every span first, then parses and projects the source exactly once
+and returns resolutions in input order.
 When rendering one parsed document in multiple formats, use the
 `*_document` functions, such as `render_html_document`, to avoid parsing it
 again.

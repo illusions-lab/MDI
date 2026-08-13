@@ -4,7 +4,7 @@
 //! parses CommonMark, GFM, YAML front matter, and MDI into one portable wire
 //! tree; language bindings only adapt that tree to their host APIs.
 
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use std::fs;
 use std::io::{Cursor, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ pub use text_projection::{
     MdiSourceSpanTextResolution, MdiTextAnnotation, MdiTextBlock, MdiTextBlockKind,
     MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap, MdiTextSourceRun,
     get_mdi_text_blocks, get_mdi_text_blocks_json, resolve_mdi_source_span,
-    resolve_mdi_source_span_json,
+    resolve_mdi_source_span_json, resolve_mdi_source_spans, resolve_mdi_source_spans_json,
 };
 
 /// MDI syntax version implemented by this crate.
@@ -87,7 +87,7 @@ pub enum DiagnosticSeverity {
 }
 
 /// Half-open UTF-8 byte range in the original source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSpan {
     pub start_byte: u32,
@@ -3992,7 +3992,7 @@ mod wasm {
         page_size_catalog_json, parse_json, prepare_chromium_print_profile_json, render_docx,
         render_docx_with_profile, render_epub, render_epub_with_profile, render_html, render_text,
         render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
-        serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
+        resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
 
@@ -4025,6 +4025,18 @@ mod wasm {
             },
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    /// Resolve many half-open UTF-8 source spans after one Rust parse.
+    #[wasm_bindgen(js_name = resolveMdiSourceSpansJson)]
+    pub fn wasm_resolve_mdi_source_spans_json(
+        source: &str,
+        spans_json: &str,
+    ) -> Result<String, JsValue> {
+        let spans: Vec<SourceSpan> = serde_json::from_str(spans_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid source spans JSON: {error}")))?;
+        resolve_mdi_source_spans_json(source, &spans)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     /// Render source through the Rust parser and Rust HTML renderer.

@@ -6,7 +6,7 @@ import { parse as parseYaml } from "yaml";
 
 const {
 	getMdiTextBlocksJson,
-	resolveMdiSourceSpanJson,
+	resolveMdiSourceSpansJson,
 	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
@@ -335,37 +335,54 @@ export function resolveMdiSourceSpan(
 	source: string,
 	span: MdiSourceSpan,
 ): MdiSourceSpanTextResolution {
-	if (typeof source !== "string") throw new TypeError("source must be a string");
-	assertSourceSpanInput(span);
-	const utf8 = utf8SourceBoundaries(source);
-	if (span.startByte > span.endByte) {
-		throw new RangeError("span.startByte must not exceed span.endByte");
-	}
-	if (span.endByte > utf8.length) {
-		throw new RangeError("span falls outside the UTF-8 source length");
-	}
-	if (!utf8.boundaries.has(span.startByte) || !utf8.boundaries.has(span.endByte)) {
-		throw new RangeError("span endpoints must be UTF-8 code-point boundaries");
-	}
-	const result = JSON.parse(
-		resolveMdiSourceSpanJson(source, span.startByte, span.endByte),
-	) as MdiSourceSpanTextResolution;
-	if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
-		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
-	}
-	return result;
+	return resolveMdiSourceSpans(source, [span])[0]!;
 }
 
-function assertSourceSpanInput(span: MdiSourceSpan): void {
+/**
+ * Resolve many half-open UTF-8 source spans with one Rust parse/projection.
+ * The returned resolutions preserve input order.
+ */
+export function resolveMdiSourceSpans(
+	source: string,
+	spans: readonly MdiSourceSpan[],
+): MdiSourceSpanTextResolution[] {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	if (!Array.isArray(spans)) throw new TypeError("spans must be an array");
+	if (spans.length === 0) return [];
+	const utf8 = utf8SourceBoundaries(source);
+	for (const [index, span] of spans.entries()) {
+		assertSourceSpanInput(span, `spans[${index}]`);
+		if (span.startByte > span.endByte) {
+			throw new RangeError(`spans[${index}].startByte must not exceed endByte`);
+		}
+		if (span.endByte > utf8.length) {
+			throw new RangeError(`spans[${index}] falls outside the UTF-8 source length`);
+		}
+		if (!utf8.boundaries.has(span.startByte) || !utf8.boundaries.has(span.endByte)) {
+			throw new RangeError(`spans[${index}] endpoints must be UTF-8 code-point boundaries`);
+		}
+	}
+	const results = JSON.parse(
+		resolveMdiSourceSpansJson(source, JSON.stringify(spans)),
+	) as MdiSourceSpanTextResolution[];
+	for (const result of results) {
+		if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
+			throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
+		}
+	}
+	return results;
+}
+
+function assertSourceSpanInput(span: MdiSourceSpan, name = "span"): void {
 	if (!span || typeof span !== "object" || Array.isArray(span)) {
-		throw new TypeError("span must be an object");
+		throw new TypeError(`${name} must be an object`);
 	}
 	if (typeof span.startByte !== "number" || typeof span.endByte !== "number") {
-		throw new TypeError("span.startByte and span.endByte must be numbers");
+		throw new TypeError(`${name}.startByte and ${name}.endByte must be numbers`);
 	}
 	const isUint32 = (value: number): boolean => Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
 	if (!isUint32(span.startByte) || !isUint32(span.endByte)) {
-		throw new RangeError("span.startByte and span.endByte must be uint32 values");
+		throw new RangeError(`${name}.startByte and ${name}.endByte must be uint32 values`);
 	}
 }
 

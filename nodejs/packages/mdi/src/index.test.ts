@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, resolveMdiSourceSpan, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
+import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
 
 function assertValidSpans(node: { span?: { startByte: number; endByte: number }; children?: unknown[] }, source: string): void {
 	if (node.span) {
@@ -114,6 +114,25 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(() => resolveMdiSourceSpan("x", { startByte: 1, endByte: 0 })).toThrow(RangeError);
 		expect(() => resolveMdiSourceSpan("x", { startByte: 0, endByte: 2 })).toThrow(RangeError);
 		expect(() => resolveMdiSourceSpan("東京", { startByte: 1, endByte: 3 })).toThrow(RangeError);
+	});
+
+	it("resolves batches in input order through one Rust boundary", () => {
+		const source = "same same same";
+		const spans = [
+			{ startByte: 10, endByte: 14 },
+			{ startByte: 0, endByte: 4 },
+			{ startByte: 5, endByte: 9 },
+		];
+		const batch = resolveMdiSourceSpans(source, spans);
+		expect(batch.map((resolution) => resolution.sourceSpan)).toEqual(spans);
+		expect(batch.map((resolution) => resolution.matches[0]?.range)).toEqual([
+			{ start: "1:11", end: "1:15" },
+			{ start: "1:1", end: "1:5" },
+			{ start: "1:6", end: "1:10" },
+		]);
+		expect(resolveMdiSourceSpans(source, [])).toEqual([]);
+		expect(() => resolveMdiSourceSpans(source, null as never)).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpans(source, [spans[0]!, { startByte: 2, endByte: 1 }])).toThrow(RangeError);
 	});
 
 	it("exposes nested syntax decisions made by Rust", () => {

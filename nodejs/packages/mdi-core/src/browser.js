@@ -22,6 +22,7 @@ export const blockMacroVariant = (...args) => (requireInitialized(), bindings.bl
 export const pageSizeCatalogJson = (...args) => (requireInitialized(), bindings.pageSizeCatalogJson(...args));
 export const getMdiTextBlocksJson = (...args) => (requireInitialized(), bindings.getMdiTextBlocksJson(...args));
 export const resolveMdiSourceSpanJson = (...args) => (requireInitialized(), bindings.resolveMdiSourceSpanJson(...args));
+export const resolveMdiSourceSpansJson = (...args) => (requireInitialized(), bindings.resolveMdiSourceSpansJson(...args));
 export const parseMdiSyntaxJson = (...args) => (requireInitialized(), bindings.parseMdiSyntaxJson(...args));
 export const prepareChromiumPrintProfileJson = (...args) => (requireInitialized(), bindings.prepareChromiumPrintProfileJson(...args));
 export const renderDocx = (...args) => (requireInitialized(), bindings.renderDocx(...args));
