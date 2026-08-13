@@ -148,6 +148,11 @@ async function testPage(browserName, page, url, getNodeProjection, resolveNodeSo
   assert.equal(result.irVersion, "1.0", browserName);
   assert.equal(result.projectionVersion, "1.0", browserName);
   assert.equal(
+    result.provenanceJson,
+    JSON.stringify(getNodeProjection(result.projectionSource).document.children.map((node) => node.mdiProvenance)),
+    `${browserName}: Node and browser provenance must be byte-for-byte identical`,
+  );
+  assert.equal(
     result.projectionJson,
     JSON.stringify(getNodeProjection(result.projectionSource)),
     `${browserName}: Node and browser must return byte-for-byte identical projection JSON`,

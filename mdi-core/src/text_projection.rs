@@ -1,6 +1,7 @@
 use crate::{
-    Diagnostic, DiagnosticSeverity, Document, MDI_IR_VERSION, MDI_SPEC_VERSION, ParserCapabilities,
-    SourceSpan, diagnostics, parse_document,
+    Diagnostic, DiagnosticSeverity, Document, MDI_IR_VERSION, MDI_MDAST_PROVENANCE_VERSION,
+    MDI_SPEC_VERSION, ParserCapabilities, SourceSpan, diagnostics,
+    parse_document_without_provenance,
 };
 use serde::Serialize;
 use std::fmt;
@@ -301,7 +302,8 @@ struct Collector<'a> {
 /// Parse once and produce the complete IR envelope plus the Rust-owned text
 /// projection and its UTF-8 source map.
 pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
-    let document = parse_document(source);
+    let mut document = parse_document_without_provenance(source);
+    attach_mdast_provenance(&mut document, source);
     let mut collector = Collector {
         source,
         blocks: Vec::new(),
@@ -326,6 +328,113 @@ pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
         document,
         diagnostics: collector.diagnostics,
     }
+}
+
+/// Attach adapter-only provenance to every Rust IR construct.  The mdast
+/// adapter transports this exact record; it must not reconstruct projection
+/// ranges, source maps, or identities in JavaScript.
+pub(crate) fn attach_mdast_provenance(document: &mut Document, source: &str) {
+    let mut collector = Collector {
+        source,
+        blocks: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    for node in &document.children {
+        collector.collect(node, false);
+    }
+    for (index, node) in document.children.iter_mut().enumerate() {
+        attach_node_provenance(node, &collector.blocks, &index.to_string());
+    }
+}
+
+fn attach_node_provenance(node: &mut serde_json::Value, blocks: &[MdiTextBlock], path: &str) {
+    let Some(object) = node.as_object_mut() else {
+        return;
+    };
+    let node_type = object
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let span = object
+        .get("span")
+        .and_then(|value| serde_json::from_value::<SourceSpan>(value.clone()).ok());
+    let targets = span
+        .map(|span| provenance_targets(blocks, span))
+        .unwrap_or_default();
+    let role = if is_text_bearing(node_type) {
+        "textBearing"
+    } else {
+        "container"
+    };
+    let status = if span.is_none() {
+        "synthetic"
+    } else if targets.is_empty() {
+        "unmapped"
+    } else {
+        "sourceBacked"
+    };
+    object.insert(
+        "mdiProvenance".to_owned(),
+        serde_json::json!({
+            "version": MDI_MDAST_PROVENANCE_VERSION,
+            "construct": { "path": path, "type": node_type },
+            "span": span,
+            "role": role,
+            "status": status,
+            "targets": targets,
+        }),
+    );
+    if let Some(children) = object
+        .get_mut("children")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for (index, child) in children.iter_mut().enumerate() {
+            attach_node_provenance(child, blocks, &format!("{path}.{index}"));
+        }
+    }
+}
+
+fn is_text_bearing(node_type: &str) -> bool {
+    matches!(
+        node_type,
+        "text" | "inlineCode" | "code" | "html" | "ruby" | "tcy" | "image" | "break"
+    )
+}
+
+fn provenance_targets(blocks: &[MdiTextBlock], span: SourceSpan) -> Vec<serde_json::Value> {
+    if span.start_byte == span.end_byte {
+        return Vec::new();
+    }
+    let mut matches = Vec::new();
+    let mut covered = Vec::new();
+    for block in blocks {
+        resolve_source_map_channel(
+            block.index,
+            None,
+            &block.source_map,
+            span,
+            &mut matches,
+            &mut covered,
+        );
+        for (annotation_index, annotation) in block.annotations.iter().enumerate() {
+            resolve_source_map_channel(
+                block.index,
+                Some(annotation_index as u32),
+                &annotation.source_map,
+                span,
+                &mut matches,
+                &mut covered,
+            );
+        }
+    }
+    matches.into_iter().map(|matched| match matched {
+        MdiSourceSpanTextMatch::BlockText { block_index, range, .. } => serde_json::json!({
+            "blockIndex": block_index, "channel": "blockText", "range": range,
+        }),
+        MdiSourceSpanTextMatch::Annotation { block_index, annotation_index, range, .. } => serde_json::json!({
+            "blockIndex": block_index, "channel": "annotation", "annotationIndex": annotation_index, "range": range,
+        }),
+    }).collect()
 }
 
 pub fn get_mdi_text_blocks_json(source: &str) -> String {

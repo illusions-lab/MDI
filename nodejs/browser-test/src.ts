@@ -63,6 +63,7 @@ async function run(): Promise<void> {
   document.querySelector("#result")!.textContent = JSON.stringify({
     irVersion: parsed.irVersion,
     projectionVersion: projection.projectionVersion,
+    provenanceJson: JSON.stringify(parsed.document.children.map((node) => node.mdiProvenance)),
     projectionSource: source,
     projectionJson: JSON.stringify(projection),
     sourceResolutionSpan,

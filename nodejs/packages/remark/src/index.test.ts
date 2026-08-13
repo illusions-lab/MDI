@@ -34,6 +34,11 @@ function withoutPosition(value: unknown): unknown {
 	return value;
 }
 
+function visit(node: { children?: unknown[] }, callback: (node: Record<string, unknown>) => void): void {
+	callback(node as Record<string, unknown>);
+	for (const child of node.children ?? []) visit(child as { children?: unknown[] }, callback);
+}
+
 describe("remarkMdi", () => {
 	it("combines front matter, GFM, and MDI parsing", () => {
 		const tree = parse(`---
@@ -140,5 +145,58 @@ writing-mode: vertical
 		);
 
 		expect(parse(fixture).children.length).toBeGreaterThan(2);
+	});
+
+	it("losslessly carries Rust-owned versioned provenance into transient mdast data", () => {
+		const source = `# same
+
+same {東京|とうきょう} [[br]] ![same](x.png)
+
+> - same
+
+- > same
+
+| same | é 👩🏽‍💻 |
+| --- | --- |
+| same | <i>same</i> |
+
+[^n]: same
+
+[[blank]]
+[[pagebreak:left]]
+[[indent:2]]
+same
+[[bottom:1]]`;
+		const tree = parse(source);
+		const records: Array<Record<string, unknown>> = [];
+		visit(tree, (node) => {
+			const provenance = (node.data as Record<string, unknown> | undefined)?.mdiProvenance;
+			if (provenance) records.push(provenance as Record<string, unknown>);
+		});
+
+		expect(records.length).toBeGreaterThan(20);
+		expect(new Set(records.map((record) => (record.construct as { path: string }).path)).size).toBe(records.length);
+		for (const record of records) {
+			expect(record).toMatchObject({ version: "1.0" });
+			expect(record.construct).toMatchObject({ path: expect.any(String), type: expect.any(String) });
+			expect(["container", "textBearing"]).toContain(record.role);
+			expect(["sourceBacked", "synthetic", "unmapped"]).toContain(record.status);
+			expect(Array.isArray(record.targets)).toBe(true);
+		}
+		const ruby = records.find((record) => (record.construct as { type: string }).type === "ruby")!;
+		expect(ruby.targets).toEqual(expect.arrayContaining([
+			expect.objectContaining({ channel: "blockText", blockIndex: expect.any(Number) }),
+			expect.objectContaining({ channel: "annotation", annotationIndex: 0 }),
+		]));
+		const blank = records.find((record) => (record.construct as { type: string }).type === "blank")!;
+		expect(blank).toMatchObject({ role: "container", status: "unmapped", targets: [] });
+	});
+
+	it("does not serialize transient provenance into Markdown", () => {
+		const remark = processor();
+		const tree = remark.runSync(remark.parse("{東京|とうきょう}")) as Root;
+		const serialized = String(remark.stringify(tree));
+		expect(serialized).toContain("{東京|とうきょう}");
+		expect(serialized).not.toContain("mdiProvenance");
 	});
 });

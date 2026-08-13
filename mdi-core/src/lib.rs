@@ -42,6 +42,12 @@ pub const MDI_SPEC_VERSION: &str = "2.0";
 /// This version changes only for incompatible wire-schema changes.
 pub const MDI_IR_VERSION: &str = "1.0";
 
+/// Version of the transient Rust-owned mdast provenance contract.
+///
+/// The record is attached to IR nodes only so host adapters can carry it into
+/// their own transient metadata. It is never part of MDI serialization.
+pub const MDI_MDAST_PROVENANCE_VERSION: &str = "1.0";
+
 /// A binding-friendly parse envelope.
 ///
 /// Capabilities let a binding verify the features represented in this parse
@@ -285,6 +291,14 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
+    let mut document = parse_document_without_provenance(source);
+    text_projection::attach_mdast_provenance(&mut document, source);
+    document
+}
+
+/// Parse a document without its adapter-only provenance metadata.  This is
+/// crate-private because Rust remains the only owner of provenance creation.
+pub(crate) fn parse_document_without_provenance(source: &str) -> Document {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         parse_document_unchecked(source)
     }))

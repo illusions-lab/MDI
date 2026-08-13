@@ -1,4 +1,9 @@
-import { parse, type MdiDocument, type MdiNode } from "@illusions-lab/mdi";
+import {
+	parse,
+	type MdiDocument,
+	type MdiMdastProvenance,
+	type MdiNode,
+} from "@illusions-lab/mdi";
 import { mdiToMarkdown } from "mdast-util-mdi";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -9,6 +14,8 @@ import type { Processor } from "unified";
 import { resolveFrontmatter } from "./frontmatter.js";
 
 export const MDI_SPEC_VERSION = "2.0";
+export const MDI_MDAST_PROVENANCE_VERSION = "1.0" as const;
+export type { MdiMdastProvenance, MdiMdastProvenanceTarget } from "@illusions-lab/mdi";
 export type { MdiFrontmatter } from "./frontmatter.js";
 export { initializeMdi } from "@illusions-lab/mdi";
 
@@ -43,9 +50,12 @@ function toMdast(document: MdiDocument): Root {
 }
 
 function toMdastNode(node: MdiNode): Record<string, unknown> {
-	const { span: _span, children, ...rest } = node;
+	const { span: _span, mdiProvenance, children, ...rest } = node;
 	const mapped: Record<string, unknown> = { ...rest };
 	if (children) mapped.children = children.map(toMdastNode);
+	// This is a lossless transport of Rust-owned metadata. It deliberately
+	// lives under `data` so ordinary mdast consumers can ignore it.
+	if (mdiProvenance) mapped.data = { mdiProvenance };
 
 	switch (node.type) {
 		case "ruby": {
@@ -69,7 +79,7 @@ function toMdastNode(node: MdiNode): Record<string, unknown> {
 			if (typeof mapped.bottom === "number") data.mdiBottom = mapped.bottom;
 			delete mapped.indent;
 			delete mapped.bottom;
-			if (Object.keys(data).length) mapped.data = data;
+			if (Object.keys(data).length) mapped.data = { ...(mapped.data as Record<string, unknown> | undefined), ...data };
 			return mapped;
 		}
 		default: return mapped;
