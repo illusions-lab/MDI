@@ -60,7 +60,7 @@ Ruby readings remain searchable annotations whose `anchor` points back to the
 base-text range.
 
 ```ts
-import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, resolveMdiSourceSpans, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
 const paragraph = result.blocks[1];
@@ -70,6 +70,7 @@ console.log(paragraph.text); // 東京
 console.log(paragraph.annotations[0].text); // とうきょう
 console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source spans
 console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
+console.log(resolveMdiSourceSpans("same same", [{ startByte: 0, endByte: 4 }, { startByte: 5, endByte: 9 }]));
 ```
 
 `sourceMap.synthetic` identifies separators added by the projection, such as
@@ -87,6 +88,11 @@ within the source, and end on code-point boundaries. It returns ordered
 synthetic separators, and unmapped text produce no invented canonical range,
 so forward/reverse mapping is not promised to be bijective across annotations,
 multi-to-one tokens, partial graphemes, discontinuities, or unmapped text.
+
+Use `resolveMdiSourceSpans(source, spans)` for diagnostics or decoration
+batches. Rust validates all spans, parses/projects the document once, and
+returns one resolution per input span in the same order. Each separate call to
+the singular convenience API performs its own parse.
 
 ## Choose the export level
 

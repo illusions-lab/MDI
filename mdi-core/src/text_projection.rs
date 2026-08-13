@@ -340,16 +340,42 @@ pub fn resolve_mdi_source_span(
     span: SourceSpan,
 ) -> Result<MdiSourceSpanTextResolution, MdiSourceSpanResolutionError> {
     validate_source_span(source, span)?;
+    let projection = get_mdi_text_blocks(source);
+    Ok(resolve_mdi_source_span_in_projection(&projection, span))
+}
+
+/// Resolve many source spans after parsing and projecting `source` exactly
+/// once. Input order is preserved in the returned resolutions.
+pub fn resolve_mdi_source_spans(
+    source: &str,
+    spans: &[SourceSpan],
+) -> Result<Vec<MdiSourceSpanTextResolution>, MdiSourceSpanResolutionError> {
+    for &span in spans {
+        validate_source_span(source, span)?;
+    }
+    if spans.is_empty() {
+        return Ok(Vec::new());
+    }
+    let projection = get_mdi_text_blocks(source);
+    Ok(spans
+        .iter()
+        .map(|&span| resolve_mdi_source_span_in_projection(&projection, span))
+        .collect())
+}
+
+fn resolve_mdi_source_span_in_projection(
+    projection: &MdiTextBlocksResult,
+    span: SourceSpan,
+) -> MdiSourceSpanTextResolution {
     if span.start_byte == span.end_byte {
-        return Ok(MdiSourceSpanTextResolution {
+        return MdiSourceSpanTextResolution {
             projection_version: MDI_TEXT_PROJECTION_VERSION,
             source_span: span,
             coverage: MdiSourceSpanCoverage::None,
             matches: Vec::new(),
-        });
+        };
     }
 
-    let projection = get_mdi_text_blocks(source);
     let mut matches = Vec::new();
     let mut covered = Vec::new();
     for block in &projection.blocks {
@@ -384,12 +410,12 @@ pub fn resolve_mdi_source_span(
     } else {
         MdiSourceSpanCoverage::Partial
     };
-    Ok(MdiSourceSpanTextResolution {
+    MdiSourceSpanTextResolution {
         projection_version: MDI_TEXT_PROJECTION_VERSION,
         source_span: span,
         coverage,
         matches,
-    })
+    }
 }
 
 /// JSON boundary for language bindings.
@@ -400,6 +426,17 @@ pub fn resolve_mdi_source_span_json(
     let resolution = resolve_mdi_source_span(source, span)?;
     Ok(serde_json::to_string(&resolution)
         .expect("serializing an MDI source-span resolution cannot fail"))
+}
+
+/// Batched JSON boundary for language bindings. The source is parsed once for
+/// all spans, and the returned array follows input order.
+pub fn resolve_mdi_source_spans_json(
+    source: &str,
+    spans: &[SourceSpan],
+) -> Result<String, MdiSourceSpanResolutionError> {
+    let resolutions = resolve_mdi_source_spans(source, spans)?;
+    Ok(serde_json::to_string(&resolutions)
+        .expect("serializing MDI source-span resolutions cannot fail"))
 }
 
 fn validate_source_span(

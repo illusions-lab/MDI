@@ -31,6 +31,9 @@ The raw text-projection boundaries are `getMdiTextBlocksJson(source)` and
 Rust-owned inverse mapping as JSON and rejects reversed, out-of-bounds, or
 non-UTF-8-boundary spans. Applications normally use the typed
 `resolveMdiSourceSpan` wrapper from `@illusions-lab/mdi`.
+`resolveMdiSourceSpansJson(source, spansJson)` accepts a JSON array and parses
+the source once for the whole batch; applications normally use the typed
+`resolveMdiSourceSpans` wrapper.
 
 Browser bundlers select the web-compatible runtime facade automatically through
 the package's `browser` export condition. The generated `.wasm` asset remains

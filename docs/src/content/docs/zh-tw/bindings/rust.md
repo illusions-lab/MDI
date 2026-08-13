@@ -57,6 +57,9 @@ coverage 和 `Exact | Overlap` relation。空 span、純結構 delimiter、synth
 unmapped source 都不會產生 range。Ruby 雙 channel 與多對一／不連續 mapping
 代表 round trip 通常不是雙射。
 
+diagnostics 或 decorations 的批次處理請使用 `resolve_mdi_source_spans(source,
+spans)`；它先驗證整個 slice，只做一次 parse/projection，再依輸入順序回傳結果。
+
 ## 目前實作狀態
 
 Parsing、`serialize_mdi` 及所有 renderer（`render_html`、`render_text_format`、`render_epub`、`render_docx`、`render_pdf`）皆已實作，限制見 [Rust Core API 尚未實作項目](/zh-tw/core/rust-api/#尚未實作)。沒有獨立 `validate`/`normalize` API，分別由 `parse_output`/`serialize_mdi` 擔任。

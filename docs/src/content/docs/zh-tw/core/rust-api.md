@@ -52,6 +52,7 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 `resolve_mdi_source_span(source, span)` 把 half-open UTF-8 source span 反解為正文與
 ruby annotation ranges。Coverage、relation、boundary、delimiter、synthetic/unmapped
 及 round-trip 限制請參閱 [Rust 綁定](/zh-tw/bindings/rust/)。
+多個 span 可使用 `resolve_mdi_source_spans(source, spans)`，以單次 parse/projection 批量解析。
 
 ## 尚未實作
 

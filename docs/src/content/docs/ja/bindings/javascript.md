@@ -58,7 +58,7 @@ block、完全な document IR、diagnostics を返します。`3:18` は三つ�
 annotation として検索でき、`anchor` は base text の range を指します。
 
 ```ts
-import { getMdiTextBlocks, resolveMdiSourceSpan, sourceSpansForTextRange } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, resolveMdiSourceSpan, resolveMdiSourceSpans, sourceSpansForTextRange } from "@illusions-lab/mdi";
 
 const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
 const paragraph = result.blocks[1];
@@ -68,6 +68,7 @@ console.log(paragraph.text); // 東京
 console.log(paragraph.annotations[0].text); // とうきょう
 console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source span
 console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
+console.log(resolveMdiSourceSpans("same same", [{ startByte: 0, endByte: 4 }, { startByte: 5, endByte: 9 }]));
 ```
 
 `sourceMap.synthetic` は table の tab や row newline など projection が追加した
@@ -84,6 +85,11 @@ range と `complete | partial | none` coverage です。forward coverage 全体�
 delimiter、synthetic、unmapped byte に range は作られないため、annotation、
 multi-to-one token、partial grapheme、discontinuous mapping を含む round trip は
 一般には bijection ではありません。
+
+同じ文書に対する diagnostics や decoration の一括処理には
+`resolveMdiSourceSpans(source, spans)` を使います。全 span を検証した後、Rust
+で parse/projection を一度だけ行い、入力順に結果を返します。単数 API を個別に
+呼ぶ場合は、呼び出しごとに parse されます。
 
 ## baseline と設定付き EPUB/DOCX
 
