@@ -1,4 +1,5 @@
-import { getMdiTextBlocks, initializeMdi, parse, parseForMdast, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
+import { parseForMdast, type MdiMdastDocument, type MdiMdastNode } from "@illusions-lab/mdi/internal/mdast";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -63,7 +64,7 @@ async function run(): Promise<void> {
   document.querySelector("#result")!.textContent = JSON.stringify({
     irVersion: parsed.irVersion,
     projectionVersion: projection.projectionVersion,
-    provenanceJson: JSON.stringify(parseForMdast(source).document.children.map((node) => node.mdiProvenance)),
+    provenanceJson: JSON.stringify(canonicalProvenance(parseForMdast(source).document)),
     projectionSource: source,
     projectionJson: JSON.stringify(projection),
     sourceResolutionSpan,
@@ -82,4 +83,18 @@ async function run(): Promise<void> {
     largeNodeCount: large.document.children.length,
     diagnostic: unsupportedVersion.diagnostics[0],
   });
+}
+
+function canonicalProvenance(document: MdiMdastDocument): unknown {
+  return {
+    frontmatter: document.frontmatter?.mdiProvenance ?? null,
+    children: document.children.map(canonicalNodeProvenance),
+  };
+}
+
+function canonicalNodeProvenance(node: MdiMdastNode): unknown {
+  return {
+    provenance: node.mdiProvenance ?? null,
+    children: (node.children ?? []).map(canonicalNodeProvenance),
+  };
 }

@@ -1,5 +1,12 @@
 # @illusions-lab/mdi-core
 
+## 2.0.3
+
+### Patch Changes
+
+- Add the Rust-owned mdast provenance transport used by the internal remark
+  adapter without changing the general parse or text-projection contracts.
+
 ## 2.0.2
 
 ### Patch Changes

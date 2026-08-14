@@ -7,7 +7,6 @@ import { parse as parseYaml } from "yaml";
 const {
 	getMdiTextBlocksJson,
 	resolveMdiSourceSpansJson,
-	parseMdiMdastJson,
 	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
@@ -110,9 +109,6 @@ export const MDI_IR_VERSION = "1.0" as const;
 /** Version of the Rust-owned searchable text projection. */
 export const MDI_TEXT_PROJECTION_VERSION = "1.0" as const;
 
-/** Version of Rust-owned transient mdast provenance records. */
-export const MDI_MDAST_PROVENANCE_VERSION = "1.0" as const;
-
 export interface MdiParserCapabilities {
 	mdi: boolean;
 	commonMark: boolean;
@@ -126,25 +122,6 @@ export interface MdiSourceSpan {
 	startByte: number;
 	/** Exclusive UTF-8 byte offset. */
 	endByte: number;
-}
-
-/** A projection target assigned by Rust to a source-backed IR construct. */
-export type MdiMdastProvenanceTarget =
-	| { blockIndex: number; channel: "blockText"; range: MdiTextRange }
-	| { blockIndex: number; channel: "annotation"; annotationIndex: number; range: MdiTextRange };
-
-/**
- * Transient identity and projection metadata emitted by Rust for mdast
- * adapters. `construct.path` is a stable IR path for this parse result; it is
- * not a persisted document ID and must not be inferred from text or order.
- */
-export interface MdiMdastProvenance {
-	version: typeof MDI_MDAST_PROVENANCE_VERSION;
-	construct: { path: string; type: string };
-	span?: MdiSourceSpan;
-	role: "container" | "textBearing";
-	status: "sourceBacked" | "synthetic" | "unmapped";
-	targets: MdiMdastProvenanceTarget[];
 }
 
 /** A canonical one-based `block:grapheme` text position. */
@@ -252,8 +229,6 @@ export type MdiRubyReading =
 export interface MdiNode {
 	type: string;
 	span?: MdiSourceSpan;
-	/** Rust-owned, adapter-only metadata; omitted by canonical serialization. */
-	mdiProvenance?: MdiMdastProvenance;
 	children?: MdiNode[];
 	[key: string]: unknown;
 }
@@ -333,16 +308,6 @@ export type MdiSyntaxDocument = MdiDocument;
 export function parse(source: string): MdiSyntaxParseResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
 	const result = JSON.parse(parseMdiSyntaxJson(source)) as MdiSyntaxParseResult;
-	if (result.irVersion !== MDI_IR_VERSION) {
-		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
-	}
-	return result;
-}
-
-/** @internal Rust-backed input for the mdast adapter; not a general IR API. */
-export function parseForMdast(source: string): MdiSyntaxParseResult {
-	if (typeof source !== "string") throw new TypeError("source must be a string");
-	const result = JSON.parse(parseMdiMdastJson(source)) as MdiSyntaxParseResult;
 	if (result.irVersion !== MDI_IR_VERSION) {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}

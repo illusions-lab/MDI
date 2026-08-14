@@ -1,11 +1,19 @@
+#[cfg(any(test, feature = "wasm"))]
+use crate::MDI_MDAST_PROVENANCE_VERSION;
 use crate::{
-    Diagnostic, DiagnosticSeverity, Document, MDI_IR_VERSION, MDI_MDAST_PROVENANCE_VERSION,
-    MDI_SPEC_VERSION, ParserCapabilities, SourceSpan, diagnostics,
-    parse_document_without_provenance,
+    Diagnostic, DiagnosticSeverity, Document, MDI_IR_VERSION, MDI_SPEC_VERSION, ParserCapabilities,
+    SourceSpan, diagnostics, parse_document_without_provenance,
 };
 use serde::Serialize;
+#[cfg(test)]
+use std::cell::Cell;
 use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(test)]
+thread_local! {
+    static PROVENANCE_QUERY_VISITS: Cell<usize> = const { Cell::new(0) };
+}
 
 pub(crate) enum PlainInline<'a> {
     Value(&'a str),
@@ -332,6 +340,7 @@ pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
 /// Attach adapter-only provenance to every Rust IR construct.  The mdast
 /// adapter transports this exact record; it must not reconstruct projection
 /// ranges, source maps, or identities in JavaScript.
+#[cfg(any(test, feature = "wasm"))]
 pub(crate) fn attach_mdast_provenance(document: &mut Document, source: &str) {
     let mut collector = Collector {
         source,
@@ -341,12 +350,14 @@ pub(crate) fn attach_mdast_provenance(document: &mut Document, source: &str) {
     for node in &document.children {
         collector.collect(node, false);
     }
-    for (index, node) in document.children.iter_mut().enumerate() {
-        attach_node_provenance(node, &collector.blocks, &index.to_string());
+    let provenance_index = ProvenanceIndex::new(&collector.blocks);
+    for (node_index, node) in document.children.iter_mut().enumerate() {
+        attach_node_provenance(node, &provenance_index, &node_index.to_string());
     }
 }
 
-fn attach_node_provenance(node: &mut serde_json::Value, blocks: &[MdiTextBlock], path: &str) {
+#[cfg(any(test, feature = "wasm"))]
+fn attach_node_provenance(node: &mut serde_json::Value, index: &ProvenanceIndex, path: &str) {
     let Some(object) = node.as_object_mut() else {
         return;
     };
@@ -357,17 +368,19 @@ fn attach_node_provenance(node: &mut serde_json::Value, blocks: &[MdiTextBlock],
     let span = object
         .get("span")
         .and_then(|value| serde_json::from_value::<SourceSpan>(value.clone()).ok());
-    let targets = span
-        .map(|span| provenance_targets(blocks, span))
-        .unwrap_or_default();
     let role = if is_text_bearing(node_type) {
         "textBearing"
     } else {
         "container"
     };
+    let targets = if role == "textBearing" {
+        span.map(|span| index.targets(span)).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let status = if span.is_none() {
         "synthetic"
-    } else if targets.is_empty() {
+    } else if role == "textBearing" && targets.is_empty() {
         "unmapped"
     } else {
         "sourceBacked"
@@ -387,12 +400,13 @@ fn attach_node_provenance(node: &mut serde_json::Value, blocks: &[MdiTextBlock],
         .get_mut("children")
         .and_then(serde_json::Value::as_array_mut)
     {
-        for (index, child) in children.iter_mut().enumerate() {
-            attach_node_provenance(child, blocks, &format!("{path}.{index}"));
+        for (child_index, child) in children.iter_mut().enumerate() {
+            attach_node_provenance(child, index, &format!("{path}.{child_index}"));
         }
     }
 }
 
+#[cfg(any(test, feature = "wasm"))]
 fn is_text_bearing(node_type: &str) -> bool {
     matches!(
         node_type,
@@ -400,40 +414,166 @@ fn is_text_bearing(node_type: &str) -> bool {
     )
 }
 
-fn provenance_targets(blocks: &[MdiTextBlock], span: SourceSpan) -> Vec<serde_json::Value> {
-    if span.start_byte == span.end_byte {
-        return Vec::new();
-    }
-    let mut matches = Vec::new();
-    let mut covered = Vec::new();
-    for block in blocks {
-        resolve_source_map_channel(
-            block.index,
-            None,
-            &block.source_map,
-            span,
-            &mut matches,
-            &mut covered,
-        );
-        for (annotation_index, annotation) in block.annotations.iter().enumerate() {
-            resolve_source_map_channel(
+#[cfg(any(test, feature = "wasm"))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProvenanceChannel {
+    BlockText,
+    Annotation(u32),
+}
+
+#[cfg(any(test, feature = "wasm"))]
+struct ProvenanceUnit {
+    span: SourceSpan,
+    block_index: u32,
+    channel: ProvenanceChannel,
+    character: u32,
+    ordinal: usize,
+}
+
+/// An immutable interval index built once for one mdast parse. `prefix_max_end`
+/// makes the first possible overlap a binary search even when source intervals
+/// nest or share their starting byte.
+#[cfg(any(test, feature = "wasm"))]
+struct ProvenanceIndex {
+    units: Vec<ProvenanceUnit>,
+    prefix_max_end: Vec<u32>,
+}
+
+#[cfg(any(test, feature = "wasm"))]
+impl ProvenanceIndex {
+    fn new(blocks: &[MdiTextBlock]) -> Self {
+        let mut units = Vec::new();
+        for block in blocks {
+            Self::push_channel(
+                &mut units,
                 block.index,
-                Some(annotation_index as u32),
-                &annotation.source_map,
-                span,
-                &mut matches,
-                &mut covered,
+                ProvenanceChannel::BlockText,
+                &block.source_map,
             );
+            for (annotation_index, annotation) in block.annotations.iter().enumerate() {
+                Self::push_channel(
+                    &mut units,
+                    block.index,
+                    ProvenanceChannel::Annotation(annotation_index as u32),
+                    &annotation.source_map,
+                );
+            }
+        }
+        units.sort_by_key(|unit| (unit.span.start_byte, unit.span.end_byte, unit.ordinal));
+        let mut maximum = 0;
+        let prefix_max_end = units
+            .iter()
+            .map(|unit| {
+                maximum = maximum.max(unit.span.end_byte);
+                maximum
+            })
+            .collect();
+        Self {
+            units,
+            prefix_max_end,
         }
     }
-    matches.into_iter().map(|matched| match matched {
-        MdiSourceSpanTextMatch::BlockText { block_index, range, .. } => serde_json::json!({
+
+    fn push_channel(
+        units: &mut Vec<ProvenanceUnit>,
+        block_index: u32,
+        channel: ProvenanceChannel,
+        map: &MdiTextSourceMap,
+    ) {
+        for run in &map.runs {
+            for (offset, boundaries) in run.source_boundaries.windows(2).enumerate() {
+                units.push(ProvenanceUnit {
+                    span: SourceSpan {
+                        start_byte: boundaries[0],
+                        end_byte: boundaries[1],
+                    },
+                    block_index,
+                    channel,
+                    character: run.range.start.character + offset as u32,
+                    ordinal: units.len(),
+                });
+            }
+        }
+    }
+
+    fn targets(&self, span: SourceSpan) -> Vec<serde_json::Value> {
+        if span.start_byte == span.end_byte || self.units.is_empty() {
+            return Vec::new();
+        }
+        let first = self
+            .prefix_max_end
+            .partition_point(|&end| end <= span.start_byte);
+        let after_last = self
+            .units
+            .partition_point(|unit| unit.span.start_byte < span.end_byte);
+        let mut targets = Vec::new();
+        let mut pending: Option<(u32, ProvenanceChannel, u32, u32)> = None;
+        for unit in self.units.get(first..after_last).unwrap_or_default() {
+            #[cfg(test)]
+            PROVENANCE_QUERY_VISITS.with(|visits| visits.set(visits.get() + 1));
+            if unit.span.end_byte <= span.start_byte {
+                continue;
+            }
+            match pending.as_mut() {
+                Some((block, channel, _, end))
+                    if *block == unit.block_index
+                        && *channel == unit.channel
+                        && *end == unit.character =>
+                {
+                    *end = unit.character + 1;
+                }
+                _ => {
+                    if let Some(target) = pending.take() {
+                        targets.push(provenance_target(target));
+                    }
+                    pending = Some((
+                        unit.block_index,
+                        unit.channel,
+                        unit.character,
+                        unit.character + 1,
+                    ));
+                }
+            }
+        }
+        if let Some(target) = pending {
+            targets.push(provenance_target(target));
+        }
+        targets
+    }
+}
+
+#[cfg(any(test, feature = "wasm"))]
+fn provenance_target(
+    (block_index, channel, start, end): (u32, ProvenanceChannel, u32, u32),
+) -> serde_json::Value {
+    let range = MdiTextRange {
+        start: MdiTextPosition {
+            block: block_index,
+            character: start,
+        },
+        end: MdiTextPosition {
+            block: block_index,
+            character: end,
+        },
+    };
+    match channel {
+        ProvenanceChannel::BlockText => serde_json::json!({
             "blockIndex": block_index, "channel": "blockText", "range": range,
         }),
-        MdiSourceSpanTextMatch::Annotation { block_index, annotation_index, range, .. } => serde_json::json!({
+        ProvenanceChannel::Annotation(annotation_index) => serde_json::json!({
             "blockIndex": block_index, "channel": "annotation", "annotationIndex": annotation_index, "range": range,
         }),
-    }).collect()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_provenance_query_visits() {
+    PROVENANCE_QUERY_VISITS.with(|visits| visits.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn provenance_query_visits() -> usize {
+    PROVENANCE_QUERY_VISITS.with(Cell::get)
 }
 
 pub fn get_mdi_text_blocks_json(source: &str) -> String {
