@@ -16,6 +16,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 mod docx;
+#[cfg(test)]
+mod provenance_tests;
 mod publication_profile;
 mod text_projection;
 pub use publication_profile::{
@@ -46,7 +48,8 @@ pub const MDI_IR_VERSION: &str = "1.0";
 ///
 /// The record is attached to IR nodes only so host adapters can carry it into
 /// their own transient metadata. It is never part of MDI serialization.
-pub const MDI_MDAST_PROVENANCE_VERSION: &str = "1.0";
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) const MDI_MDAST_PROVENANCE_VERSION: &str = "1.0";
 
 /// A binding-friendly parse envelope.
 ///
@@ -296,7 +299,8 @@ pub fn parse_document(source: &str) -> Document {
 
 /// Parse a document for the Rust-to-mdast adapter boundary. The adapter-only
 /// provenance is deliberately absent from the normal language-binding IR.
-pub fn parse_document_for_mdast(source: &str) -> Document {
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_document_for_mdast(source: &str) -> Document {
     let mut document = parse_document_without_provenance(source);
     text_projection::attach_mdast_provenance(&mut document, source);
     document
@@ -1103,8 +1107,13 @@ pub fn parse_json(source: &str) -> String {
 
 /// Serialize the Rust-owned IR plus transient mdast provenance. This narrow
 /// boundary exists solely for `@illusions-lab/mdi-remark`.
-pub fn parse_mdast_json(source: &str) -> String {
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_mdast_json(source: &str) -> String {
     let document = parse_document_for_mdast(source);
+    let frontmatter_span = document
+        .frontmatter
+        .as_ref()
+        .map(|frontmatter| frontmatter.span);
     let output = ParseOutput {
         ir_version: MDI_IR_VERSION,
         syntax_version: MDI_SPEC_VERSION,
@@ -1118,6 +1127,17 @@ pub fn parse_mdast_json(source: &str) -> String {
         diagnostics: diagnostics(&document),
         document,
     };
+    let mut output = serde_json::to_value(output).expect("mdast parse output is serializable");
+    if let Some(span) = frontmatter_span {
+        output["document"]["frontmatter"]["mdiProvenance"] = serde_json::json!({
+            "version": MDI_MDAST_PROVENANCE_VERSION,
+            "construct": { "path": "frontmatter", "type": "yaml" },
+            "span": span,
+            "role": "container",
+            "status": "sourceBacked",
+            "targets": [],
+        });
+    }
     serde_json::to_string(&output).expect("serializing mdast provenance cannot fail")
 }
 
@@ -4657,14 +4677,32 @@ mod tests {
 
     #[test]
     fn keeps_mdast_provenance_out_of_the_standard_binding_contract() {
-        let standard = parse_document("text");
-        assert!(standard.children[0].get("mdiProvenance").is_none());
+        fn contains_provenance(value: &serde_json::Value) -> bool {
+            match value {
+                serde_json::Value::Object(object) => {
+                    object.contains_key("mdiProvenance") || object.values().any(contains_provenance)
+                }
+                serde_json::Value::Array(values) => values.iter().any(contains_provenance),
+                _ => false,
+            }
+        }
 
-        let mdast: serde_json::Value = serde_json::from_str(&parse_mdast_json("text"))
+        let source = "---\ntitle: boundary\n---\n\n> - nested {東京|とうきょう}";
+        let standard: serde_json::Value = serde_json::from_str(&parse_json(source)).unwrap();
+        assert!(!contains_provenance(&standard));
+        let projection: serde_json::Value =
+            serde_json::from_str(&get_mdi_text_blocks_json(source)).unwrap();
+        assert!(!contains_provenance(&projection));
+
+        let mdast: serde_json::Value = serde_json::from_str(&parse_mdast_json(source))
             .expect("mdast parse output is valid JSON");
         assert_eq!(
             mdast["document"]["children"][0]["mdiProvenance"]["version"],
             MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(
+            mdast["document"]["frontmatter"]["mdiProvenance"]["construct"],
+            serde_json::json!({ "path": "frontmatter", "type": "yaml" })
         );
     }
 

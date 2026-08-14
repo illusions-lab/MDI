@@ -45,6 +45,7 @@ try {
   execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], { cwd: consumerDirectory, stdio: "inherit" });
   const consumerRequire = createRequire(join(consumerDirectory, "package.json"));
   const packedMdi = await import(pathToFileURL(consumerRequire.resolve("@illusions-lab/mdi")).href);
+  const packedMdast = await import(pathToFileURL(consumerRequire.resolve("@illusions-lab/mdi/internal/mdast")).href);
   await writeFile(join(fixtureRoot, "index.html"), await readFile(resolve(repositoryRoot, "nodejs/browser-test/index.html")));
   await writeFile(join(fixtureRoot, "src.ts"), await readFile(resolve(repositoryRoot, "nodejs/browser-test/src.ts")));
 
@@ -106,7 +107,7 @@ try {
     const url = `http://127.0.0.1:${address.port}/mdi-editor/`;
     console.log("Running packed browser WASM contract in Chromium, Firefox, and WebKit");
     for (const [browserName, browserType] of browserTypes) {
-      await testBrowser(browserName, browserType, url, packedMdi.getMdiTextBlocks, packedMdi.parseForMdast, packedMdi.resolveMdiSourceSpan, packedMdi.resolveMdiSourceSpans, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
+      await testBrowser(browserName, browserType, url, packedMdi.getMdiTextBlocks, packedMdast.parseForMdast, packedMdi.resolveMdiSourceSpan, packedMdi.resolveMdiSourceSpans, runRetry && browserName === "Chromium" ? `${url}?retry=1` : undefined);
     }
     assert.equal(wasmRequests.length, browserTypes.length + (runRetry ? 2 : 0), "failed initialization must retry exactly once without duplicate concurrent loads");
     assert(wasmRequests.every(({ contentType }) => contentType === "application/wasm"), "WASM must be served with application/wasm");
@@ -149,7 +150,7 @@ async function testPage(browserName, page, url, getNodeProjection, parseNodeMdas
   assert.equal(result.projectionVersion, "1.0", browserName);
   assert.equal(
     result.provenanceJson,
-    JSON.stringify(parseNodeMdast(result.projectionSource).document.children.map((node) => node.mdiProvenance)),
+    JSON.stringify(canonicalProvenance(parseNodeMdast(result.projectionSource).document)),
     `${browserName}: Node and browser provenance must be byte-for-byte identical`,
   );
   assert.equal(
@@ -185,6 +186,20 @@ async function testPage(browserName, page, url, getNodeProjection, parseNodeMdas
   assert.match(result.canonical, /\{東京\|とうきょう\}/, browserName);
   assert.match(result.remarkOutput, /\{東京\|とうきょう\}/, browserName);
   console.log(`✓ ${browserName}: initialize, parse, serialize, and remark`);
+}
+
+function canonicalProvenance(document) {
+  return {
+    frontmatter: document.frontmatter?.mdiProvenance ?? null,
+    children: document.children.map(canonicalNodeProvenance),
+  };
+}
+
+function canonicalNodeProvenance(node) {
+  return {
+    provenance: node.mdiProvenance ?? null,
+    children: (node.children ?? []).map(canonicalNodeProvenance),
+  };
 }
 
 async function listFiles(directory) {
