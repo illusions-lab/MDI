@@ -4629,6 +4629,46 @@ mod tests {
     }
 
     #[test]
+    fn assigns_versioned_rust_owned_mdast_provenance_without_text_matching() {
+        let document = parse_document_for_mdast("same {東京|とうきょう}\n\nsame");
+        let first = &document.children[0];
+        let second = &document.children[1];
+        assert_eq!(
+            first["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(first["mdiProvenance"]["construct"]["path"], "0");
+        assert_eq!(second["mdiProvenance"]["construct"]["path"], "1");
+        let ruby = first["children"]
+            .as_array()
+            .expect("paragraph children")
+            .iter()
+            .find(|child| child["type"] == "ruby")
+            .expect("ruby child");
+        assert_eq!(ruby["mdiProvenance"]["role"], "textBearing");
+        assert!(
+            ruby["mdiProvenance"]["targets"]
+                .as_array()
+                .expect("ruby targets")
+                .iter()
+                .any(|target| target["channel"] == "annotation")
+        );
+    }
+
+    #[test]
+    fn keeps_mdast_provenance_out_of_the_standard_binding_contract() {
+        let standard = parse_document("text");
+        assert!(standard.children[0].get("mdiProvenance").is_none());
+
+        let mdast: serde_json::Value = serde_json::from_str(&parse_mdast_json("text"))
+            .expect("mdast parse output is valid JSON");
+        assert_eq!(
+            mdast["document"]["children"][0]["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+    }
+
+    #[test]
     fn lowers_root_flow_markers_without_a_host_markdown_parser() {
         let document = parse_document("[[indent:2]]\n本文\n[[pagebreak:right]]\n\\\n");
         assert_eq!(document.children[0]["type"], "paragraph");
