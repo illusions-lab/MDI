@@ -77,6 +77,25 @@ final class MDITests: XCTestCase {
         })
     }
 
+    func testGeneralParseWireTreeNeverExposesMdastProvenance() throws {
+        let source = """
+        ---
+        title: provenance isolation
+        ---
+
+        > - {東京|とうきょう} ^12^
+
+        | image | empty |
+        | - | - |
+        | ![alt](cover.png) | ![](empty.png) |
+        """
+        let result = try MDI.parse(source)
+
+        assertKeyAbsent("mdiProvenance", in: result.document)
+        let encoded = try JSONEncoder().encode(result)
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("\"mdiProvenance\""))
+    }
+
     func testRendersThroughRust() throws {
         let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
         XCTAssertTrue(html.contains("<ruby class=\"mdi-ruby\">東京"))
@@ -346,6 +365,27 @@ final class MDITests: XCTestCase {
                     file: file,
                     line: line
                 )
+            }
+        case .null, .bool, .number, .string:
+            break
+        }
+    }
+
+    private func assertKeyAbsent(
+        _ forbidden: String,
+        in value: MDIJSONValue,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch value {
+        case let .array(values):
+            for child in values {
+                assertKeyAbsent(forbidden, in: child, file: file, line: line)
+            }
+        case let .object(object):
+            XCTAssertNil(object[forbidden], file: file, line: line)
+            for child in object.values {
+                assertKeyAbsent(forbidden, in: child, file: file, line: line)
             }
         case .null, .bool, .number, .string:
             break

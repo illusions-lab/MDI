@@ -1,5 +1,14 @@
 # @illusions-lab/mdi
 
+## 2.0.21
+
+### Patch Changes
+
+- Isolate Rust-owned mdast provenance under `@illusions-lab/mdi/internal/mdast`
+  and keep it out of general parsing and text projection.
+- Updated dependencies
+  - @illusions-lab/mdi-core@2.0.21
+
 ## 2.0.2
 
 ### Patch Changes

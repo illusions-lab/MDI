@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Thin JavaScript binding for the Rust-authoritative MDI parser",
   "license": "MIT",
   "repository": {
@@ -21,13 +21,17 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "default": "./dist/node.js"
+    },
+    "./internal/mdast": {
+      "types": "./dist/internal/mdast.d.ts",
+      "default": "./dist/internal/mdast.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/node.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts src/node.ts src/internal/mdast.ts --format esm,cjs --dts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },

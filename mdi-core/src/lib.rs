@@ -16,6 +16,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 mod docx;
+#[cfg(test)]
+mod provenance_tests;
 mod publication_profile;
 mod text_projection;
 pub use publication_profile::{
@@ -41,6 +43,13 @@ pub const MDI_SPEC_VERSION: &str = "2.0";
 ///
 /// This version changes only for incompatible wire-schema changes.
 pub const MDI_IR_VERSION: &str = "1.0";
+
+/// Version of the transient Rust-owned mdast provenance contract.
+///
+/// The record is attached to IR nodes only so host adapters can carry it into
+/// their own transient metadata. It is never part of MDI serialization.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) const MDI_MDAST_PROVENANCE_VERSION: &str = "1.0";
 
 /// A binding-friendly parse envelope.
 ///
@@ -285,6 +294,20 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
+    parse_document_without_provenance(source)
+}
+
+/// Parse a document for the Rust-to-mdast adapter boundary. The adapter-only
+/// provenance is deliberately absent from the normal language-binding IR.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_document_for_mdast(source: &str) -> Document {
+    let mut document = parse_document_without_provenance(source);
+    text_projection::attach_mdast_provenance(&mut document, source);
+    document
+}
+
+/// Parse a document without adapter-only provenance metadata.
+pub(crate) fn parse_document_without_provenance(source: &str) -> Document {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         parse_document_unchecked(source)
     }))
@@ -1080,6 +1103,42 @@ pub fn parse_output(source: &str) -> ParseOutput {
 pub fn parse_json(source: &str) -> String {
     serde_json::to_string(&parse_output(source))
         .expect("serializing the MDI parse output cannot fail")
+}
+
+/// Serialize the Rust-owned IR plus transient mdast provenance. This narrow
+/// boundary exists solely for `@illusions-lab/mdi-remark`.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_mdast_json(source: &str) -> String {
+    let document = parse_document_for_mdast(source);
+    let frontmatter_span = document
+        .frontmatter
+        .as_ref()
+        .map(|frontmatter| frontmatter.span);
+    let output = ParseOutput {
+        ir_version: MDI_IR_VERSION,
+        syntax_version: MDI_SPEC_VERSION,
+        capabilities: ParserCapabilities {
+            mdi: true,
+            common_mark: true,
+            gfm: true,
+            front_matter: true,
+            source_spans: true,
+        },
+        diagnostics: diagnostics(&document),
+        document,
+    };
+    let mut output = serde_json::to_value(output).expect("mdast parse output is serializable");
+    if let Some(span) = frontmatter_span {
+        output["document"]["frontmatter"]["mdiProvenance"] = serde_json::json!({
+            "version": MDI_MDAST_PROVENANCE_VERSION,
+            "construct": { "path": "frontmatter", "type": "yaml" },
+            "span": span,
+            "role": "container",
+            "status": "sourceBacked",
+            "targets": [],
+        });
+    }
+    serde_json::to_string(&output).expect("serializing mdast provenance cannot fail")
 }
 
 /// Stable C ABI used by native language bindings.
@@ -3989,9 +4048,9 @@ mod wasm {
     use super::{
         BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, SourceSpan, TextFormat,
         apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
-        page_size_catalog_json, parse_json, prepare_chromium_print_profile_json, render_docx,
-        render_docx_with_profile, render_epub, render_epub_with_profile, render_html, render_text,
-        render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
+        page_size_catalog_json, parse_json, parse_mdast_json, prepare_chromium_print_profile_json,
+        render_docx, render_docx_with_profile, render_epub, render_epub_with_profile, render_html,
+        render_text, render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
         resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
@@ -4002,6 +4061,12 @@ mod wasm {
     #[wasm_bindgen(js_name = parseMdiSyntaxJson)]
     pub fn wasm_parse_mdi_syntax_json(source: &str) -> String {
         parse_json(source)
+    }
+
+    /// Parse through Rust with transient metadata for the mdast adapter only.
+    #[wasm_bindgen(js_name = parseMdiMdastJson)]
+    pub fn wasm_parse_mdi_mdast_json(source: &str) -> String {
+        parse_mdast_json(source)
     }
 
     /// Project source-order searchable text and exact UTF-8 source maps in Rust.
@@ -4581,6 +4646,64 @@ mod tests {
         let document = parse_document("> \\n\n`^12^`\n\n```mdi\n{東京|とうきょう}\n```\n");
         assert_eq!(document.children[0]["type"], "blockquote");
         assert!(document.children.iter().any(|node| node["type"] == "code"));
+    }
+
+    #[test]
+    fn assigns_versioned_rust_owned_mdast_provenance_without_text_matching() {
+        let document = parse_document_for_mdast("same {東京|とうきょう}\n\nsame");
+        let first = &document.children[0];
+        let second = &document.children[1];
+        assert_eq!(
+            first["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(first["mdiProvenance"]["construct"]["path"], "0");
+        assert_eq!(second["mdiProvenance"]["construct"]["path"], "1");
+        let ruby = first["children"]
+            .as_array()
+            .expect("paragraph children")
+            .iter()
+            .find(|child| child["type"] == "ruby")
+            .expect("ruby child");
+        assert_eq!(ruby["mdiProvenance"]["role"], "textBearing");
+        assert!(
+            ruby["mdiProvenance"]["targets"]
+                .as_array()
+                .expect("ruby targets")
+                .iter()
+                .any(|target| target["channel"] == "annotation")
+        );
+    }
+
+    #[test]
+    fn keeps_mdast_provenance_out_of_the_standard_binding_contract() {
+        fn contains_provenance(value: &serde_json::Value) -> bool {
+            match value {
+                serde_json::Value::Object(object) => {
+                    object.contains_key("mdiProvenance") || object.values().any(contains_provenance)
+                }
+                serde_json::Value::Array(values) => values.iter().any(contains_provenance),
+                _ => false,
+            }
+        }
+
+        let source = "---\ntitle: boundary\n---\n\n> - nested {東京|とうきょう}";
+        let standard: serde_json::Value = serde_json::from_str(&parse_json(source)).unwrap();
+        assert!(!contains_provenance(&standard));
+        let projection: serde_json::Value =
+            serde_json::from_str(&get_mdi_text_blocks_json(source)).unwrap();
+        assert!(!contains_provenance(&projection));
+
+        let mdast: serde_json::Value = serde_json::from_str(&parse_mdast_json(source))
+            .expect("mdast parse output is valid JSON");
+        assert_eq!(
+            mdast["document"]["children"][0]["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(
+            mdast["document"]["frontmatter"]["mdiProvenance"]["construct"],
+            serde_json::json!({ "path": "frontmatter", "type": "yaml" })
+        );
     }
 
     #[test]

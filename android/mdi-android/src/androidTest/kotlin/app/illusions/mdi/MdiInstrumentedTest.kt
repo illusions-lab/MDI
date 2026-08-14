@@ -23,6 +23,22 @@ class MdiInstrumentedTest {
     }
 
     @Test
+    fun general_parse_wire_tree_never_exposes_mdast_provenance() {
+        val source = """---
+title: provenance isolation
+---
+
+> - {東京|とうきょう} ^12^
+
+| image | empty |
+| - | - |
+| ![alt](cover.png) | ![](empty.png) |"""
+        val result = Mdi.parse(source)
+
+        assertTrue(!result.document.toString().contains("\"mdiProvenance\""))
+    }
+
+    @Test
     fun native_library_delegates_renderers_to_rust() {
         assertTrue(Mdi.renderHtml("{東京|とうきょう}").contains("mdi-ruby"))
         assertEquals("東京 12\n", Mdi.renderText("{東京|とうきょう} ^12^"))

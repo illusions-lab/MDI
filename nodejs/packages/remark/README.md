@@ -21,6 +21,37 @@ It does not extend remark's tokenizer and does not implement CommonMark, GFM,
 front matter, or MDI syntax. All parsing, boundary decisions, validation,
 normalization, serialization, and renderer semantics remain in Rust.
 
+## Rust-owned mdast provenance
+
+Every emitted source construct, including the YAML frontmatter node, carries
+transient metadata at `node.data.mdiProvenance`. Its version is `1.0`; the
+adapter copies the record from Rust without parsing or deriving it. Generic
+mdast consumers may ignore `data.mdiProvenance` safely.
+
+```ts
+type MdiMdastProvenance = {
+  version: "1.0";
+  construct: { path: string; type: string };
+  span: { startByte: number; endByte: number } | null;
+  role: "container" | "textBearing";
+  status: "sourceBacked" | "synthetic" | "unmapped";
+  targets: Array<
+    | { blockIndex: number; channel: "blockText"; range: { start: string; end: string } }
+    | { blockIndex: number; channel: "annotation"; annotationIndex: number; range: { start: string; end: string } }
+  >;
+};
+```
+
+`construct.path`, source spans, projection targets, annotation indexes, and
+synthetic/unmapped status are all assigned by Rust. The path identifies this
+parse result only; it is not persisted. Editor bridges should record this
+metadata while building their own document model, then join source-span
+resolution through these keys. They must not rebuild provenance using text,
+source order, DOM, or editor-tree traversal. Provenance is not serialized to
+canonical MDI, Markdown, HTML, clipboard, or persisted-document semantics.
+Container records intentionally have no aggregate projection targets; only
+text-bearing nodes query the indexed projection map.
+
 ## Usage
 
 ```ts

@@ -32,6 +32,16 @@ def assert_valid_spans(node: dict[str, Any], source: str) -> None:
         assert_valid_spans(child, source)
 
 
+def assert_key_absent(value: Any, forbidden: str) -> None:
+    if isinstance(value, dict):
+        assert forbidden not in value
+        for child in value.values():
+            assert_key_absent(child, forbidden)
+    elif isinstance(value, list):
+        for child in value:
+            assert_key_absent(child, forbidden)
+
+
 def test_exposes_the_complete_versioned_rust_document_contract() -> None:
     result = mdi.parse(SOURCE)
 
@@ -57,6 +67,18 @@ def test_exposes_the_complete_versioned_rust_document_contract() -> None:
     ]
     assert result["document"]["span"] == {"startByte": 0, "endByte": len(SOURCE.encode())}
     assert_valid_spans(result["document"], SOURCE)
+
+
+def test_general_parse_wire_json_never_exposes_mdast_provenance() -> None:
+    result = mdi.parse(
+        "---\ntitle: provenance isolation\n---\n\n"
+        "> - {東京|とうきょう} ^12^  \n"
+        ">   continuation\n\n"
+        "| image | empty |\n| - | - |\n| ![alt](cover.png) | ![](empty.png) |"
+    )
+
+    assert_key_absent(result, "mdiProvenance")
+    assert '"mdiProvenance"' not in json.dumps(result, ensure_ascii=False)
 
 
 def test_rust_owns_nested_syntax_decisions_and_literal_fallbacks() -> None:

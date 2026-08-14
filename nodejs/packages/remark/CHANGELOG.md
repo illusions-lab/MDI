@@ -1,5 +1,14 @@
 # @illusions-lab/mdi-remark
 
+## 2.0.36
+
+### Patch Changes
+
+- Preserve the complete Rust-owned provenance tree, including YAML
+  frontmatter, through the internal mdast adapter.
+- Updated dependencies
+  - @illusions-lab/mdi@2.0.21
+
 ## 2.0.17
 
 ### Patch Changes

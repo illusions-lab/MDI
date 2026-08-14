@@ -24,6 +24,7 @@ export const getMdiTextBlocksJson = (...args) => (requireInitialized(), bindings
 export const resolveMdiSourceSpanJson = (...args) => (requireInitialized(), bindings.resolveMdiSourceSpanJson(...args));
 export const resolveMdiSourceSpansJson = (...args) => (requireInitialized(), bindings.resolveMdiSourceSpansJson(...args));
 export const parseMdiSyntaxJson = (...args) => (requireInitialized(), bindings.parseMdiSyntaxJson(...args));
+export const parseMdiMdastJson = (...args) => (requireInitialized(), bindings.parseMdiMdastJson(...args));
 export const prepareChromiumPrintProfileJson = (...args) => (requireInitialized(), bindings.prepareChromiumPrintProfileJson(...args));
 export const renderDocx = (...args) => (requireInitialized(), bindings.renderDocx(...args));
 export const renderDocxWithProfile = (...args) => (requireInitialized(), bindings.renderDocxWithProfile(...args));

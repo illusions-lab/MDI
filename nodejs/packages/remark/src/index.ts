@@ -1,4 +1,8 @@
-import { parse, type MdiDocument, type MdiNode } from "@illusions-lab/mdi";
+import {
+	parseForMdast,
+	type MdiMdastDocument,
+	type MdiMdastNode,
+} from "@illusions-lab/mdi/internal/mdast";
 import { mdiToMarkdown } from "mdast-util-mdi";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -9,6 +13,8 @@ import type { Processor } from "unified";
 import { resolveFrontmatter } from "./frontmatter.js";
 
 export const MDI_SPEC_VERSION = "2.0";
+export { MDI_MDAST_PROVENANCE_VERSION } from "@illusions-lab/mdi/internal/mdast";
+export type { MdiMdastProvenance, MdiMdastProvenanceTarget } from "@illusions-lab/mdi/internal/mdast";
 export type { MdiFrontmatter } from "./frontmatter.js";
 export { initializeMdi } from "@illusions-lab/mdi";
 
@@ -28,24 +34,31 @@ export default function remarkMdi(this: Processor): void {
 	this.use(remarkGfm);
 	this.use(remarkFrontmatter, ["yaml"]);
 	(this as unknown as { parser: (source: string) => Root }).parser = (source) => {
-		const tree = toMdast(parse(source).document);
+		const tree = toMdast(parseForMdast(source).document);
 		resolveFrontmatter(tree);
 		return tree;
 	};
 }
 
-function toMdast(document: MdiDocument): Root {
+function toMdast(document: MdiMdastDocument): Root {
 	const children = document.children.map(toMdastNode) as unknown as Root["children"];
 	if (document.frontmatter) {
-		children.unshift({ type: "yaml", value: document.frontmatter.raw });
+		children.unshift({
+			type: "yaml",
+			value: document.frontmatter.raw,
+			data: { mdiProvenance: document.frontmatter.mdiProvenance },
+		} as unknown as Root["children"][number]);
 	}
 	return { type: "root", children };
 }
 
-function toMdastNode(node: MdiNode): Record<string, unknown> {
-	const { span: _span, children, ...rest } = node;
+function toMdastNode(node: MdiMdastNode): Record<string, unknown> {
+	const { span: _span, mdiProvenance, children, ...rest } = node;
 	const mapped: Record<string, unknown> = { ...rest };
 	if (children) mapped.children = children.map(toMdastNode);
+	// This is a lossless transport of Rust-owned metadata. It deliberately
+	// lives under `data` so ordinary mdast consumers can ignore it.
+	if (mdiProvenance) mapped.data = { mdiProvenance };
 
 	switch (node.type) {
 		case "ruby": {
@@ -69,7 +82,7 @@ function toMdastNode(node: MdiNode): Record<string, unknown> {
 			if (typeof mapped.bottom === "number") data.mdiBottom = mapped.bottom;
 			delete mapped.indent;
 			delete mapped.bottom;
-			if (Object.keys(data).length) mapped.data = data;
+			if (Object.keys(data).length) mapped.data = { ...(mapped.data as Record<string, unknown> | undefined), ...data };
 			return mapped;
 		}
 		default: return mapped;
