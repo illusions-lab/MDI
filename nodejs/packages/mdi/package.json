@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi",
-  "version": "2.0.3",
+  "version": "2.0.2",
   "description": "Thin JavaScript binding for the Rust-authoritative MDI parser",
   "license": "MIT",
   "repository": {

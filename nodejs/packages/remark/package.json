@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-remark",
-  "version": "2.0.18",
+  "version": "2.0.17",
   "description": "Rust-backed remark adapter for MDI 2.0 documents",
   "license": "MIT",
   "repository": {

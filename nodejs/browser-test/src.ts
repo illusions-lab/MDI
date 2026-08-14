@@ -1,4 +1,4 @@
-import { getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
+import { getMdiTextBlocks, initializeMdi, parse, parseForMdast, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -63,7 +63,7 @@ async function run(): Promise<void> {
   document.querySelector("#result")!.textContent = JSON.stringify({
     irVersion: parsed.irVersion,
     projectionVersion: projection.projectionVersion,
-    provenanceJson: JSON.stringify(parsed.document.children.map((node) => node.mdiProvenance)),
+    provenanceJson: JSON.stringify(parseForMdast(source).document.children.map((node) => node.mdiProvenance)),
     projectionSource: source,
     projectionJson: JSON.stringify(projection),
     sourceResolutionSpan,
