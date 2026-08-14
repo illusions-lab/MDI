@@ -175,6 +175,20 @@ describe("Rust MDI JavaScript binding", () => {
 		}
 	});
 
+	it("preserves footnotes and reference definitions in canonical serialization", () => {
+		const source = "本文[^1]と名前付き[^注]。\n\n[^1]: First.\n\n    Second paragraph with 👩🏽‍💻.\n\n    - nested one\n    - nested two\n\n[^注]: 日本語の注。\n\n参照 [link][id]。\n\n[id]: https://example.com \"Example\"";
+		const canonical = serializeMdi(source);
+
+		expect(canonical).toContain("[^1]: First.");
+		expect(canonical).toContain("    Second paragraph with 👩🏽‍💻.");
+		expect(canonical).toContain("    - nested one");
+		expect(canonical).toContain("[^注]: 日本語の注。");
+		expect(canonical).toContain("[id]: https://example.com \"Example\"");
+		expect(serializeMdi(canonical)).toBe(canonical);
+		expect(parse(canonical).document.children.filter(({ type }) => type === "footnoteDefinition")).toHaveLength(2);
+		expect(parse(canonical).document.children.some(({ type }) => type === "definition")).toBe(true);
+	});
+
 	it("renders source through Rust without a host Markdown parser", () => {
 		const html = renderHtml("# 題\n\n{東京|とうきょう} ^12^");
 		expect(html).toContain("<h1>題</h1>");
