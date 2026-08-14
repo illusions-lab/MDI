@@ -17,6 +17,7 @@ exports.getMdiTextBlocksJson = bindings.getMdiTextBlocksJson;
 exports.resolveMdiSourceSpanJson = bindings.resolveMdiSourceSpanJson;
 exports.resolveMdiSourceSpansJson = bindings.resolveMdiSourceSpansJson;
 exports.parseMdiSyntaxJson = bindings.parseMdiSyntaxJson;
+exports.parseMdiMdastJson = bindings.parseMdiMdastJson;
 exports.prepareChromiumPrintProfileJson = bindings.prepareChromiumPrintProfileJson;
 exports.renderDocx = bindings.renderDocx;
 exports.renderDocxWithProfile = bindings.renderDocxWithProfile;

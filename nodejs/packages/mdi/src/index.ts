@@ -7,6 +7,7 @@ import { parse as parseYaml } from "yaml";
 const {
 	getMdiTextBlocksJson,
 	resolveMdiSourceSpansJson,
+	parseMdiMdastJson,
 	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
@@ -332,6 +333,16 @@ export type MdiSyntaxDocument = MdiDocument;
 export function parse(source: string): MdiSyntaxParseResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
 	const result = JSON.parse(parseMdiSyntaxJson(source)) as MdiSyntaxParseResult;
+	if (result.irVersion !== MDI_IR_VERSION) {
+		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
+	}
+	return result;
+}
+
+/** @internal Rust-backed input for the mdast adapter; not a general IR API. */
+export function parseForMdast(source: string): MdiSyntaxParseResult {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	const result = JSON.parse(parseMdiMdastJson(source)) as MdiSyntaxParseResult;
 	if (result.irVersion !== MDI_IR_VERSION) {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}

@@ -1,5 +1,5 @@
 import {
-	parse,
+	parseForMdast,
 	type MdiDocument,
 	type MdiMdastProvenance,
 	type MdiNode,
@@ -35,7 +35,7 @@ export default function remarkMdi(this: Processor): void {
 	this.use(remarkGfm);
 	this.use(remarkFrontmatter, ["yaml"]);
 	(this as unknown as { parser: (source: string) => Root }).parser = (source) => {
-		const tree = toMdast(parse(source).document);
+		const tree = toMdast(parseForMdast(source).document);
 		resolveFrontmatter(tree);
 		return tree;
 	};

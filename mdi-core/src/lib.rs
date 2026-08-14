@@ -291,13 +291,18 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
+    parse_document_without_provenance(source)
+}
+
+/// Parse a document for the Rust-to-mdast adapter boundary. The adapter-only
+/// provenance is deliberately absent from the normal language-binding IR.
+pub fn parse_document_for_mdast(source: &str) -> Document {
     let mut document = parse_document_without_provenance(source);
     text_projection::attach_mdast_provenance(&mut document, source);
     document
 }
 
-/// Parse a document without its adapter-only provenance metadata.  This is
-/// crate-private because Rust remains the only owner of provenance creation.
+/// Parse a document without adapter-only provenance metadata.
 pub(crate) fn parse_document_without_provenance(source: &str) -> Document {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         parse_document_unchecked(source)
@@ -1094,6 +1099,26 @@ pub fn parse_output(source: &str) -> ParseOutput {
 pub fn parse_json(source: &str) -> String {
     serde_json::to_string(&parse_output(source))
         .expect("serializing the MDI parse output cannot fail")
+}
+
+/// Serialize the Rust-owned IR plus transient mdast provenance. This narrow
+/// boundary exists solely for `@illusions-lab/mdi-remark`.
+pub fn parse_mdast_json(source: &str) -> String {
+    let document = parse_document_for_mdast(source);
+    let output = ParseOutput {
+        ir_version: MDI_IR_VERSION,
+        syntax_version: MDI_SPEC_VERSION,
+        capabilities: ParserCapabilities {
+            mdi: true,
+            common_mark: true,
+            gfm: true,
+            front_matter: true,
+            source_spans: true,
+        },
+        diagnostics: diagnostics(&document),
+        document,
+    };
+    serde_json::to_string(&output).expect("serializing mdast provenance cannot fail")
 }
 
 /// Stable C ABI used by native language bindings.
@@ -4003,9 +4028,9 @@ mod wasm {
     use super::{
         BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, SourceSpan, TextFormat,
         apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
-        page_size_catalog_json, parse_json, prepare_chromium_print_profile_json, render_docx,
-        render_docx_with_profile, render_epub, render_epub_with_profile, render_html, render_text,
-        render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
+        page_size_catalog_json, parse_json, parse_mdast_json, prepare_chromium_print_profile_json,
+        render_docx, render_docx_with_profile, render_epub, render_epub_with_profile, render_html,
+        render_text, render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
         resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
@@ -4016,6 +4041,12 @@ mod wasm {
     #[wasm_bindgen(js_name = parseMdiSyntaxJson)]
     pub fn wasm_parse_mdi_syntax_json(source: &str) -> String {
         parse_json(source)
+    }
+
+    /// Parse through Rust with transient metadata for the mdast adapter only.
+    #[wasm_bindgen(js_name = parseMdiMdastJson)]
+    pub fn wasm_parse_mdi_mdast_json(source: &str) -> String {
+        parse_mdast_json(source)
     }
 
     /// Project source-order searchable text and exact UTF-8 source maps in Rust.
