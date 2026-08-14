@@ -2463,6 +2463,73 @@ fn serialize_block(node: &serde_json::Value, out: &mut String, prefix: &str) {
             out.push_str("]]\n");
         }
         "table" => serialize_table(node, out),
+        "footnoteDefinition" => {
+            out.push_str(prefix);
+            out.push_str("[^");
+            out.push_str(
+                node.get("identifier")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("]: ");
+            let definition_children = children(node);
+            if definition_children.is_empty() {
+                out.push('\n');
+                return;
+            }
+            for (index, child) in definition_children.iter().enumerate() {
+                let mut nested = String::new();
+                serialize_block(child, &mut nested, "");
+                let nested = nested.trim_end_matches('\n');
+                if index == 0
+                    && child.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                {
+                    for (line_index, line) in nested.lines().enumerate() {
+                        if line_index > 0 {
+                            out.push_str(prefix);
+                            out.push_str("    ");
+                        }
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                } else {
+                    if index == 0 {
+                        out.push('\n');
+                    } else {
+                        out.push_str(prefix);
+                        out.push('\n');
+                    }
+                    for line in nested.lines() {
+                        out.push_str(prefix);
+                        out.push_str("    ");
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                }
+            }
+        }
+        "definition" => {
+            out.push_str(prefix);
+            out.push('[');
+            out.push_str(
+                node.get("label")
+                    .or_else(|| node.get("identifier"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("]: ");
+            out.push_str(
+                node.get("url")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            if let Some(title) = node.get("title").and_then(serde_json::Value::as_str) {
+                out.push_str(" \"");
+                out.push_str(title);
+                out.push('"');
+            }
+            out.push('\n');
+        }
         "html" => {
             out.push_str(
                 node.get("value")
@@ -4887,6 +4954,34 @@ mod tests {
             serialize_mdi(source),
             "---\ntitle: 雪\n---\n\n# 題\n\n{東京|とう.きょう} [[em:**重要**]]\n"
         );
+    }
+
+    #[test]
+    fn canonical_serialization_preserves_footnotes_and_reference_definitions() {
+        let source = "本文[^1]と名前付き[^注]。\n\n[^1]: First.\n\n    Second paragraph with 👩🏽‍💻.\n\n    - nested one\n    - nested two\n\n[^注]: 日本語の注。\n\n参照 [link][id]。\n\n[id]: https://example.com \"Example\"";
+        let canonical = serialize_mdi(source);
+
+        assert!(canonical.contains("[^1]: First."));
+        assert!(canonical.contains("    Second paragraph with 👩🏽‍💻."));
+        assert!(canonical.contains("    - nested one"));
+        assert!(canonical.contains("[^注]: 日本語の注。"));
+        assert!(canonical.contains("[id]: https://example.com \"Example\""));
+        assert_eq!(serialize_mdi(&canonical), canonical);
+
+        let document = parse_document(&canonical);
+        let kinds = document
+            .children
+            .iter()
+            .filter_map(|node| node.get("type").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|kind| **kind == "footnoteDefinition")
+                .count(),
+            2
+        );
+        assert!(kinds.contains(&"definition"));
     }
 
     #[test]
