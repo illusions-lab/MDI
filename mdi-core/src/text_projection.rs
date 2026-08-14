@@ -302,8 +302,7 @@ struct Collector<'a> {
 /// Parse once and produce the complete IR envelope plus the Rust-owned text
 /// projection and its UTF-8 source map.
 pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
-    let mut document = parse_document_without_provenance(source);
-    attach_mdast_provenance(&mut document, source);
+    let document = parse_document_without_provenance(source);
     let mut collector = Collector {
         source,
         blocks: Vec::new(),
