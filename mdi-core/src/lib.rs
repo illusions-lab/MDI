@@ -944,12 +944,31 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
     let source_offsets = raw_source.and_then(|raw| decoded_byte_offsets(rendered_value, raw));
     let raw_parts = raw_source
         .filter(|raw| *raw != rendered_value && source_offsets.is_some() && looks_like_mdi(raw))
-        .map(parse_document_inline_parts)
-        .filter(|parts| {
-            parts
-                .iter()
-                .any(|(inline, _, _)| matches!(inline, Inline::Ruby { .. }))
-        });
+        .map(parse_document_inline_parts);
+    if let (Some(raw), Some(parts)) = (raw_source, raw_parts.as_ref())
+        && parts
+            .iter()
+            .all(|(inline, _, _)| matches!(inline, Inline::Text(_)))
+        && has_escaped_construct_starter(raw)
+    {
+        // The Markdown layer consumed escapes around an otherwise literal
+        // spelling. Parsing the decoded value here would resurrect the MDI
+        // or Markdown construct that those escapes intentionally disabled.
+        let literal = parts
+            .iter()
+            .filter_map(|(inline, _, _)| match inline {
+                Inline::Text(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        object.insert("value".to_owned(), serde_json::json!(literal));
+        return;
+    }
+    let raw_parts = raw_parts.filter(|parts| {
+        parts
+            .iter()
+            .any(|(inline, _, _)| !matches!(inline, Inline::Text(_)))
+    });
     if !looks_like_mdi(rendered_value) && raw_parts.is_none() {
         return;
     }
@@ -1004,6 +1023,24 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
 
 fn looks_like_mdi(value: &str) -> bool {
     value.contains(['{', '^', '《', '[', '\\'])
+}
+
+fn has_escaped_construct_starter(value: &str) -> bool {
+    let mut escaped = false;
+    for character in value.chars() {
+        if escaped {
+            if matches!(
+                character,
+                '{' | '^' | '[' | '《' | '*' | '_' | '~' | '`' | '<' | '#' | '-' | '+' | '>'
+            ) {
+                return true;
+            }
+            escaped = character == '\\';
+        } else {
+            escaped = character == '\\';
+        }
+    }
+    false
 }
 
 fn span_from_position(value: &serde_json::Value, source: &str) -> Option<SourceSpan> {
@@ -2576,7 +2613,13 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
     match kind {
-        "text" | "html" => out.push_str(
+        "text" => serialize_literal_inline_text(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            out,
+        ),
+        "html" => out.push_str(
             node.get("value")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default(),
@@ -2720,6 +2763,43 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         }
         _ => serialize_inline_children(node, out),
     }
+}
+
+/// Keep text nodes text when their visible spelling is itself valid Markdown
+/// or MDI. This matters for editor-originated literal text: CommonMark has
+/// already removed the user's backslashes by the time the IR reaches this
+/// serializer, so emitting the decoded value verbatim would turn it into a
+/// Ruby, TCY, macro, heading, mark, or another construct on the next parse.
+fn serialize_literal_inline_text(value: &str, out: &mut String) {
+    if literal_inline_text_is_stable(value) {
+        out.push_str(value);
+        return;
+    }
+    for character in value.chars() {
+        if character.is_ascii_punctuation() || matches!(character, '《' | '》') {
+            out.push('\\');
+        }
+        out.push(character);
+    }
+}
+
+fn literal_inline_text_is_stable(value: &str) -> bool {
+    if !value
+        .chars()
+        .any(|character| character.is_ascii_punctuation() || matches!(character, '《' | '》'))
+    {
+        return true;
+    }
+    let document = parse_document_without_provenance(value);
+    if document.frontmatter.is_some() || document.children.len() != 1 {
+        return false;
+    }
+    let paragraph = &document.children[0];
+    let children = children(paragraph);
+    paragraph.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+        && children.len() == 1
+        && children[0].get("type").and_then(serde_json::Value::as_str) == Some("text")
+        && children[0].get("value").and_then(serde_json::Value::as_str) == Some(value)
 }
 
 pub(crate) fn children(node: &serde_json::Value) -> &[serde_json::Value] {
@@ -5529,6 +5609,37 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
             assert_valid_spans(
                 &serde_json::to_value(parse_document(&first)).unwrap(),
                 &first,
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_serialization_keeps_escaped_markdown_and_mdi_literal() {
+        for (source, visible) in [
+            (
+                r"\{東京\|とうきょう\} \[\[em\:強調\]\] \^12\^ \*\*太字\*\*",
+                "{東京|とうきょう} [[em:強調]] ^12^ **太字**",
+            ),
+            (r"\# 見出し", "# 見出し"),
+            (r"\- 箇条書き", "- 箇条書き"),
+            (r"\> 引用", "> 引用"),
+            (
+                r"\[リンク\]\(https\:\/\/example\.test\)",
+                "[リンク](https://example.test)",
+            ),
+        ] {
+            let canonical = serialize_mdi(source);
+            assert_eq!(serialize_mdi(&canonical), canonical, "source: {source:?}");
+            assert_eq!(
+                render_text(&canonical).trim_end(),
+                visible,
+                "source: {source:?}"
+            );
+            assert!(
+                parse_document(&canonical).children.iter().all(|node| {
+                    node.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                }),
+                "literal source must not acquire block semantics: {canonical:?}"
             );
         }
     }
