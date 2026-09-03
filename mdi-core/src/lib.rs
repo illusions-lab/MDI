@@ -938,9 +938,16 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
     // still recognize the decoded spelling (notably `\|` inside a GFM table
     // cell), but its spans must refer to the original bytes.  Keep a mapping
     // from decoded byte boundaries back to the source range for that case.
+    let raw_source_start = span.as_ref().map(|span| {
+        let mut start = span.start_byte as usize;
+        while start > 0 && source.as_bytes()[start - 1] == b'\\' {
+            start -= 1;
+        }
+        start
+    });
     let raw_source = span
         .as_ref()
-        .and_then(|span| source.get(span.start_byte as usize..span.end_byte as usize));
+        .and_then(|span| source.get(raw_source_start?..span.end_byte as usize));
     let source_offsets = raw_source.and_then(|raw| decoded_byte_offsets(rendered_value, raw));
     let raw_parts = raw_source
         .filter(|raw| *raw != rendered_value && source_offsets.is_some() && looks_like_mdi(raw))
@@ -962,6 +969,10 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
             })
             .collect::<String>();
         object.insert("value".to_owned(), serde_json::json!(literal));
+        object.insert("mdiLiteral".to_owned(), serde_json::json!(true));
+        if let (Some(start_byte), Some(span)) = (raw_source_start, object.get_mut("span")) {
+            span["startByte"] = serde_json::json!(start_byte);
+        }
         return;
     }
     let raw_parts = raw_parts.filter(|parts| {
@@ -1006,11 +1017,16 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
                             .and_then(|offsets| source_offset(offsets, end))
                             .unwrap_or(end)
                     };
+                    let source_start = if parsing_raw {
+                        raw_source_start.unwrap_or(start_byte as usize)
+                    } else {
+                        start_byte as usize
+                    };
                     object.insert(
                         "span".to_owned(),
                         serde_json::json!(SourceSpan {
-                            start_byte: (start_byte as usize + start) as u32,
-                            end_byte: (start_byte as usize + end) as u32,
+                            start_byte: (source_start + start) as u32,
+                            end_byte: (source_start + end) as u32,
                         }),
                     );
                 }
@@ -2613,11 +2629,10 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
     match kind {
-        "text" => serialize_literal_inline_text(
+        "text" => out.push_str(
             node.get("value")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default(),
-            out,
         ),
         "html" => out.push_str(
             node.get("value")
@@ -2763,43 +2778,6 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         }
         _ => serialize_inline_children(node, out),
     }
-}
-
-/// Keep text nodes text when their visible spelling is itself valid Markdown
-/// or MDI. This matters for editor-originated literal text: CommonMark has
-/// already removed the user's backslashes by the time the IR reaches this
-/// serializer, so emitting the decoded value verbatim would turn it into a
-/// Ruby, TCY, macro, heading, mark, or another construct on the next parse.
-fn serialize_literal_inline_text(value: &str, out: &mut String) {
-    if literal_inline_text_is_stable(value) {
-        out.push_str(value);
-        return;
-    }
-    for character in value.chars() {
-        if character.is_ascii_punctuation() || matches!(character, '《' | '》') {
-            out.push('\\');
-        }
-        out.push(character);
-    }
-}
-
-fn literal_inline_text_is_stable(value: &str) -> bool {
-    if !value
-        .chars()
-        .any(|character| character.is_ascii_punctuation() || matches!(character, '《' | '》'))
-    {
-        return true;
-    }
-    let document = parse_document_without_provenance(value);
-    if document.frontmatter.is_some() || document.children.len() != 1 {
-        return false;
-    }
-    let paragraph = &document.children[0];
-    let children = children(paragraph);
-    paragraph.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
-        && children.len() == 1
-        && children[0].get("type").and_then(serde_json::Value::as_str) == Some("text")
-        && children[0].get("value").and_then(serde_json::Value::as_str) == Some(value)
 }
 
 pub(crate) fn children(node: &serde_json::Value) -> &[serde_json::Value] {
@@ -5614,7 +5592,7 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
     }
 
     #[test]
-    fn canonical_serialization_keeps_escaped_markdown_and_mdi_literal() {
+    fn parsing_marks_escaped_markdown_and_mdi_as_literal_text() {
         for (source, visible) in [
             (
                 r"\{東京\|とうきょう\} \[\[em\:強調\]\] \^12\^ \*\*太字\*\*",
@@ -5628,18 +5606,22 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
                 "[リンク](https://example.test)",
             ),
         ] {
-            let canonical = serialize_mdi(source);
-            assert_eq!(serialize_mdi(&canonical), canonical, "source: {source:?}");
             assert_eq!(
-                render_text(&canonical).trim_end(),
+                render_text(source).trim_end(),
                 visible,
                 "source: {source:?}"
             );
+            let parsed = parse_document(source);
             assert!(
-                parse_document(&canonical).children.iter().all(|node| {
+                parsed.children.iter().all(|node| {
                     node.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                        && children(node).iter().all(|child| {
+                            child.get("type").and_then(serde_json::Value::as_str) == Some("text")
+                                && child.get("mdiLiteral").and_then(serde_json::Value::as_bool)
+                                    == Some(true)
+                        })
                 }),
-                "literal source must not acquire block semantics: {canonical:?}"
+                "escaped source must be marked as literal text: {source:?}"
             );
         }
     }
