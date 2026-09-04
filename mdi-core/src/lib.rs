@@ -377,8 +377,22 @@ fn has_late_frontmatter_like_block(source: &str) -> bool {
 
     let mut index = 0;
     let mut frontmatter_blocks = 0;
+    let mut code_fence: Option<(char, usize)> = None;
     while index < lines.len() {
-        if lines[index].1 != "---" {
+        let line = lines[index].1;
+        if let Some((character, length)) = code_fence {
+            if closes_code_fence(line, character, length) {
+                code_fence = None;
+            }
+            index += 1;
+            continue;
+        }
+        if let Some(fence) = opens_code_fence(line) {
+            code_fence = Some(fence);
+            index += 1;
+            continue;
+        }
+        if line != "---" {
             index += 1;
             continue;
         }
@@ -405,6 +419,41 @@ fn has_late_frontmatter_like_block(source: &str) -> bool {
         }
     }
     false
+}
+
+fn opens_code_fence(line: &str) -> Option<(char, usize)> {
+    let content = code_fence_content(line)?;
+    let character = content.chars().next()?;
+    if character != '`' && character != '~' {
+        return None;
+    }
+    let length = content
+        .chars()
+        .take_while(|current| *current == character)
+        .count();
+    if length < 3 || (character == '`' && content[length..].contains('`')) {
+        return None;
+    }
+    Some((character, length))
+}
+
+fn closes_code_fence(line: &str, character: char, minimum_length: usize) -> bool {
+    let Some(content) = code_fence_content(line) else {
+        return false;
+    };
+    let length = content
+        .chars()
+        .take_while(|current| *current == character)
+        .count();
+    length >= minimum_length
+        && content[length..]
+            .chars()
+            .all(|current| current == ' ' || current == '\t')
+}
+
+fn code_fence_content(line: &str) -> Option<&str> {
+    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+    (indent <= 3).then(|| &line[indent..])
 }
 
 fn literal_fallback_document(source: &str) -> Document {
@@ -4771,6 +4820,65 @@ mod tests {
         let document = parse_document("> \\n\n`^12^`\n\n```mdi\n{東京|とうきょう}\n```\n");
         assert_eq!(document.children[0]["type"], "blockquote");
         assert!(document.children.iter().any(|node| node["type"] == "code"));
+    }
+
+    #[test]
+    fn parses_docs_frontmatter_examples_inside_backtick_fences() {
+        let source = "---\ntitle: Test\n---\n\n# Heading\n\n```mdi\n---\nmdi: \"2.0\"\ntitle: 雪女\nauthor: 小泉八雲\n---\n```\n\n**Prerequisites:** [What is MDI?](/learn/what-is-mdi/)";
+        assert!(!has_late_frontmatter_like_block(source));
+
+        let document = parse_document(source);
+        assert!(document.frontmatter.is_some());
+        assert_eq!(document.children[0]["type"], "heading");
+        assert_eq!(document.children[1]["type"], "code");
+        assert_eq!(document.children[2]["type"], "paragraph");
+        assert_eq!(document.children[2]["children"][0]["type"], "strong");
+        assert_eq!(document.children[2]["children"][2]["type"], "link");
+    }
+
+    #[test]
+    fn ignores_frontmatter_examples_inside_tilde_and_indented_fences() {
+        for source in [
+            "Text\n\n~~~mdi\n---\ntitle: example\n---\n~~~\n",
+            "Text\n\n   `````mdi\n---\ntitle: example\n---\n   ``````\n",
+        ] {
+            assert!(!has_late_frontmatter_like_block(source));
+            let document = parse_document(source);
+            assert!(document.children.iter().any(|node| node["type"] == "code"));
+        }
+    }
+
+    #[test]
+    fn still_detects_late_frontmatter_outside_fenced_code_blocks() {
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n---\ntitle: not frontmatter\n---\n"
+        ));
+    }
+
+    #[test]
+    fn code_fences_only_close_with_a_matching_character_and_sufficient_length() {
+        let source = "Text\n\n````mdi\n~~~\n```\n---\ntitle: fenced example\n---\n````\n\n---\ntitle: real late block\n---\n";
+        assert!(has_late_frontmatter_like_block(source));
+
+        let only_fenced_block =
+            "Text\n\n````mdi\n~~~\n```\n---\ntitle: fenced example\n---\n````\n";
+        assert!(!has_late_frontmatter_like_block(only_fenced_block));
+    }
+
+    #[test]
+    fn rejects_non_commonmark_fence_openers_and_closers() {
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n    ```mdi\n---\ntitle: late block\n---\n"
+        ));
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n```mdi`invalid\n---\ntitle: late block\n---\n"
+        ));
+
+        let trailing_text_does_not_close =
+            "Text\n\n```mdi\n``` trailing\n---\ntitle: fenced example\n---\n```\n";
+        assert!(!has_late_frontmatter_like_block(
+            trailing_text_does_not_close
+        ));
     }
 
     #[test]
