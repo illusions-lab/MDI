@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix long notes clipping or shrinking during PDF output by measuring the physical printable page and actual glyph advances, including inherited tracking and indentation.
+
 ### Patch Changes
 
 - Add the browser-safe `@illusions-lab/mdi-to-pdf/profile` entry for applying

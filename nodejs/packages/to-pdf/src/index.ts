@@ -29,7 +29,7 @@ export async function renderHtmlToPdf(
     const page = await browser.newPage();
     await page.setContent(prepared.html);
     await page.emulateMedia({media:"print"});
-    await settleMdiPrintLayout(code => page.evaluate(code), options);
+    await settleMdiPrintLayout(code => page.evaluate(code), { ...options, page: prepared.page });
     return Buffer.from(
       await page.pdf({
         preferCSSPageSize: true,

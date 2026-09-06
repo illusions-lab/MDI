@@ -957,4 +957,4 @@ export function layoutMdiWarichu(
 export { attachMdiWarichuLayout, measureMdiWarichu, applyMdiWarichu } from "./warichu-browser.js";
 export type { MdiWarichuLayoutController, MdiWarichuSettleOptions } from "./warichu-browser.js";
 
-export { settleMdiPrintLayout, type MdiPrintEvaluate } from "./warichu-print.js";
+export { settleMdiPrintLayout, type MdiPrintEvaluate, type MdiPrintPage, type MdiPrintLayoutOptions } from "./warichu-print.js";

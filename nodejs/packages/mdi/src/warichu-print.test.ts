@@ -27,3 +27,24 @@ it('stops host writes when cancelled during pending font evaluation',async()=>{
  release();await Promise.resolve();await Promise.resolve();
  expect(evaluate).toHaveBeenCalledTimes(1);
 });
+it('constrains the transient print body using resolved physical page margins',async()=>{
+ const evaluate=vi.fn(async(code:string)=>code.includes('measureMdiWarichu')?[]:false);
+ await settleMdiPrintLayout(evaluate,{page:{widthMm:148,heightMm:210,marginsMm:{top:15,right:15,bottom:15,left:15}}});
+ expect(evaluate.mock.calls[0][0]).toContain('document.body.style.setProperty("inline-size"');
+ expect(evaluate.mock.calls[0][0]).toContain('? 180 : 118');
+ expect(evaluate.mock.calls[1][0]).toContain('document.fonts.ready');
+});
+it('rejects impossible physical print geometry without evaluating the document',async()=>{
+ const evaluate=vi.fn();
+ for(const widthMm of [0,NaN,Infinity]) {
+  await expect(settleMdiPrintLayout(evaluate,{page:{widthMm,heightMm:210,marginsMm:{top:15,right:15,bottom:15,left:15}}})).rejects.toThrow('printable dimensions');
+ }
+ expect(evaluate).not.toHaveBeenCalled();
+});
+it('stops before font evaluation when cancelled during physical viewport preparation',async()=>{
+ const abort=new AbortController();let release!:()=>void;
+ const evaluate=vi.fn(()=>new Promise<void>(resolve=>{release=resolve}));
+ const pending=settleMdiPrintLayout(evaluate,{signal:abort.signal,page:{widthMm:148,heightMm:210,marginsMm:{top:15,right:15,bottom:15,left:15}}});
+ abort.abort(new Error('cancelled viewport'));await expect(pending).rejects.toThrow('cancelled viewport');
+ release();await Promise.resolve();await Promise.resolve();expect(evaluate).toHaveBeenCalledTimes(1);
+});

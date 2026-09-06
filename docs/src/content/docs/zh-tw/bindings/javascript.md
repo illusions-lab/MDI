@@ -142,4 +142,4 @@ Node 的 default PDF host 要另外 `npm install @illusions-lab/mdi-to-pdf`。El
 
 ### Automatic warichu layout
 
-自動割注使用正文50%字級與固定兩行。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` 呼叫Rust分割規則；唯讀HTML使用 `attachMdiWarichuLayout(container)`，列印前使用 `settleMdiPrintLayout(evaluate, { timeoutMs, signal })`。自動分割只影響呈現，不改寫MDI。無腳本HTML與EPUB保留雙行結構，但閱讀器重排可能不同。
+自動割注使用正文50%字級與固定兩行。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` 呼叫Rust分割規則；唯讀HTML使用 `attachMdiWarichuLayout(container)`，列印前使用 `settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })`。自動分割只影響呈現，不改寫MDI。無腳本HTML與EPUB保留雙行結構，但閱讀器重排可能不同。

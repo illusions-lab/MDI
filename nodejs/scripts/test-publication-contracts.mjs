@@ -429,7 +429,7 @@ async function validatePdfs(cases) {
       try {
         await page.setContent(prepared.html);
         await page.emulateMedia({ media: "print" });
-        await settleMdiPrintLayout(code => page.evaluate(code));
+        await settleMdiPrintLayout(code => page.evaluate(code), { page: prepared.page });
         const pdf = Buffer.from(
           await page.pdf({
             preferCSSPageSize: true,

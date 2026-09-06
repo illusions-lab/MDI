@@ -4,9 +4,11 @@ export interface MdiWarichuMeasurement {
  index: number;
  children: Record<string, unknown>[];
  options: MdiWarichuOptions;
+ /** Measured CSS pixels per Rust half-em unit for this layout pass. */
+ unit?:number;
 }
 /** Self-contained for execution in a browser hosted by Electron or Playwright. */
-export function measureMdiWarichu(container: HTMLElement = document.body, affected?: readonly HTMLElement[]): MdiWarichuMeasurement[] {
+export function measureMdiWarichu(container: HTMLElement = document.body, affected?: readonly HTMLElement[], minimumUnits?:Readonly<Record<number,number>>): MdiWarichuMeasurement[] {
  return Array.from(container.querySelectorAll<HTMLElement>('[data-mdi-warichu-source]')).flatMap((note,index) => {
   if (note.parentElement?.closest('[data-mdi-warichu-source]')) return [];
   if (affected && !affected.some(element=>element.contains(note))) return [];
@@ -23,8 +25,18 @@ export function measureMdiWarichu(container: HTMLElement = document.body, affect
   const paddingEnd = parseFloat(style.paddingInlineEnd)||0;
   const full = (vertical ? paragraph.clientHeight : paragraph.clientWidth)-paddingStart-paddingEnd;
   const scale = (vertical ? box.height/paragraph.offsetHeight : box.width/paragraph.offsetWidth) || 1;
+  let unit=Math.max(size/2,minimumUnits?.[index] ?? 0);
+  let inset=0;
+  for(const line of note.querySelectorAll<HTMLElement>(':scope > .mdi-warichu-fragment > .mdi-warichu-line[data-mdi-width]')) {
+   const width=Number(line.dataset.mdiWidth);if(!(width>0)) continue;
+   const contents=container.ownerDocument.createRange();contents.selectNodeContents(line);
+   const bounds=contents.getBoundingClientRect();
+   const lineBox=line.getBoundingClientRect();
+   inset=Math.max(inset,(vertical?bounds.top-lineBox.top:style.direction==='rtl'?lineBox.right-bounds.right:bounds.left-lineBox.left)/scale);
+   unit=Math.max(unit,(vertical?bounds.height:bounds.width)/scale/width);
+  }
   const remaining = !previous ? full : vertical ? (box.bottom-previous.bottom)/scale-paddingEnd : style.direction === 'rtl' ? (previous.left-box.left)/scale-paddingStart : (box.right-previous.right)/scale-paddingEnd;
-  return [{index,children:JSON.parse(note.dataset.mdiWarichuSource!),options:{firstCapacity:Math.max(1,Math.floor((remaining<=0?full:Math.min(full,remaining))*2/size)),continuationCapacity:Math.max(1,Math.floor(full*2/size))}}];
+  return [{index,unit,children:JSON.parse(note.dataset.mdiWarichuSource!),options:{firstCapacity:Math.max(1,Math.floor(((remaining<=0?full:Math.min(full,remaining))-inset)/unit)),continuationCapacity:Math.max(1,Math.floor((full-inset)/unit))}}];
  });
 }
 /** If Rust reports that only the first remaining slot is too small, use the next body line. */
@@ -42,7 +54,7 @@ export function applyMdiWarichu(updates: {index:number;fragments:MdiWarichuFragm
  let changed = false;
  for (const {index,fragments} of updates) {
   const note = notes[index]; if (!note) continue;
-  const html = fragments.map(fragment => `<span class="mdi-warichu-fragment" style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start"${fragment.overflow?' data-mdi-overflow="true"':''}>${fragment.html.map(line=>`<span class="mdi-warichu-line" style="display:block;white-space:nowrap;min-block-size:1em">${line}</span>`).join('')}</span>${fragment.hardBreakAfter?'<br>':''}`).join('');
+  const html = fragments.map(fragment => `<span class="mdi-warichu-fragment" style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start"${fragment.overflow?' data-mdi-overflow="true"':''}>${fragment.html.map((line,row)=>`<span class="mdi-warichu-line" data-mdi-width="${fragment.widths[row]}" style="display:block;white-space:nowrap;min-block-size:1em">${line}</span>`).join('')}</span>${fragment.hardBreakAfter?'<br>':''}`).join('');
   // Browser serialization normalizes markup. Compare the intended markup cache.
   if (note.dataset.mdiWarichuLayout === html) continue;
   note.innerHTML = html;
@@ -97,9 +109,13 @@ export function attachMdiWarichuLayout(container:HTMLElement):MdiWarichuLayoutCo
      await Promise.race([container.ownerDocument.fonts.ready,disposal]);
      await frame();
      let stable=false;
+     const minimumUnits:Record<number,number>={};
      for(let pass=0;pass<12;pass++) {
       if(disposed) return;
-      const updates=measureMdiWarichu(container,batch).map(m=>({index:m.index,fragments:layoutMeasuredMdiWarichu(m)}));
+      const updates=measureMdiWarichu(container,batch,minimumUnits).map(m=>{
+       if(m.unit) minimumUnits[m.index]=m.unit;
+       return {index:m.index,fragments:layoutMeasuredMdiWarichu(m)};
+      });
       mutation.disconnect();
       let changed:boolean;
       try {changed=applyMdiWarichu(updates,container);} finally {observe();}

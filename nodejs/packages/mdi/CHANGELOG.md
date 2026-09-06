@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix long notes clipping or shrinking during PDF output by measuring the physical printable page and actual glyph advances, including inherited tracking and indentation.
+
 - Add Rust-owned automatic warichu fragments and a presentation-only layout API; render native DOCX two-line text. Add first/continuation capacities, UTF-8 source mappings and portable fragment HTML; adaptive editor integration is a separate consumer gate.
 ## 2.0.21
 

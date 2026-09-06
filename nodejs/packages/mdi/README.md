@@ -234,8 +234,8 @@ For read-only rendered HTML, initialize MDI and call
 style changes trigger presentation updates. Editors should use the layout
 result with their own selection-preserving presentation layer.
 
-`settleMdiPrintLayout(evaluate, { timeoutMs, signal })` works with a host's
-existing hidden print document. Supply `code => page.evaluate(code)` for
+`settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` works with a host's
+existing hidden print document. Pass the resolved `page` from `prepareChromiumPrintProfile` so layout uses the paper's printable dimensions instead of the host window's viewport. Supply `code => page.evaluate(code)` for
 Playwright or `code => webContents.executeJavaScript(code)` for Electron.
 The helper waits for fonts and a stable Rust layout; timeout, cancellation,
 and nonconvergence reject the promise and must prevent printing.
@@ -244,3 +244,5 @@ The adapter does not change canonical MDI or insert generated `[[br]]`.
 No-script HTML/EPUB retain precomputed two-line spans. Their reading system
 may reflow differently; proportional-font balance is an estimate, and this
 API does not imply testing in Word or every EPUB reader.
+
+Browser measurement accounts for actual rendered advances and inherited text insets; Rust still owns every split. This retains configured tracking while avoiding clipped notes and Chromium shrink-to-fit.

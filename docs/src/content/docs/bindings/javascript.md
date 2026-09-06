@@ -179,4 +179,4 @@ Non-string source is a `TypeError`; invalid option objects are also rejected wit
 
 ### Automatic warichu layout
 
-Automatic warichu uses two lines at 50% type. Use `layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` for Rust splitting, `attachMdiWarichuLayout(container)` for read-only HTML, and `settleMdiPrintLayout(evaluate, { timeoutMs, signal })` before printing. Layout is presentation-only; canonical MDI is unchanged. Static EPUB/HTML preserve readable precomputed lines; reader reflow may vary.
+Automatic warichu uses two lines at 50% type. Use `layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` for Rust splitting, `attachMdiWarichuLayout(container)` for read-only HTML, and `settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` before printing. Layout is presentation-only; canonical MDI is unchanged. Static EPUB/HTML preserve readable precomputed lines; reader reflow may vary.

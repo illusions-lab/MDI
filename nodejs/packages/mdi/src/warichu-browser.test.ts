@@ -5,7 +5,7 @@ function fixture() {
  const listeners=new Map<string,()=>void>();const observed=new Set<unknown>();
  let mutation:(records:any[])=>void=()=>{},resize:(entries:any[])=>void=()=>{};
  const style={writingMode:'horizontal-tb',direction:'ltr',fontSize:'20px',paddingInlineStart:'0',paddingInlineEnd:'0'};
- const note:any={dataset:{mdiWarichuSource:JSON.stringify([{type:'text',value:'一二三四五六'}])},innerHTML:'',closest:()=>paragraph};
+ const note:any={dataset:{mdiWarichuSource:JSON.stringify([{type:'text',value:'一二三四五六'}])},innerHTML:'',querySelectorAll:()=>[],closest:()=>paragraph};
  const paragraph:any={clientWidth:200,clientHeight:300,getBoundingClientRect:()=>({left:0,right:200,bottom:300}),contains:(n:unknown)=>n===note,closest:(selector:string)=>selector.startsWith('[data')?null:paragraph,nodeType:1};
  let rects:any[]=[{left:0,right:120,bottom:40}];
  const win:any={getComputedStyle:()=>style,requestAnimationFrame:(cb:()=>void)=>setTimeout(cb,0),addEventListener:vi.fn(),removeEventListener:vi.fn(),visualViewport:{addEventListener:vi.fn(),removeEventListener:vi.fn()},MutationObserver:class{constructor(cb:any){mutation=cb}observe(){}disconnect(){}},ResizeObserver:class{constructor(cb:any){resize=cb}observe(element:unknown){observed.add(element)}unobserve(element:unknown){observed.delete(element)}disconnect(){observed.clear()}}};
@@ -79,4 +79,12 @@ it('cancels the pending animation frame and global readiness on disposal',async(
  const adapter=attachMdiWarichuLayout(f.container);await Promise.resolve();await Promise.resolve();
  adapter.dispose();await expect(f.win.__mdiWarichuLayoutReady).rejects.toThrow('disposed');
  expect(f.win.cancelAnimationFrame).toHaveBeenCalledWith(42);
+});
+it('measures real row advances and inherited insets without changing typography',()=>{
+ const f=fixture();
+ const line={dataset:{mdiWidth:'4'},getBoundingClientRect:()=>({left:0,right:90,top:0,bottom:20})};
+ f.note.querySelectorAll=()=>[line,{dataset:{mdiWidth:'0'}}];
+ f.container.ownerDocument.createRange=()=>({selectNodeContents(){},setEndBefore(){},getClientRects:()=>[{left:0,right:120,bottom:40}],getBoundingClientRect:()=>({left:10,right:90,top:0,bottom:20,width:80,height:20})});
+ expect(measureMdiWarichu(f.container)[0]).toMatchObject({unit:20,options:{firstCapacity:3,continuationCapacity:9}});
+ expect(measureMdiWarichu(f.container,undefined,{0:25})[0]).toMatchObject({unit:25,options:{firstCapacity:2,continuationCapacity:7}});
 });

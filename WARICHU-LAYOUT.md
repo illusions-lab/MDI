@@ -71,3 +71,16 @@ iframe ownership, resize source preservation, and repeated hard breaks.
 These are browser tests, not EPUB reading-system or native OS IME tests.
 The editor and complete release quality gates must still pass before the
 three-repository feature can be called complete.
+
+## Physical print page measurement
+
+Print hosts pass the Rust-resolved `prepared.page` to
+`settleMdiPrintLayout(evaluate, { page: prepared.page, timeoutMs, signal })`.
+The bridge constrains the temporary print body's inline extent to the printable
+paper area before reading geometry. It then measures rendered row advances and
+inherited text insets to refine the capacities supplied to Rust. Tracking and
+paragraph indentation are retained; no JavaScript splitting algorithm is added.
+This prevents screen-window dimensions from causing clipped notes or Chromium
+shrink-to-fit during printing. Long 720-character A5 notes are checked in both
+writing directions for complete PDF text and unchanged body/note glyph sizes.
+This does not promise exact proportional-font balance.

@@ -24,3 +24,27 @@ it('extracts automatic note text in source order and places its rows at half bod
   expect(new Set(rows.map(item=>Math.round(item.transform[5]))).size).toBeGreaterThan(2);
  } finally {await loadingTask.destroy();}
 },30000);
+
+it.each(['horizontal','vertical'] as const)('lays out a long A5 %s note in physical page space without clipping or shrinking body type', async(writingMode)=>{
+ const note='ABCDEFGHIJKLMNOPQRSTUVWX'.repeat(30);
+ const pdf=await renderHtmlToPdf(renderHtml(`PREFIX[[warichu:${note}]]SUFFIX`),{
+  layout:{system:'japanese-publisher'},
+  typesetting:{writingMode,fontFamily:'monospace'},
+  pagination:{pageSize:'A5',margins:{top:15,right:15,bottom:15,left:15},pageNumbers:{enabled:false}},
+ });
+ const loadingTask=getDocument({data:new Uint8Array(pdf)});
+ try {
+  const document=await loadingTask.promise;
+  const items=[];
+  for(let i=1;i<=document.numPages;i++) {
+   const content=await (await document.getPage(i)).getTextContent();
+   items.push(...content.items.filter((item):item is Extract<typeof item,{str:string}>=>'str' in item));
+  }
+  expect(items.map(item=>item.str).join('').replace(/\s/g,'')).toBe(`PREFIX${note}SUFFIX`);
+  const body=items.find(item=>item.str.trim())!;
+  expect(Math.hypot(body.transform[0],body.transform[1])).toBeCloseTo(10.5,2);
+  const rows=items.filter(item=>item.str.trim()&&Math.abs(Math.hypot(item.transform[0],item.transform[1])-5.25)<.02);
+  expect(rows.length).toBeGreaterThan(2);
+  expect(rows.every(item=>Math.abs(Math.hypot(item.transform[0],item.transform[1])-5.25)<.02)).toBe(true);
+ } finally {await loadingTask.destroy();}
+},30000);
