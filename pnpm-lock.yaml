@@ -311,6 +311,9 @@ importers:
 
   nodejs/packages/to-hast:
     dependencies:
+      '@illusions-lab/mdi-core':
+        specifier: workspace:*
+        version: link:../mdi-core
       mdast-util-mdi:
         specifier: workspace:*
         version: link:../mdast-util-mdi
@@ -376,6 +379,9 @@ importers:
 
   nodejs/packages/to-pdf:
     dependencies:
+      '@illusions-lab/mdi':
+        specifier: workspace:*
+        version: link:../mdi
       '@illusions-lab/mdi-core':
         specifier: workspace:*
         version: link:../mdi-core
@@ -392,9 +398,6 @@ importers:
         specifier: ^1.48.0
         version: 1.61.1
     devDependencies:
-      '@illusions-lab/mdi':
-        specifier: workspace:*
-        version: link:../mdi
       '@illusions-lab/mdi-remark':
         specifier: workspace:*
         version: link:../remark

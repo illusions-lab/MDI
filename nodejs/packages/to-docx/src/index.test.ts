@@ -292,8 +292,8 @@ describe("mdiToDocx edge cases", () => {
     expect(document).toContain('<w:em w:val="dot"/>');
     // -0.1em at the canonical 10pt body size is -20 signed twips.
     expect(document).toContain('<w:spacing w:val="-20"/>');
-    // Warichu is deliberately a visible small-text fallback, not fake two-line XML.
-    expect(document).toContain('<w:sz w:val="12"/>');
+    // Warichu uses native two-lines-in-one; Word chooses the split.
+    expect(document).toContain('<w:eastAsianLayout w:id="1" w:combine="1" w:combineBrackets="none"/>');
     expect(document).toContain("note");
     // There is no arbitrary-run OOXML no-break feature; its source is still present.
     expect(document).toContain("keep together");

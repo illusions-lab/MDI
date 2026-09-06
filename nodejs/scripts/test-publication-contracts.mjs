@@ -27,6 +27,7 @@ const rustPageDimensions = Object.fromEntries(JSON.parse(pageSizeCatalogJson()).
 ]));
 assert.deepEqual(PAGE_DIMENSIONS, rustPageDimensions, "export-profile snapshot must match Rust's publication catalogue");
 import {
+  settleMdiPrintLayout,
   renderDocxWithProfile,
   renderEpubWithProfile,
   renderHtml,
@@ -58,6 +59,8 @@ date: 2026-07-23
 # 第一章
 
 本文には{東京|とうきょう}、縦中横^12^、[[em:圏点]]、[[kern:0.1em:字間]]がある。
+
+本文[[warichu:一**二**三四五六]]続き。[[warichu:{東京|とうきょう}^12^]]
 
 ## 第二節
 
@@ -425,6 +428,8 @@ async function validatePdfs(cases) {
       const page = await browser.newPage();
       try {
         await page.setContent(prepared.html);
+        await page.emulateMedia({ media: "print" });
+        await settleMdiPrintLayout(code => page.evaluate(code), { page: prepared.page });
         const pdf = Buffer.from(
           await page.pdf({
             preferCSSPageSize: true,

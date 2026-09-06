@@ -16,6 +16,11 @@ use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 mod docx;
+mod warichu;
+pub use warichu::{
+    WarichuFragment, WarichuOptions, WarichuSource, layout_warichu, layout_warichu_options_json,
+    layout_warichu_with_options,
+};
 #[cfg(test)]
 mod provenance_tests;
 mod publication_profile;
@@ -751,6 +756,7 @@ fn markdown_macro_children(raw: &str, start_byte: usize) -> Option<Vec<serde_jso
     let tree = markdown::to_mdast(content, &options).ok()?;
     let mut value = serde_json::to_value(tree).ok()?;
     annotate_and_lower(&mut value, content, false);
+    lower_markdown_inside_mdi(&mut value, content);
     shift_spans(&mut value, start_byte + content_offset);
     let children = value
         .get_mut("children")?
@@ -1328,6 +1334,23 @@ pub mod ffi {
     ) -> MdiFfiResult {
         match source(data, len) {
             Ok(source) => success(operation(source).into_bytes()),
+            Err(error) => failure(error),
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_layout_warichu_json(
+        data: *const u8,
+        len: usize,
+        options_data: *const u8,
+        options_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|nodes| {
+            let options = utf8_argument(options_data, options_len, "warichu options")?;
+            super::layout_warichu_options_json(nodes, options)
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
             Err(error) => failure(error),
         }
     }
@@ -2892,7 +2915,7 @@ fn css_value(value: &str) -> String {
 
 /// The base stylesheet is intentionally shipped by the core alongside the
 /// semantic HTML. Hosts may add presentation CSS, but not reinterpret nodes.
-pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
+pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.5em;line-height:1}.mdi-warichu-fragment{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start}.mdi-warichu-line{display:block;white-space:nowrap;min-block-size:1em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
 
 const VERTICAL_WHEEL_SCROLL_SCRIPT: &str = "<script>(function(){document.addEventListener('wheel',function(event){if(event.defaultPrevented||event.ctrlKey||event.shiftKey)return;var delta=event.deltaY;if(event.deltaMode===1)delta*=16;else if(event.deltaMode===2)delta*=window.innerWidth;if(!delta)return;var root=document.scrollingElement;var before=root.scrollLeft;window.scrollBy({left:-delta,behavior:'auto'});if(root.scrollLeft!==before)event.preventDefault()},{passive:false})})()</script>";
 
@@ -3584,7 +3607,37 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             ));
             out.push_str("\">");
         }
-        "table" => wrapped(out, "table", children),
+        "table" => {
+            out.push_str("<table>");
+            for (row_index, row) in crate::children(node).iter().enumerate() {
+                if row_index == 0 {
+                    out.push_str("<thead>");
+                }
+                if row_index == 1 {
+                    out.push_str("<tbody>");
+                }
+                out.push_str("<tr>");
+                for cell in crate::children(row) {
+                    out.push_str(if row_index == 0 {
+                        "<th scope=\"col\">"
+                    } else {
+                        "<td>"
+                    });
+                    for child in crate::children(cell) {
+                        render_html_node(child, out);
+                    }
+                    out.push_str(if row_index == 0 { "</th>" } else { "</td>" });
+                }
+                out.push_str("</tr>");
+                if row_index == 0 {
+                    out.push_str("</thead>");
+                }
+            }
+            if crate::children(node).len() > 1 {
+                out.push_str("</tbody>");
+            }
+            out.push_str("</table>");
+        }
         "tableRow" => wrapped(out, "tr", children),
         "tableCell" => wrapped(out, "td", children),
         "footnoteReference" => {
@@ -3636,11 +3689,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             children(out);
             out.push_str("</span>");
         }
-        "warichu" => {
-            out.push_str("<span class=\"mdi-warichu\">");
-            children(out);
-            out.push_str("</span>");
-        }
+        "warichu" => warichu::render(crate::children(node), out),
         "kern" => {
             out.push_str("<span class=\"mdi-kern\" style=\"--mdi-kern:");
             out.push_str(&escape_html(
@@ -4228,6 +4277,20 @@ mod wasm {
         resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
+
+    /// Presentation-only layout of already parsed inline IR. No syntax parsing.
+    #[wasm_bindgen(js_name = layoutWarichuOptionsJson)]
+    pub fn wasm_layout_warichu_options_json(nodes: &str, options: &str) -> Result<String, JsValue> {
+        super::layout_warichu_options_json(nodes, options).map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen(js_name = layoutWarichuJson)]
+    pub fn wasm_layout_warichu_json(nodes_json: &str, capacity: u32) -> Result<String, JsValue> {
+        let nodes: Vec<serde_json::Value> = serde_json::from_str(nodes_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        serde_json::to_string(&super::layout_warichu(&nodes, capacity as usize))
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
 
     /// Parse with Rust and return the versioned MDI IR as JSON.
     ///

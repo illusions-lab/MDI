@@ -93,6 +93,18 @@ public enum MDITextFormat: String, CaseIterable, Codable, Sendable {
 
 /// Swift interface to the Rust-owned MDI parser and renderers.
 public enum MDI {
+    /// Rust presentation layout; capacity is in half-em units at the note font size.
+    public static func layoutWarichu(_ children: [MDIJSONValue], capacity: UInt = 40, firstCapacity: UInt? = nil) throws -> MDIJSONValue {
+        let nodes = Array(try JSONEncoder().encode(children))
+        let options = Array(try JSONEncoder().encode(["firstCapacity": firstCapacity ?? capacity, "continuationCapacity": capacity]))
+        let result = nodes.withUnsafeBufferPointer { nodes in
+            options.withUnsafeBufferPointer { options in
+                mdi_layout_warichu_json(nodes.baseAddress, nodes.count, options.baseAddress, options.count)
+            }
+        }
+        return try JSONDecoder().decode(MDIJSONValue.self, from: data(from: result))
+    }
+
     public static func parse(_ source: String) throws -> MDIParseResult {
         try parseResult(from: call(source, operation: mdi_parse_json))
     }

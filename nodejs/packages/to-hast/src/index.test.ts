@@ -50,9 +50,7 @@ describe("mdiToHast", () => {
 		expect(html("[[no-break:東京都新宿区]]")).toBe(
 			'<p><span class="mdi-nobr">東京都新宿区</span></p>',
 		);
-		expect(html("[[warichu:六曜の一つで吉日とされる]]")).toBe(
-			'<p><span class="mdi-warichu">六曜の一つで吉日とされる</span></p>',
-		);
+		expect(html("[[warichu:六曜の一つで吉日とされる]]").match(/class="mdi-warichu-line"/g)).toHaveLength(2);
 		expect(html("[[kern:-0.1em:確実]]")).toBe(
 			'<p><span class="mdi-kern" style="--mdi-kern:-0.1em;">確実</span></p>',
 		);
@@ -111,9 +109,9 @@ describe("mdiToHast", () => {
 
 	it("nests macros and retains GFM inline children in aligned paragraphs", () => {
 		const nested = html("[[em:[[no-break:[[warichu:{東京|とうきょう}]]]]]]");
-		expect(nested).toContain(
-			'<span class="mdi-em" style="--mdi-em:&#x22;﹅&#x22;;"><span class="mdi-nobr"><span class="mdi-warichu"><ruby class="mdi-ruby">東京',
-		);
+		expect(nested).toContain('<span class="mdi-nobr"><span class="mdi-warichu"');
+		expect(nested).toContain('<ruby class="mdi-ruby">東京');
+		expect(nested.match(/class="mdi-warichu-line"/g)).toHaveLength(2);
 		expect(html("[[indent:2]]\n[link](https://example.com) and ~~old~~ {東京|とうきょう}")).toBe(
 			'<p class="mdi-indent" style="--mdi-indent:2;"><a href="https://example.com">link</a> and <del>old</del> <ruby class="mdi-ruby">東京<rp>（</rp><rt>とうきょう</rt><rp>）</rp></ruby></p>',
 		);
@@ -129,4 +127,21 @@ describe("mdiToHast", () => {
 		);
 		expect(html("通常の段落")).toBe("<p>通常の段落</p>");
 	});
+});
+
+it('renders automatic warichu with two lines instead of a single small span', () => {
+ const tree = {type:'root',children:[{type:'paragraph',children:[{type:'mdiWarichu',children:[{type:'text',value:'一二三四五六'}]}]}]} as Root;
+ const html = toHtml(mdiToHast(tree).hast);
+ expect(html.match(/class="mdi-warichu-line"/g)).toHaveLength(2);
+ expect(html).toContain('data-mdi-warichu-source');
+});
+
+it('preserves atomic overflow, repeated authored breaks and formatted ruby within notes', () => {
+ const source = `[[warichu:[[no-break:${'甲'.repeat(50)}]][[br]][[br]]{東京|とう|きょう} **本文** ^12^]]`;
+ const output=html(source);
+ expect(output).toContain('data-mdi-overflow="true"');
+ expect(output.match(/<br>/g)).toHaveLength(2);
+ expect(output).toContain('<strong>');
+ expect(output).toContain('<ruby');
+ expect(output).toContain('mdi-tcy');
 });

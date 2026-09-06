@@ -39,6 +39,7 @@ pub(crate) fn write<W: Write + Seek>(
     let mut context = Context {
         footnote_ids,
         hyperlinks: Vec::new(),
+        next_warichu_id: 0,
     };
     let content = document
         .children
@@ -206,6 +207,7 @@ pub(crate) fn write<W: Write + Seek>(
 struct Context {
     footnote_ids: HashMap<String, usize>,
     hyperlinks: Vec<String>,
+    next_warichu_id: usize,
 }
 
 fn block_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context) -> String {
@@ -326,6 +328,7 @@ struct RunProperties {
     size: Option<i64>,
     spacing: Option<i64>,
     break_before: bool,
+    warichu_id: Option<usize>,
 }
 
 fn inline_xml(
@@ -432,20 +435,28 @@ fn inline_xml(
                     },
                     base_size,
                 ),
-                "ruby" => ruby_xml(node, base_size),
+                "ruby" => ruby_xml(node, base_size, properties),
+                "tcy" if properties.warichu_id.is_some() => run_xml(
+                    node.get("value").and_then(Value::as_str).unwrap_or_default(),
+                    properties,
+                ),
                 "tcy" => format!(
                     "<w:r><w:rPr><w:eastAsianLayout w:combine=\"1\" w:combineBrackets=\"none\"/></w:rPr><w:t>{}</w:t></w:r>",
                     escape_xml(node.get("value").and_then(Value::as_str).unwrap_or_default())
                 ),
-                "warichu" => inline_xml(
-                    children(node),
-                    context,
-                    &RunProperties {
-                        size: Some((base_size as f64 * 0.6).round().max(10.0) as i64),
-                        ..properties.clone()
-                    },
-                    base_size,
-                ),
+                "warichu" => {
+                    context.next_warichu_id += 1;
+                    let id = context.next_warichu_id;
+                    inline_xml(
+                        children(node),
+                        context,
+                        &RunProperties {
+                            warichu_id: Some(id),
+                            ..properties.clone()
+                        },
+                        base_size,
+                    )
+                }
                 "kern" => {
                     let spacing = node
                         .get("amount")
@@ -499,6 +510,11 @@ fn run_xml(text: &str, properties: &RunProperties) -> String {
     if let Some(spacing) = properties.spacing.filter(|spacing| *spacing != 0) {
         run_properties.push_str(&format!("<w:spacing w:val=\"{spacing}\"/>"));
     }
+    if let Some(id) = properties.warichu_id {
+        run_properties.push_str(&format!(
+            "<w:eastAsianLayout w:id=\"{id}\" w:combine=\"1\" w:combineBrackets=\"none\"/>"
+        ));
+    }
     let properties_xml = if run_properties.is_empty() {
         String::new()
     } else {
@@ -515,7 +531,8 @@ fn run_xml(text: &str, properties: &RunProperties) -> String {
     )
 }
 
-fn ruby_xml(node: &Value, base_size: i64) -> String {
+fn ruby_xml(node: &Value, base_size: i64, properties: &RunProperties) -> String {
+    let group = properties.warichu_id.map(|id| format!("<w:rPr><w:eastAsianLayout w:id=\"{id}\" w:combine=\"1\" w:combineBrackets=\"none\"/></w:rPr>")).unwrap_or_default();
     let base = node.get("base").and_then(Value::as_str).unwrap_or_default();
     let ruby = node.get("ruby").and_then(|ruby| ruby.get("value"));
     let reading = match ruby {
@@ -534,7 +551,7 @@ fn ruby_xml(node: &Value, base_size: i64) -> String {
         (base_size as f64 * 0.8).round().max(18.0) as i64
     };
     format!(
-        "<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val=\"center\"/><w:hps w:val=\"{ruby_size}\"/><w:hpsRaise w:val=\"{raise}\"/><w:hpsBaseText w:val=\"{base_size}\"/><w:lid w:val=\"ja-JP\"/></w:rubyPr><w:rt><w:r><w:t>{}</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>{}</w:t></w:r></w:rubyBase></w:ruby></w:r>",
+        "<w:r>{group}<w:ruby><w:rubyPr><w:rubyAlign w:val=\"center\"/><w:hps w:val=\"{ruby_size}\"/><w:hpsRaise w:val=\"{raise}\"/><w:hpsBaseText w:val=\"{base_size}\"/><w:lid w:val=\"ja-JP\"/></w:rubyPr><w:rt><w:r><w:t>{}</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>{}</w:t></w:r></w:rubyBase></w:ruby></w:r>",
         escape_xml(&reading),
         escape_xml(base)
     )
