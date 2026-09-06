@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.2
 
 - Add Rust-owned automatic warichu layout with first-fragment and continuation capacities.
 - Preserve graphemes across formatting boundaries, indivisible inline groups, authored hard breaks and source UTF-8 paths.

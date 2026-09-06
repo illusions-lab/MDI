@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "mdi-android-jni"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "jni",
  "mdi-core",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "mdi-core"
-version = "2.0.6"
+version = "2.0.7"
 dependencies = [
  "markdown",
  "serde",
