@@ -1,3 +1,5 @@
+import { settleMdiPrintLayout, type MdiWarichuSettleOptions } from "@illusions-lab/mdi";
+export { settleMdiPrintLayout } from "@illusions-lab/mdi";
 import { chromium } from "playwright";
 import type { Root } from "mdast";
 import { mdiToHtml } from "@illusions-lab/mdi-to-html";
@@ -18,13 +20,16 @@ export const MDI_SPEC_VERSION = "2.0";
 export async function renderHtmlToPdf(
   html: string,
   profile?: ExportProfile,
-  sourceWritingMode?: unknown
+  sourceWritingMode?: unknown,
+  options?: MdiWarichuSettleOptions
 ): Promise<Buffer> {
   const prepared = prepareChromiumPrintProfile(html, profile, sourceWritingMode);
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
     await page.setContent(prepared.html);
+    await page.emulateMedia({media:"print"});
+    await settleMdiPrintLayout(code => page.evaluate(code), options);
     return Buffer.from(
       await page.pdf({
         preferCSSPageSize: true,

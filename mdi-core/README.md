@@ -58,3 +58,33 @@ dimension table.
 ## License
 
 MIT. See [LICENSE](https://github.com/illusions-lab/MDI/blob/main/LICENSE).
+
+## Automatic warichu presentation layout
+
+The Rust core supplies two lines at 50% body size with no line gap. Capacity is
+measured in half-em units at the note font size; it is a character-width estimate,
+not exact proportional-font measurement. The first fragment can use the space
+remaining on the current body line; following fragments use the full capacity.
+
+```rust
+let nodes = serde_json::json!([{"type":"text", "value":"一二三四五六"}]);
+let fragments = mdi_core::layout_warichu_with_options(nodes.as_array().unwrap(),
+    &mdi_core::WarichuOptions { first_capacity: 2, continuation_capacity: 4 });
+assert_eq!(fragments.len(), 2);
+```
+
+Results contain `lines`, `html`, `widths`, `overflow`, `hardBreakAfter`, and
+`sources`. Each source has a child-index `path` relative to the input inline array,
+half-open `startUtf8` / `endUtf8` offsets into that leaf's visible text, and an
+indivisible `group` ID. A cluster crossing formatting boundaries shares a group.
+Ruby, tcy, no-break and unknown containers remain whole; their coordinates use
+projected visible text (ruby base, excluding its reading). Oversized groups remain
+available and report overflow. Author hard breaks are retained; automatic splits
+never enter canonical MDI or plain text.
+
+The C ABI provides `mdi_layout_warichu_json`, taking inline-array JSON and options
+JSON (`firstCapacity`, `continuationCapacity`) and returning the same JSON through
+`mdi_ffi_result`. Release both returned buffers with `mdi_free_buffer`.
+Static HTML/EPUB includes readable precomputed lines; reader reflow can differ.
+DOCX uses native Word combination groups; XML verification is not a Word rendering
+test. Custom sizes, line counts and manual splitting remain tracked in MDI #85.

@@ -217,3 +217,30 @@ executable syntax authority is `mdi-core`.
 - [Document IR and diagnostics](https://mdi.illusions.app/core/document-ir/)
 - [Rendering model](https://mdi.illusions.app/core/rendering/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+
+### Automatic two-line notes
+
+`layoutMdiWarichu(children, capacity)` remains available. To account for the
+space before a note, pass `{ firstCapacity, continuationCapacity }` instead.
+Both capacities use half-em units at the note's 50% font size. Rust returns
+`lines`, `widths`, `overflow`, `hardBreakAfter`, `html`, and `sources`. Source
+paths address the original inline children; byte offsets are UTF-8 leaf
+boundaries, and `group` identifies indivisible units. Repeated text must be
+mapped by these positions, never by searching its value.
+
+For read-only rendered HTML, initialize MDI and call
+`attachMdiWarichuLayout(container)`. The controller exposes `configure()`,
+`settled({ timeoutMs, signal })`, and `dispose()`. Resize, font, and ancestor
+style changes trigger presentation updates. Editors should use the layout
+result with their own selection-preserving presentation layer.
+
+`settleMdiPrintLayout(evaluate, { timeoutMs, signal })` works with a host's
+existing hidden print document. Supply `code => page.evaluate(code)` for
+Playwright or `code => webContents.executeJavaScript(code)` for Electron.
+The helper waits for fonts and a stable Rust layout; timeout, cancellation,
+and nonconvergence reject the promise and must prevent printing.
+
+The adapter does not change canonical MDI or insert generated `[[br]]`.
+No-script HTML/EPUB retain precomputed two-line spans. Their reading system
+may reflow differently; proportional-font balance is an estimate, and this
+API does not imply testing in Word or every EPUB reader.

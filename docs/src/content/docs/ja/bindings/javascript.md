@@ -143,3 +143,8 @@ const pdf = await renderPdfWithChromium(source, profile);
 Node の default PDF host には別途 `npm install @illusions-lab/mdi-to-pdf` が必要です。Electron は `{ renderHtmlToPdf(html, profile, sourceWritingMode) }` を渡せます。PDF の paper、landscape、margin、縦横、font、font size/line spacing、文字数/行数、indent、page number は Rust が解決します。browser/WASM でも設定付き EPUB/DOCX は生成できます。Chromium を起動する PDF だけは `preparePdfExport()` を Node/Electron/Tauri/CLI host に送ります。
 
 非 string source と不正 option は `TypeError` です。diagnostic は document feedback として扱い、I/O/archive/host renderer の failure だけを `try`/`catch` してください。span は JavaScript index ではなく UTF-8 **byte** offset です。
+
+
+### Automatic warichu layout
+
+自動割注は本文の50%の文字サイズで2行に配置します。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` がRustの分割処理を呼び出します。閲覧用HTMLには `attachMdiWarichuLayout(container)`、印刷前には `settleMdiPrintLayout(evaluate, { timeoutMs, signal })` を使用します。自動分割は表示のみで、保存するMDIは変わりません。スクリプトなしのHTML・EPUBも2行構造を保持しますが、リーダーによる再配置は異なる場合があります。

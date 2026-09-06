@@ -94,3 +94,15 @@ builds an XCFramework, runs XCTest with a 95% line-coverage gate for
 creates a manifest pull request and publishes the approved artifact after that
 PR is merged. It uses GitHub Actions' built-in token; no PAT or second
 repository is required.
+
+## Automatic warichu layout
+
+Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+
+```swift
+let fragments = try MDI.layoutWarichu(
+    [.object(["type": .string("text"), "value": .string("一二三四五六")])],
+    capacity: 4, firstCapacity: 2)
+```
+
+Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.

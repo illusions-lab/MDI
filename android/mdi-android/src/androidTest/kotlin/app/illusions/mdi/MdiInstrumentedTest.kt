@@ -13,6 +13,14 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MdiInstrumentedTest {
     @Test
+    fun native_warichu_layout_preserves_utf8_positions_and_two_lines() {
+        val result = Mdi.layoutWarichuJson("""[{"type":"text","value":"一二三四五六"}]""", 4, 2)
+        assertTrue(result.contains("\"html\":[\"一\",\"二\"]"))
+        assertTrue(result.contains("\"startUtf8\":6"))
+        assertTrue(result.contains("\"html\":[\"三四\",\"五六\"]"))
+    }
+
+    @Test
     fun native_library_parses_unicode_and_preserves_utf8_byte_spans() {
         val source = "第^12^話"
         val result = Mdi.parse(source)

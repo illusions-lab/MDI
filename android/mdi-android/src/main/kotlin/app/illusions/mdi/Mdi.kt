@@ -13,6 +13,13 @@ public const val MDI_IR_VERSION: String = "1.0"
 
 /** Complete Android interface to the Rust-authoritative MDI implementation. */
 public object Mdi {
+    /** Rust layout of parsed inline children; capacities use note half-em units. */
+    @JvmStatic public fun layoutWarichuJson(childrenJson: String, capacity: Int = 40, firstCapacity: Int = capacity): String {
+        require(capacity >= 0 && firstCapacity >= 0) { "Warichu capacities must be non-negative" }
+        return MdiBridgeHolder.bridge.layoutWarichuJson(childrenJson,
+            "{\"firstCapacity\":$firstCapacity,\"continuationCapacity\":$capacity}")
+    }
+
     /** Parses complete MDI source; Kotlin does not tokenize or repair syntax. */
     @JvmStatic
     public fun parse(source: String): MdiParseResult {
@@ -92,6 +99,7 @@ internal object MdiJson {
 
 /** Host boundary kept separate so unit tests can cover the public API without JNI. */
 internal interface MdiBridge {
+    fun layoutWarichuJson(nodes: String, options: String): String
     fun parseJson(source: String): String
     fun renderHtml(source: String): String
     fun serializeMdi(source: String): String
@@ -102,6 +110,7 @@ internal interface MdiBridge {
 }
 
 internal object NativeMdiBridge : MdiBridge {
+    override fun layoutWarichuJson(nodes: String, options: String): String = MdiNative.layoutWarichuJson(nodes, options)
     override fun parseJson(source: String): String = MdiNative.parseJson(source)
     override fun renderHtml(source: String): String = MdiNative.renderHtml(source)
     override fun serializeMdi(source: String): String = MdiNative.serializeMdi(source)

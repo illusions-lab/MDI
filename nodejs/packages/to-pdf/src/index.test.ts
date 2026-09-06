@@ -287,3 +287,10 @@ describe("PDF export profile", () => {
     expect(html).toContain("line-height:1.5");
   });
 });
+
+it('prints a long formatted warichu only after host-driven layout converges', async()=>{
+ const html=renderHtml(`前文（[[warichu:${'一二三四五六七八九十'.repeat(15)}[[br]][[br]]{東京|とうきょう}]]）後文`);
+ const pdf=await renderHtmlToPdf(html);
+ expect(pdf.subarray(0,5).toString()).toBe('%PDF-');
+ expect(pdf.length).toBeGreaterThan(500);
+},30000);

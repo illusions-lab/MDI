@@ -170,6 +170,7 @@ def test_packaged_archives_are_created_in_rust_with_required_parts() -> None:
 
 def test_public_api_exports_and_legacy_alias() -> None:
     assert set(mdi.__all__) == {
+        "layout_warichu",
         "MDI_IR_VERSION",
         "MDI_SPEC_VERSION",
         "MdiRenderError",
@@ -211,3 +212,11 @@ def test_text_format_validation_and_unsupported_ir_guard(monkeypatch: pytest.Mon
     monkeypatch.setattr(mdi._native, "parse_json", lambda _source: json.dumps({"irVersion": "999.0"}))
     with pytest.raises(RuntimeError, match="Unsupported MDI IR version: 999.0"):
         mdi.parse("text")
+
+
+def test_warichu_layout_options_and_source_paths():
+    import mdi
+    result = mdi.layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
+    assert [f["widths"] for f in result] == [[2, 2], [4, 4]]
+    assert result[1]["sources"][0][0]["startUtf8"] == 6
+    assert result[1]["html"] == ["三四", "五六"]

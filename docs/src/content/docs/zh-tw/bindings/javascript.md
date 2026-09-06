@@ -138,3 +138,8 @@ const pdf = await renderPdfWithChromium(source, profile);
 Node 的 default PDF host 要另外 `npm install @illusions-lab/mdi-to-pdf`。Electron 可傳入 `{ renderHtmlToPdf(html, profile, sourceWritingMode) }`。PDF 的紙張、橫向、邊距、直/橫排、font、font size/line spacing、每行字數/每頁行數、indent、page number 都由 Rust 解決。browser/WASM 可在本機生成設定型 EPUB/DOCX；只有 PDF 因無法啟動 Chromium，需要把 `preparePdfExport()` 交給 Node/Electron/Tauri/CLI host。
 
 非字串 source 與無效 option 都是 `TypeError`。diagnostic 應作為 document feedback；只有 I/O/archive/host renderer failure 才適合 `try`/`catch`。span 是 UTF-8 **byte** offset，不是 JavaScript string index。
+
+
+### Automatic warichu layout
+
+自動割注使用正文50%字級與固定兩行。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` 呼叫Rust分割規則；唯讀HTML使用 `attachMdiWarichuLayout(container)`，列印前使用 `settleMdiPrintLayout(evaluate, { timeoutMs, signal })`。自動分割只影響呈現，不改寫MDI。無腳本HTML與EPUB保留雙行結構，但閱讀器重排可能不同。

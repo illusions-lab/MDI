@@ -145,6 +145,20 @@ pub extern "system" fn Java_app_illusions_mdi_internal_MdiNative_renderDocx(
     into_byte_array(&mut env, result)
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_illusions_mdi_internal_MdiNative_layoutWarichuJson(
+    mut env: JNIEnv<'_>,
+    _class: JObject<'_>,
+    nodes: JString<'_>,
+    options: JString<'_>,
+) -> jstring {
+    let result = read_source(&mut env, nodes).and_then(|nodes| {
+        read_source(&mut env, options)
+            .and_then(|options| mdi_core::layout_warichu_options_json(&nodes, &options))
+    });
+    into_jstring(&mut env, result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -928,3 +928,33 @@ export function renderTextFormatWithDiagnostics(
 
 /** @deprecated Use {@link parse}; it now parses the complete document. */
 export const parseMdiSyntax = parse;
+
+/** UTF-8 boundaries in an original inline leaf; paths are relative to children. */
+export interface MdiWarichuSource { path: number[]; startUtf8: number; endUtf8: number; group: number }
+export interface MdiWarichuOptions { firstCapacity: number; continuationCapacity: number }
+/** Presentation-only two-line fragment; generated boundaries never belong in MDI. */
+export interface MdiWarichuFragment {
+  lines: [Record<string, unknown>[], Record<string, unknown>[]];
+  widths: [number, number];
+  overflow: boolean;
+  hardBreakAfter: boolean;
+  sources: [MdiWarichuSource[], MdiWarichuSource[]];
+  html: [string, string];
+}
+/** Rust owns splitting. Capacities are half-em units at the note's 50% font size. */
+export function layoutMdiWarichu(
+  children: readonly Record<string, unknown>[],
+  capacity: number | MdiWarichuOptions = 40,
+): MdiWarichuFragment[] {
+  const options = typeof capacity === "number" ? {firstCapacity:capacity,continuationCapacity:capacity} : capacity;
+  for (const value of [options.firstCapacity, options.continuationCapacity]) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > 0xffffffff) {
+      throw new RangeError("Warichu capacity must be a positive u32 integer");
+    }
+  }
+  return JSON.parse(mdiCore.layoutWarichuOptionsJson(JSON.stringify(children), JSON.stringify(options)));
+}
+export { attachMdiWarichuLayout, measureMdiWarichu, applyMdiWarichu } from "./warichu-browser.js";
+export type { MdiWarichuLayoutController, MdiWarichuSettleOptions } from "./warichu-browser.js";
+
+export { settleMdiPrintLayout, type MdiPrintEvaluate } from "./warichu-print.js";
