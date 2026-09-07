@@ -6,6 +6,11 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_packages:
+        description: Optional comma-separated allowlist of packages already selected by release calculation
+        required: false
+        type: string
 
 concurrency: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -71,15 +76,29 @@ jobs:
           # commit, so its first parent is the exact already-released baseline.
           RELEASE_BASE_SHA: ${{ steps.base.outputs.sha }}
 
+      - name: Apply the optional manual package allowlist
+        id: selected
+        env:
+          CALCULATED_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
+          RELEASE_PACKAGE_ALLOWLIST: ${{ inputs.release_packages }}
+        run: |
+          selected="$CALCULATED_PACKAGES"
+          if [[ -n "$RELEASE_PACKAGE_ALLOWLIST" ]]; then
+            requested=$(jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))' <<<"$RELEASE_PACKAGE_ALLOWLIST")
+            jq -e --argjson requested "$requested" '. as $packages | all($requested[]; . as $wanted | any($packages[]; .name == $wanted))' <<<"$CALCULATED_PACKAGES" >/dev/null
+            selected=$(jq -c --argjson requested "$requested" '[.[] | select(.name as $name | any($requested[]; . == $name))]' <<<"$CALCULATED_PACKAGES")
+          fi
+          echo "publishedPackages=$selected" >> "$GITHUB_OUTPUT"
+
       - name: Publish next patch versions
         id: publish
         run: node nodejs/scripts/publish-versioned-packages.mjs
         env:
-          RELEASE_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
+          RELEASE_PACKAGES: ${{ steps.selected.outputs.publishedPackages }}
 
       - name: Create GitHub Releases with downloadable tarballs
         if: steps.publish.outputs.published == 'true'
         run: node nodejs/scripts/create-github-releases.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
+          PUBLISHED_PACKAGES: ${{ steps.selected.outputs.publishedPackages }}

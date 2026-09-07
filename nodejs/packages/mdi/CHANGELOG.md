@@ -1,6 +1,12 @@
 # @illusions-lab/mdi
 
-## Unreleased
+## 2.0.27
+
+### Patch Changes
+
+- Invalidate automatic warichu layout when stylesheet links change or leave the document head, while ignoring unrelated favicon and preload attribute mutations.
+
+## 2.0.26
 
 - Fix long notes clipping or shrinking during PDF output by measuring the physical printable page and actual glyph advances, including inherited tracking and indentation.
 

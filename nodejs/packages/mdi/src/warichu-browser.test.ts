@@ -2,19 +2,22 @@ import {expect,it,vi} from 'vitest';
 import {measureMdiWarichu,applyMdiWarichu,attachMdiWarichuLayout} from './warichu-browser.js';
 import {layoutMdiWarichu} from './index.js';
 function fixture() {
- const listeners=new Map<string,()=>void>();const observed=new Set<unknown>();
+ const listeners=new Map<string,()=>void>();const documentListeners=new Map<string,(event:any)=>void>();const observed=new Set<unknown>();
+ let observerOptions:any;
  let mutation:(records:any[])=>void=()=>{},resize:(entries:any[])=>void=()=>{};
  const style={writingMode:'horizontal-tb',direction:'ltr',fontSize:'20px',paddingInlineStart:'0',paddingInlineEnd:'0'};
  const note:any={dataset:{mdiWarichuSource:JSON.stringify([{type:'text',value:'一二三四五六'}])},innerHTML:'',querySelectorAll:()=>[],closest:()=>paragraph};
  const paragraph:any={clientWidth:200,clientHeight:300,getBoundingClientRect:()=>({left:0,right:200,bottom:300}),contains:(n:unknown)=>n===note,closest:(selector:string)=>selector.startsWith('[data')?null:paragraph,nodeType:1};
  let rects:any[]=[{left:0,right:120,bottom:40}];
- const win:any={getComputedStyle:()=>style,requestAnimationFrame:(cb:()=>void)=>setTimeout(cb,0),addEventListener:vi.fn(),removeEventListener:vi.fn(),visualViewport:{addEventListener:vi.fn(),removeEventListener:vi.fn()},MutationObserver:class{constructor(cb:any){mutation=cb}observe(){}disconnect(){}},ResizeObserver:class{constructor(cb:any){resize=cb}observe(element:unknown){observed.add(element)}unobserve(element:unknown){observed.delete(element)}disconnect(){observed.clear()}}};
+ const win:any={getComputedStyle:()=>style,requestAnimationFrame:(cb:()=>void)=>setTimeout(cb,0),addEventListener:vi.fn(),removeEventListener:vi.fn(),visualViewport:{addEventListener:vi.fn(),removeEventListener:vi.fn()},MutationObserver:class{constructor(cb:any){mutation=cb}observe(_target:unknown,options:unknown){observerOptions=options}disconnect(){}},ResizeObserver:class{constructor(cb:any){resize=cb}observe(element:unknown){observed.add(element)}unobserve(element:unknown){observed.delete(element)}disconnect(){observed.clear()}}};
  const fonts={ready:Promise.resolve(),addEventListener:(name:string,cb:()=>void)=>listeners.set(name,cb),removeEventListener:vi.fn()};
- const doc:any={defaultView:win,fonts,documentElement:{},createRange:()=>({selectNodeContents(){},setEndBefore(){},getClientRects:()=>rects})};
+ const headTargets=new Set<unknown>();
+ const head:any={nodeType:1,closest:()=>null,contains:(target:unknown)=>headTargets.has(target)};
+ const doc:any={defaultView:win,fonts,documentElement:{},head,addEventListener:(name:string,cb:(event:any)=>void)=>documentListeners.set(name,cb),removeEventListener:vi.fn((name:string)=>documentListeners.delete(name)),createRange:()=>({selectNodeContents(){},setEndBefore(){},getClientRects:()=>rects})};
  const paragraphs=[paragraph];
  const container:any={ownerDocument:doc,querySelectorAll:(selector:string)=>selector.startsWith('[data')?[note]:paragraphs,contains:(n:unknown)=>n===note||n===paragraph};
  note.ownerDocument=doc;note.parentElement=paragraph;
- return {container,note,paragraph,paragraphs,observed,style,win,fonts,rects:(value:any[])=>rects=value,mutation:(records:any[])=>mutation(records),resize:(entries:any[])=>resize(entries),listeners};
+ return {container,note,paragraph,paragraphs,observed,style,win,fonts,head,headTargets,rects:(value:any[])=>rects=value,mutation:(records:any[])=>mutation(records),resize:(entries:any[])=>resize(entries),listeners,documentListeners,observerOptions:()=>observerOptions};
 }
 it('measures remaining capacity in the containing realm and writing direction',()=>{
  const f=fixture();
@@ -42,6 +45,59 @@ it('settles queued mutations, resize, fonts and disposal without touching source
  f.mutation([{target:{contains:()=>false}}]);
  f.listeners.get('loadingdone')!();await adapter.settled();
  adapter.dispose();adapter.configure();expect(f.fonts.removeEventListener).toHaveBeenCalled();
+});
+it('invalidates head styles, stylesheet tree changes, link attributes and stylesheet loads',async()=>{
+ const f=fixture();const adapter=attachMdiWarichuLayout(f.container);await adapter.settled();
+ const expectFreshReady=async(record:any)=>{const previous=f.win.__mdiWarichuLayoutReady;f.mutation([record]);expect(f.win.__mdiWarichuLayoutReady).not.toBe(previous);await adapter.settled();};
+ const style:any={nodeType:1,tagName:'STYLE',parentElement:null,closest:()=>style,getAttribute:()=>null,querySelectorAll:()=>[]};f.headTargets.add(style);
+ await expectFreshReady({type:'characterData',target:{nodeType:3,parentElement:style},addedNodes:[],removedNodes:[]});
+ const link:any={nodeType:1,tagName:'LINK',rel:'stylesheet',parentElement:null,closest:()=>link,getAttribute:(name:string)=>name==='rel'?link.rel:null,querySelectorAll:()=>[],matches:(selector:string)=>selector==='link[rel~="stylesheet"]'};
+ await expectFreshReady({type:'childList',target:f.head,addedNodes:[link],removedNodes:[]});
+ await expectFreshReady({type:'childList',target:f.head,addedNodes:[],removedNodes:[link]});
+ f.headTargets.add(link);
+ for(const attributeName of ['href','media','disabled']) await expectFreshReady({type:'attributes',target:link,attributeName,oldValue:null,addedNodes:[],removedNodes:[]});
+ let previous=f.win.__mdiWarichuLayoutReady;f.documentListeners.get('load')!({target:link});expect(f.win.__mdiWarichuLayoutReady).not.toBe(previous);await adapter.settled();
+ adapter.dispose();expect(f.container.ownerDocument.removeEventListener).toHaveBeenCalledWith('load',expect.any(Function),true);
+});
+it('associates nested removed head trees and tolerates unrelated mutation shapes',async()=>{
+ const f=fixture();const adapter=attachMdiWarichuLayout(f.container);await adapter.settled();
+ const descendant:any={nodeType:1,tagName:'LINK',getAttribute:(name:string)=>name==='rel'?'preload STYLESHEET':null};
+ const linkWithoutRel:any={nodeType:1,tagName:'LINK',getAttribute:()=>null,querySelectorAll:()=>[]};
+ const textNode:any={nodeType:3};
+ const wrapper:any={nodeType:1,tagName:'DIV',parentElement:null,closest:()=>null,getAttribute:()=>null,querySelectorAll:()=>[descendant],contains:(node:unknown)=>node===descendant};
+ const previous=f.win.__mdiWarichuLayoutReady;
+ f.mutation([
+  {type:'childList',target:{nodeType:1,contains:()=>false},addedNodes:[],removedNodes:[]},
+  {type:'childList',target:wrapper,addedNodes:[descendant],removedNodes:[]},
+  {type:'childList',target:f.head,addedNodes:[textNode,linkWithoutRel],removedNodes:[wrapper]},
+ ]);
+ expect(f.win.__mdiWarichuLayoutReady).not.toBe(previous);await adapter.settled();
+ f.mutation([{type:'attributes',target:{nodeType:1,contains:(node:unknown)=>node===f.container,closest:()=>null},attributeName:'class',oldValue:null,addedNodes:[],removedNodes:[]}]);await adapter.settled();
+ const unchanged=f.win.__mdiWarichuLayoutReady;f.documentListeners.get('load')!({target:{matches:()=>false}});expect(f.win.__mdiWarichuLayoutReady).toBe(unchanged);
+ adapter.dispose();
+});
+it('invalidates stylesheet mutations in head, including rel and removal records in either order',async()=>{
+ const f=fixture();const adapter=attachMdiWarichuLayout(f.container);await adapter.settled();
+ const makeLink=(rel:string)=>{const link:any={nodeType:1,tagName:'LINK',rel,parentElement:null,closest:()=>link,getAttribute:(name:string)=>name==='rel'?link.rel:null,querySelectorAll:()=>[]};return link;};
+ for(const order of ['rel-remove','remove-rel']) {
+  const link=makeLink(order==='rel-remove'?'preload':'stylesheet');
+  const rel={type:'attributes',target:link,attributeName:'rel',oldValue:order==='rel-remove'?'stylesheet':'preload',addedNodes:[],removedNodes:[]};
+  const removal={type:'childList',target:f.head,addedNodes:[],removedNodes:[link]};
+  const previous=f.win.__mdiWarichuLayoutReady;f.mutation(order==='rel-remove'?[rel,removal]:[removal,rel]);
+  expect(f.win.__mdiWarichuLayoutReady).not.toBe(previous);await adapter.settled();
+ }
+ expect(f.observerOptions()).toEqual(expect.objectContaining({attributeOldValue:true}));
+ adapter.dispose();
+});
+it('ignores favicon and preload non-rel attributes even when oldValue is stylesheet',async()=>{
+ const f=fixture();const adapter=attachMdiWarichuLayout(f.container);await adapter.settled();
+ for(const currentRel of ['icon','preload']) {
+  const link:any={nodeType:1,tagName:'LINK',parentElement:null,closest:()=>link,getAttribute:(name:string)=>name==='rel'?currentRel:null,querySelectorAll:()=>[]};f.headTargets.add(link);
+  const ready=f.win.__mdiWarichuLayoutReady;
+  for(const attributeName of ['href','media','disabled']) f.mutation([{type:'attributes',target:link,attributeName,oldValue:'stylesheet',addedNodes:[],removedNodes:[]}]);
+  expect(f.win.__mdiWarichuLayoutReady).toBe(ready);
+ }
+ adapter.dispose();
 });
 it('settled rejects pending font timeout and cancellation',async()=>{
  const f=fixture();f.fonts.ready=new Promise(()=>{});const adapter=attachMdiWarichuLayout(f.container);
