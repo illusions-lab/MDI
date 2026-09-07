@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "MDI", targets: ["MDI"]),
     ],
     targets: [
-        .binaryTarget(name: "MDICore", url: "https://github.com/illusions-lab/MDI/releases/download/2.0.3/MDICore.xcframework.zip", checksum: "ab6d91840673a7f54f4d76fb814f9102359780d274751e1e11ea5c411f73621e"),
+        .binaryTarget(name: "MDICore", url: "https://github.com/illusions-lab/MDI/releases/download/2.0.4/MDICore.xcframework.zip", checksum: "1d88f210332a025c9bac39da11286e8889144a1af97a9652f8a7bdbb6a66f962"),
         .target(name: "MDI", dependencies: ["MDICore"], path: "swift/Sources/MDI"),
         .testTarget(name: "MDITests", dependencies: ["MDI", "MDICore"], path: "swift/Tests/MDITests"),
     ]
