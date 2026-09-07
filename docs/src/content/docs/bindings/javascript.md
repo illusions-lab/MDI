@@ -175,3 +175,8 @@ Install `@illusions-lab/mdi-to-pdf` alongside `@illusions-lab/mdi` for the defau
 `renderText`, `renderTextFormat`, and `serializeMdi` are synchronous Rust functions. `renderTextFormat` accepts `txt`, `txt-ruby`, `narou`, `kakuyomu`, `aozora`, or `note` plus an optional indentation prefix. `parseMdiSyntax` is a deprecated alias for `parse`; `MDI_SPEC_VERSION` is `"2.0"` and `MDI_IR_VERSION` is `"1.0"`.
 
 Non-string source is a `TypeError`; invalid option objects are also rejected with `TypeError`. Treat diagnostics as document feedback, and reserve `try`/`catch` for programming, I/O, archive, or host-renderer failures. Source spans are UTF-8 **byte** offsets, not JavaScript string indices; see [Diagnostics](/core/diagnostics/).
+
+
+### Automatic warichu layout
+
+Automatic warichu uses two lines at 50% type. Use `layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` for Rust splitting, `attachMdiWarichuLayout(container)` for read-only HTML, and `settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` before printing. Layout is presentation-only; canonical MDI is unchanged. Static EPUB/HTML preserve readable precomputed lines; reader reflow may vary.

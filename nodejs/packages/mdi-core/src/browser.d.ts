@@ -1,5 +1,5 @@
 export {
-  applyPdfProfileJson, blockMacroAmount, blockMacroKind, blockMacroVariant,
+  layoutWarichuJson, layoutWarichuOptionsJson, applyPdfProfileJson, blockMacroAmount, blockMacroKind, blockMacroVariant,
   getMdiTextBlocksJson, pageSizeCatalogJson, parseMdiSyntaxJson, parseMdiMdastJson, prepareChromiumPrintProfileJson,
   resolveMdiSourceSpanJson,
   resolveMdiSourceSpansJson,

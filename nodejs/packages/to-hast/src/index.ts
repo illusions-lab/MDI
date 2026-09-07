@@ -1,3 +1,4 @@
+import { layoutWarichuJson } from "@illusions-lab/mdi-core";
 import { toHast } from "mdast-util-to-hast";
 import type { Handler, State } from "mdast-util-to-hast";
 import type {} from "mdast-util-mdi";
@@ -83,6 +84,31 @@ function ruby(reading: string): Element["children"] {
 	];
 }
 
+// Shape conversion only: all splitting decisions remain in Rust.
+function warichuIr(node: Record<string, any>): Record<string, any> {
+ const types:Record<string,string>={mdiRuby:'ruby',mdiTcy:'tcy',mdiBreak:'break',mdiEm:'em',mdiNoBreak:'noBreak',mdiWarichu:'warichu',mdiKern:'kern'};
+ const out:Record<string,any>={...node,type:types[node.type] ?? node.type};
+ if(node.children) out.children=node.children.map(warichuIr);
+ if(node.type==='mdiRuby') out.ruby={kind:Array.isArray(node.ruby)?'perCharacter':'group',value:node.ruby};
+ return out;
+}
+function warichuMdast(node: Record<string, any>): Record<string, any> {
+ const types:Record<string,string>={ruby:'mdiRuby',tcy:'mdiTcy',break:'mdiBreak',em:'mdiEm',noBreak:'mdiNoBreak',warichu:'mdiWarichu',kern:'mdiKern'};
+ const out:Record<string,any>={...node,type:types[node.type] ?? node.type};
+ if(node.children) out.children=node.children.map(warichuMdast);
+ if(node.type==='ruby') out.ruby=node.ruby.value;
+ return out;
+}
+const mdiWarichu:Handler=(state,node)=>{
+ const children=node.children.map(warichuIr);
+ const fragments=JSON.parse(layoutWarichuJson(JSON.stringify(children),40)) as {lines:Record<string,any>[][];overflow:boolean;hardBreakAfter:boolean}[];
+ return element(state,node,'span',{className:['mdi-warichu'],style:'font-size:.5em;line-height:1',dataMdiWarichuSource:JSON.stringify(children)},fragments.flatMap(fragment=>[{
+  type:'element',tagName:'span',properties:{className:['mdi-warichu-fragment'],style:'display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start',...(fragment.overflow?{dataMdiOverflow:'true'}:{})},children:fragment.lines.map(line=>({
+   type:'element',tagName:'span',properties:{className:['mdi-warichu-line'],style:'display:block;white-space:nowrap;min-block-size:1em'},children:state.all({...node,children:line.map(warichuMdast)})
+  }))
+ },...(fragment.hardBreakAfter?[{type:'element' as const,tagName:'br',properties:{},children:[]}]:[])]));
+};
+
 const mdiTcy: Handler = (state, node) =>
 	element(state, node, "span", { className: ["mdi-tcy"] }, [
 		{ type: "text", value: node.value },
@@ -154,7 +180,7 @@ export const mdiHandlers: Record<string, Handler> = {
 	mdiBlank,
 	mdiEm,
 	mdiNoBreak: phrasing("mdi-nobr"),
-	mdiWarichu: phrasing("mdi-warichu"),
+	mdiWarichu,
 	mdiKern,
 	mdiPagebreak,
 	paragraph,

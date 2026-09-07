@@ -36,10 +36,10 @@
     "@illusions-lab/mdi-export-profile": "workspace:*",
     "@illusions-lab/mdi-to-html": "workspace:*",
     "playwright": "^1.48.0",
-    "@types/mdast": "^4.0.0"
+    "@types/mdast": "^4.0.0",
+    "@illusions-lab/mdi": "workspace:*"
   },
   "devDependencies": {
-    "@illusions-lab/mdi": "workspace:*",
     "@illusions-lab/mdi-remark": "workspace:*",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.0",

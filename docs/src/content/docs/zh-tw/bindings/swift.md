@@ -71,3 +71,15 @@ do {
 ## 開發與發布
 
 repository 的 `swift/Package.swift` 是本機開發用 package。CI 會建置 XCFramework、跑 XCTest，並對 `swift/Sources/MDI` 強制 95% line coverage、上傳 Codecov。release workflow 會建立 manifest pull request；該 PR 合併後才發布核准的 artifact。它使用 GitHub Actions 內建 token，不需要 PAT 或第二個 repository。
+
+## 自動割注排版
+
+分割規則由 Rust 統一實作。固定兩行、正文50%字級、零小行間距。首個片段可使用正文行剩餘容量，後續片段使用完整行容量。容量與回傳寬度以割注字級的半個em為單位；這是字寬估算，不保證比例字型的精確均衡。
+
+```swift
+let fragments = try MDI.layoutWarichu(
+    [.object(["type": .string("text"), "value": .string("一二三四五六")])],
+    capacity: 4, firstCapacity: 2)
+```
+
+結果包含 `lines`、`html`、`widths`、`overflow`、`hardBreakAfter` 與 `sources`。`path` 是從輸入陣列起算的子節點索引路徑；`startUtf8` / `endUtf8` 是可見文字中的半開UTF-8位元組範圍。相同 `group` 保留跨格式邊界的書寫素。Ruby、縱中橫及no-break保持不可拆。作者硬換行保留，自動分割不寫回canonical MDI或純文字。靜態HTML/EPUB的閱讀器重排結果可能不同。DOCX使用原生雙行群組；XML與匯入器檢查不代表Word實測。

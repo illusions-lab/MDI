@@ -1,4 +1,4 @@
-import { getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
+import { attachMdiWarichuLayout, measureMdiWarichu, renderHtml, layoutMdiWarichu, getMdiTextBlocks, initializeMdi, parse, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi } from "@illusions-lab/mdi";
 import { parseForMdast, type MdiMdastDocument, type MdiMdastNode } from "@illusions-lab/mdi/internal/mdast";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkParse from "remark-parse";
@@ -62,6 +62,8 @@ async function run(): Promise<void> {
   const remarkOutput = processor.stringify(transformed);
 
   document.querySelector("#result")!.textContent = JSON.stringify({
+    warichuBrowser: await testWarichuBrowser(),
+    warichu: layoutMdiWarichu([{ type: "text", value: "一二三四五" }]),
     irVersion: parsed.irVersion,
     projectionVersion: projection.projectionVersion,
     provenanceJson: JSON.stringify(canonicalProvenance(parseForMdast(source).document)),
@@ -97,4 +99,46 @@ function canonicalNodeProvenance(node: MdiMdastNode): unknown {
     provenance: node.mdiProvenance ?? null,
     children: (node.children ?? []).map(canonicalNodeProvenance),
   };
+}
+
+async function testWarichuBrowser() {
+ const iframe=document.createElement('iframe');
+ iframe.style.cssText='width:400px;height:500px';
+ const noteText='一二三四五六七八九十'.repeat(12);
+ const loaded=new Promise<void>(resolve=>iframe.onload=()=>resolve());
+ iframe.srcdoc=renderHtml(`前文前文（[[warichu:${noteText}]]）後文\n\n[[warichu:甲[[br]][[br]]乙]]\n\n[[warichu:甲[[warichu:乙丙]]丁]]`);
+ document.body.append(iframe);await loaded;
+ const body=iframe.contentDocument!.body;
+ body.style.cssText='font-size:24px;width:180px';
+ const adapter=attachMdiWarichuLayout(body);
+ await adapter.settled();
+ const note=body.querySelector<HTMLElement>('.mdi-warichu')!;
+ const original=note.dataset.mdiWarichuSource;
+ const beforeZoom=measureMdiWarichu(body)[0].options;
+ body.style.transform='scale(0.8)';body.style.zoom='1.5';adapter.configure();await adapter.settled();
+ const afterZoom=measureMdiWarichu(body)[0].options;
+ const zoomStable=JSON.stringify(beforeZoom)===JSON.stringify(afterZoom);
+ body.style.transform='';body.style.zoom='';adapter.configure();await adapter.settled();
+ const lines=Array.from(note.querySelectorAll<HTMLElement>('.mdi-warichu-line'));
+ const geometry=lines.slice(0,2).map(line=>{const r=line.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};});
+ const previous=note.previousSibling!;
+ const openingRange=iframe.contentDocument!.createRange();openingRange.setStart(previous,previous.textContent!.length-1);openingRange.setEnd(previous,previous.textContent!.length);
+ const opening=openingRange.getBoundingClientRect();
+ const firstFragment=note.querySelector('.mdi-warichu-fragment')!.getBoundingClientRect();
+ const adjacentOpening=opening.top<firstFragment.bottom && opening.bottom>firstFragment.top;
+ const next=note.nextSibling!;const closingRange=iframe.contentDocument!.createRange();closingRange.setStart(next,0);closingRange.setEnd(next,1);
+ const closing=closingRange.getBoundingClientRect();const lastFragment=Array.from(note.querySelectorAll('.mdi-warichu-fragment')).at(-1)!.getBoundingClientRect();
+ const adjacentClosing=closing.top<lastFragment.bottom && closing.bottom>lastFragment.top;
+ const preserved=note.textContent===noteText;
+ const wraps=new Set(Array.from(note.querySelectorAll('.mdi-warichu-fragment')).map(n=>n.getBoundingClientRect().y)).size>1;
+ const hardBreaks=body.querySelectorAll('.mdi-warichu')[1].querySelectorAll('br').length;
+ body.style.width='280px'; adapter.configure();await adapter.settled();
+ const resized=note.dataset.mdiWarichuSource===original && note.textContent===noteText;
+ body.style.cssText='font-size:24px;height:220px;writing-mode:vertical-rl';adapter.configure();await adapter.settled();
+ const vertical=Array.from(note.querySelectorAll('.mdi-warichu-line')).slice(0,2).map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y};});
+ const outer=body.querySelectorAll<HTMLElement>('.mdi-warichu')[2];
+ const inner=outer.querySelector<HTMLElement>('.mdi-warichu')!;
+ const nested={text:outer.textContent,lines:inner.querySelectorAll(':scope > .mdi-warichu-fragment > .mdi-warichu-line').length,sameSize:iframe.contentWindow!.getComputedStyle(inner).fontSize===iframe.contentWindow!.getComputedStyle(outer).fontSize,measured:measureMdiWarichu(body).length};
+ adapter.dispose();iframe.remove();
+ return {geometry,preserved,wraps,hardBreaks,resized,vertical,adjacentOpening,adjacentClosing,zoomStable,nested};
 }

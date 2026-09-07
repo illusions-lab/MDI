@@ -30,7 +30,8 @@
   },
   "dependencies": {
     "mdast-util-mdi": "workspace:*",
-    "mdast-util-to-hast": "^13.0.0"
+    "mdast-util-to-hast": "^13.0.0",
+    "@illusions-lab/mdi-core": "workspace:*"
   },
   "devDependencies": {
     "@types/hast": "^3.0.0",

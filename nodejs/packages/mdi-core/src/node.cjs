@@ -31,3 +31,7 @@ exports.resolveRuby = bindings.resolveRuby;
 exports.serializeMdi = bindings.serializeMdi;
 exports.unescapeMdi = bindings.unescapeMdi;
 exports.unescapeRubyText = bindings.unescapeRubyText;
+
+exports.layoutWarichuJson = bindings.layoutWarichuJson;
+
+exports.layoutWarichuOptionsJson = (...args) => bindings.layoutWarichuOptionsJson(...args);

@@ -59,3 +59,5 @@ cannot make syntax, profile-validation, or semantic-rendering decisions.
 - [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-pdf/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+
+Print hosts must pass `prepared.page` to `settleMdiPrintLayout(evaluate, { page: prepared.page })`. The Node PDF adapter does this automatically, constraining measurement to the physical printable page before font/layout stabilization.

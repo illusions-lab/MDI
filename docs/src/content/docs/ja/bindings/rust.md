@@ -73,3 +73,15 @@ parse、`serialize_mdi`、HTML/TXT/EPUB/DOCX/PDF renderer はすべて実装済�
 
 - [docs.rs API reference](https://docs.rs/mdi-core/)
 - [レンダリングモデル](/ja/core/rendering/)
+
+## 割注の自動組版
+
+分割規則は Rust が一元管理します。本文の50%の字級、固定2行、行間なしで表示します。先頭の断片には本文行の残り幅、後続には行全体の幅を指定できます。幅の単位は割注字級の半角emです。文字幅の推定であり、比例フォントの厳密な均衡は保証しません。
+
+```rust
+let children = serde_json::json!([{"type":"text", "value":"一二三四五六"}]);
+let fragments = mdi_core::layout_warichu_with_options(children.as_array().unwrap(),
+    &mdi_core::WarichuOptions { first_capacity: 2, continuation_capacity: 4 });
+```
+
+戻り値は `lines`、`html`、`widths`、`overflow`、`hardBreakAfter`、`sources` を含みます。`path` は入力配列からの子インデックス列、`startUtf8` / `endUtf8` は可視文字列内の半開UTF-8バイト範囲です。同一の `group` は書式境界をまたぐ書記素も分割しません。ルビ、縦中横、改行禁止は一体として扱います。明示改行を保ち、自動分割は正規MDIや平文に書き戻しません。静的HTML/EPUBは閲覧ソフトにより再配置が異なります。DOCXはネイティブの双行グループを使います。XMLやインポーターの検証をWordの描画実測とは記載しません。

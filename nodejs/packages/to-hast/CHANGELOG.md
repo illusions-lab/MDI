@@ -31,3 +31,7 @@
 - Updated dependencies
   - mdast-util-mdi@2.0.2
   - @illusions-lab/mdi-remark@2.0.3
+
+## Unreleased
+
+- Render legacy mdast warichu through the Rust layout engine with portable two-line spans, transient source maps, and preserved authored hard breaks.

@@ -65,7 +65,19 @@ def render_docx(source: str) -> bytes:
 parse_mdi_syntax = parse
 
 __all__ = [
-    "MDI_IR_VERSION", "MDI_SPEC_VERSION", "MdiRenderError", "TextFormat", "parse",
+    "layout_warichu", "MDI_IR_VERSION", "MDI_SPEC_VERSION", "MdiRenderError", "TextFormat", "parse",
     "parse_mdi_syntax", "render_docx", "render_epub", "render_html", "render_text",
     "render_text_format", "serialize_mdi",
 ]
+
+
+def layout_warichu(children: list[dict[str, Any]], capacity: int = 40, *, first_capacity: int | None = None) -> list[dict[str, Any]]:
+    """Lay out two presentation lines using Rust; widths are note half-em units.
+
+    Paths are relative to children; UTF-8 offsets address the visible leaf text.
+    Automatic splits never modify the supplied document.
+    """
+    return json.loads(_native.layout_warichu_json(json.dumps(children), json.dumps({
+        "firstCapacity": capacity if first_capacity is None else first_capacity,
+        "continuationCapacity": capacity,
+    })))

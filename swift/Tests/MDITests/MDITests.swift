@@ -4,6 +4,15 @@ import MDICore
 @testable import MDI
 
 final class MDITests: XCTestCase {
+    func testWarichuLayoutPreservesSource() throws {
+        let children: [MDIJSONValue] = [.object(["type": .string("text"), "value": .string("一二三四五六")])]
+        let result = try MDI.layoutWarichu(children, capacity: 4, firstCapacity: 2)
+        guard case let .array(fragments) = result else { return XCTFail("Expected fragments") }
+        XCTAssertEqual(fragments.count, 2)
+        guard case let .object(first) = fragments[0] else { return XCTFail("Expected fragment") }
+        XCTAssertEqual(first["widths"], .array([.number(2), .number(2)]))
+    }
+
     private let formatContractSource = """
     ---
     title: Swift package contract

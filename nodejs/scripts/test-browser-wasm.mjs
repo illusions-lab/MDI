@@ -148,6 +148,19 @@ async function testPage(browserName, page, url, getNodeProjection, parseNodeMdas
   assert.equal(result.error, undefined, `${browserName}: ${result.error}`);
   assert.equal(result.irVersion, "1.0", browserName);
   assert.equal(result.projectionVersion, "1.0", browserName);
+  assert.deepEqual(result.warichu[0].widths, [6, 4], browserName);
+  const geometry=result.warichuBrowser;
+  assert(geometry.preserved && geometry.wraps && geometry.resized, `${browserName}: adaptive warichu preserves source through wrapping and resizing`);
+  assert.deepEqual(geometry.nested,{text:'甲乙丙丁',lines:2,sameSize:true,measured:3});
+  assert(geometry.zoomStable, `${browserName}: zoom preserves capacity units`);
+  assert(geometry.adjacentOpening && geometry.adjacentClosing, `${browserName}: external parentheses stay adjacent`);
+  assert.equal(geometry.hardBreaks,2, `${browserName}: authored repeated hard breaks`);
+  assert.equal(geometry.geometry[0].x,geometry.geometry[1].x);
+  assert(geometry.geometry[0].y<geometry.geometry[1].y);
+  assert.equal(geometry.vertical[0].y,geometry.vertical[1].y);
+  assert(geometry.vertical[0].x>geometry.vertical[1].x);
+
+  assert.equal(result.warichu[0].lines.flat().map(node => node.value).join(""), "一二三四五", browserName);
   assert.equal(
     result.provenanceJson,
     JSON.stringify(canonicalProvenance(parseNodeMdast(result.projectionSource).document)),

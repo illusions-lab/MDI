@@ -497,23 +497,13 @@ Warichu is an inline annotation set in two half-height lines within the line of 
 
 ### HTML Output / HTML 出力
 
-```html
-<span class="mdi-warichu">六曜の一つで吉日とされる</span>
-```
+Renderers may generate two-line fragments without changing the inline children
+or inserting `[[br]]` into the document. The Rust renderer uses presentation-only
+`.mdi-warichu-fragment` and `.mdi-warichu-line` spans at 50% body size.
+See [automatic layout decisions and current limitations](./WARICHU-LAYOUT.md).
 
-```css
-.mdi-warichu {
-  display: inline-block;
-  font-size: 0.5em;
-  line-height: 1.1;
-  max-inline-size: 10em;
-  vertical-align: middle;
-  text-align: start;
-}
-```
-
-CSS has no native warichu support; the inline-block approximation above wraps the note into two short lines. Renderers targeting formats with native warichu (e.g. InDesign, some EPUB readers) should map it directly.  
-CSS に割注のネイティブサポートはないため、上記の inline-block による近似で二行組を再現します。割注をネイティブに持つ出力先（InDesign 等）ではそちらへマップします。
+レンダラーは文書の内容や `[[br]]` を変更せず、表示用の二行組を生成できます。
+自動分割は保存される構文ではありません。既存の明示的な改行は保持されます。
 
 ---
 

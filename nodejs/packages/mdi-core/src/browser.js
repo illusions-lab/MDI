@@ -38,3 +38,7 @@ export const resolveRuby = (...args) => (requireInitialized(), bindings.resolveR
 export const serializeMdi = (...args) => (requireInitialized(), bindings.serializeMdi(...args));
 export const unescapeMdi = (...args) => (requireInitialized(), bindings.unescapeMdi(...args));
 export const unescapeRubyText = (...args) => (requireInitialized(), bindings.unescapeRubyText(...args));
+
+export const layoutWarichuJson = (...args) => (requireInitialized(), bindings.layoutWarichuJson(...args));
+
+export const layoutWarichuOptionsJson = (...args) => (requireInitialized(), bindings.layoutWarichuOptionsJson(...args));

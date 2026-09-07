@@ -111,7 +111,16 @@ class MdiJsonTest {
         assertNotNull(MdiSourceSpan.serializer())
     }
 
+    @Test
+    fun warichu_options_forward_to_rust_and_reject_negative_capacity() {
+        assertEquals("{\"firstCapacity\":2,\"continuationCapacity\":4}", Mdi.layoutWarichuJson("[]", 4, 2))
+        assertEquals("{\"firstCapacity\":40,\"continuationCapacity\":40}", Mdi.layoutWarichuJson("[]"))
+        assertFailsWith<IllegalArgumentException> { Mdi.layoutWarichuJson("[]", -1) }
+        assertFailsWith<IllegalArgumentException> { Mdi.layoutWarichuJson("[]", 1, -1) }
+    }
+
     private class FakeBridge : MdiBridge {
+        override fun layoutWarichuJson(nodes: String, options: String): String = options
         val calls = mutableListOf<String>()
         var parseJson: String = validParseJson
 
