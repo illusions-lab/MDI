@@ -84,11 +84,44 @@ export function attachMdiWarichuLayout(container:HTMLElement):MdiWarichuLayoutCo
   try {await Promise.race([new Promise<void>(resolve=>{id=win.requestAnimationFrame(()=>resolve());}),disposal]);}
   finally {win.cancelAnimationFrame?.(id);}
  };
- const observe = () => mutation.observe(container.ownerDocument.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','class','dir','data-mdi-warichu-source']});
+ const observe = () => mutation.observe(container.ownerDocument.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeOldValue:true,attributeFilter:['style','class','dir','data-mdi-warichu-source','href','rel','media','disabled']});
  const mutation = new realm.MutationObserver(records=>{
+  const head=container.ownerDocument.head;
+  const headTrees=new Set<Node>();
+  const isInTree=(node:Node|null|undefined,tree:Node)=>node===tree || (tree.nodeType===1 && typeof (tree as Element).contains==='function' && (tree as Element).contains(node ?? null));
+  // Attribute records can point at a node which has already left <head>. Associate
+  // every added or removed tree with its head mutation before inspecting records,
+  // independently of the order chosen by the browser for this delivery.
+  let found=true;
+  while(found) {
+   found=false;
+   for(const record of records) {
+    if(record.type!=='childList') continue;
+    const targetInHead=record.target===head || head?.contains(record.target) || Array.from(headTrees).some(tree=>isInTree(record.target,tree));
+    if(!targetInHead) continue;
+    for(const node of [...Array.from(record.addedNodes),...Array.from(record.removedNodes)]) if(!headTrees.has(node)) {headTrees.add(node);found=true;}
+   }
+  }
+  const isHeadMutation=(node:Node|null|undefined)=>Boolean(node && (node===head || head?.contains(node) || Array.from(headTrees).some(tree=>isInTree(node,tree))));
+  const stylesheetRel=(rel:string|null|undefined)=>rel?.split(/\s+/).some(value=>value.toLowerCase()==='stylesheet') ?? false;
+  const stylesheetInTree=(node:Node)=>{
+   const elements=node.nodeType===1 ? [node as Element,...Array.from((node as Element).querySelectorAll?.('style,link') ?? [])] : [];
+   return elements.some(element=>element.tagName==='STYLE' || (element.tagName==='LINK' && stylesheetRel(element.getAttribute('rel'))));
+  };
   for(const record of records) {
-   if(!container.contains(record.target) && !record.target.contains(container)) continue;
    const element=record.target.nodeType===1?record.target as HTMLElement:record.target.parentElement;
+   const candidate=element?.closest?.('style,link');
+   const stylesheetMutation=(isHeadMutation(record.target) || isHeadMutation(element)) && (
+    candidate?.tagName==='STYLE' ||
+    (record.type==='attributes' && candidate?.tagName==='LINK' && (
+     record.attributeName==='rel'
+      ? stylesheetRel(candidate.getAttribute('rel')) || stylesheetRel(record.oldValue)
+      : ['href','media','disabled'].includes(record.attributeName ?? '') && stylesheetRel(candidate.getAttribute('rel'))
+    )) ||
+    (record.type==='childList' && [...Array.from(record.addedNodes),...Array.from(record.removedNodes)].some(stylesheetInTree))
+   );
+   if(stylesheetMutation) {invalidate();continue;}
+   if(!container.contains(record.target) && !(typeof record.target.contains==='function' && record.target.contains(container))) continue;
    const paragraph=element?.closest<HTMLElement>('p,li,td,th,h1,h2,h3,h4,h5,h6');
    invalidate(paragraph && container.contains(paragraph)?paragraph:undefined);
   }
@@ -137,6 +170,8 @@ export function attachMdiWarichuLayout(container:HTMLElement):MdiWarichuLayoutCo
  syncObservedParagraphs();
  observe();
  container.ownerDocument.fonts.addEventListener('loadingdone',configure);
+ const stylesheetLoad=(event:Event)=>{const target=event.target as Element|null;if(target?.matches?.('link[rel~="stylesheet"]')) configure();};
+ container.ownerDocument.addEventListener('load',stylesheetLoad,true);
  win.addEventListener('resize',configure);
  win.visualViewport?.addEventListener('resize',configure);
  configure();
@@ -148,5 +183,5 @@ export function attachMdiWarichuLayout(container:HTMLElement):MdiWarichuLayoutCo
   signal?.addEventListener('abort',abort,{once:true});
   const latest=async()=>{let current;do {current=ready;await Promise.race([current,disposal]);} while(current!==ready);};
   latest().then(()=>finish(),finish);
- }),dispose:()=>{disposed=true;rejectDisposal(new Error('Warichu layout disposed'));resize.disconnect();mutation.disconnect();container.ownerDocument.fonts.removeEventListener('loadingdone',configure);win.removeEventListener('resize',configure);win.visualViewport?.removeEventListener('resize',configure);}};
+ }),dispose:()=>{disposed=true;rejectDisposal(new Error('Warichu layout disposed'));resize.disconnect();mutation.disconnect();container.ownerDocument.fonts.removeEventListener('loadingdone',configure);container.ownerDocument.removeEventListener('load',stylesheetLoad,true);win.removeEventListener('resize',configure);win.visualViewport?.removeEventListener('resize',configure);}};
 }

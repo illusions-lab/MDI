@@ -62,6 +62,7 @@ async function run(): Promise<void> {
   const remarkOutput = processor.stringify(transformed);
 
   document.querySelector("#result")!.textContent = JSON.stringify({
+    stylesheetMutations: await testStylesheetMutations(),
     warichuBrowser: await testWarichuBrowser(),
     warichu: layoutMdiWarichu([{ type: "text", value: "一二三四五" }]),
     irVersion: parsed.irVersion,
@@ -85,6 +86,16 @@ async function run(): Promise<void> {
     largeNodeCount: large.document.children.length,
     diagnostic: unsupportedVersion.diagnostics[0],
   });
+}
+
+async function testStylesheetMutations() {
+ const host=document.createElement('div');document.body.append(host);const adapter=attachMdiWarichuLayout(host);await adapter.settled();
+ const layoutReady=()=> (window as unknown as {__mdiWarichuLayoutReady:Promise<void>}).__mdiWarichuLayoutReady;const deliver=async()=>{await new Promise<void>(resolve=>setTimeout(resolve,0));};
+ try {
+  for(const currentRel of ['icon','preload']) {const link=document.createElement('link');link.rel=currentRel;link.setAttribute('media','stylesheet');document.head.append(link);await deliver();adapter.configure();await adapter.settled();const unchanged=layoutReady();link.setAttribute('media','print');await deliver();if(layoutReady()!==unchanged) throw new Error(`${currentRel} media mutation invalidated warichu`);link.remove();await deliver();}
+  for(const order of ['rel-remove','remove-rel']) {const link=document.createElement('link');link.rel='stylesheet';document.head.append(link);await deliver();adapter.configure();await adapter.settled();const before=layoutReady();if(order==='rel-remove') {link.rel='preload';link.remove();} else {link.remove();link.rel='preload';}await deliver();if(layoutReady()===before) throw new Error(`Stylesheet to preload removal (${order}) did not invalidate warichu`);await adapter.settled();}
+  return true;
+ } finally {adapter.dispose();host.remove();}
 }
 
 function canonicalProvenance(document: MdiMdastDocument): unknown {

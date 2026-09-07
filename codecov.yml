@@ -25,5 +25,8 @@ flags:
 
 ignore:
   - nodejs/**/dist/
+  # Playwright executes this packed-consumer fixture in three browsers; it is
+  # not production package source and the browser run does not emit V8 coverage.
+  - "nodejs/browser-test/**/*"
   - nodejs/docs/
   - python/
