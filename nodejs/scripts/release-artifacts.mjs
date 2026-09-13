@@ -51,3 +51,17 @@ export function applyReleaseVersions(manifest, packages) {
     writeFileSync(manifestPath, `${JSON.stringify({...value, version}, null, 2)}\n`);
   }
 }
+
+// npm can acknowledge an upload before registry metadata becomes visible.
+// Retry reads of the original artifact; never publish it a second time here.
+export async function waitForRegistryArtifact(artifact, readIntegrity, {
+  attempts = 60,
+  delayMs = 10000,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (registryArtifactMatches(artifact, await readIntegrity(artifact))) return;
+    if (attempt + 1 < attempts) await sleep(delayMs);
+  }
+  throw new Error(`Published artifact is not yet visible: ${artifact.name}@${artifact.version}`);
+}

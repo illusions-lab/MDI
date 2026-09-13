@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { registryArtifactMatches, verifyReleaseArtifacts } from './release-artifacts.mjs';
+import { registryArtifactMatches, verifyReleaseArtifacts, waitForRegistryArtifact } from './release-artifacts.mjs';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(process.env.RELEASE_SOURCE_DIR ?? resolve(import.meta.dirname, '../..'));
 const directory = resolve(root,process.env.RELEASE_ARTIFACTS_DIR ?? 'output/npm-release');
 const sourceSha = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
 const manifest = verifyReleaseArtifacts(JSON.parse(readFileSync(join(directory,'manifest.json'),'utf8')),directory,sourceSha);
@@ -27,7 +27,7 @@ const pending = manifest.artifacts.filter((artifact) => !registryArtifactMatches
 if (!dryRun) {
   for (const artifact of pending) {
     execFileSync('npm',['publish',join(directory,artifact.filename),'--access','public'],{cwd:root,stdio:'inherit'});
-    if (!registryArtifactMatches(artifact,registryIntegrity(artifact))) throw new Error(`Published artifact is not yet visible: ${artifact.name}`);
+    await waitForRegistryArtifact(artifact, registryIntegrity);
   }
 }
 if (process.env.GITHUB_OUTPUT) {

@@ -9,8 +9,8 @@ import { tmpdir } from "node:os";
 import { integrity, verifyReleaseArtifacts } from "./release-artifacts.mjs";
 import { fileURLToPath } from "node:url";
 
-const packagesRoot = path.resolve(fileURLToPath(import.meta.url), "../..");
-const repositoryRoot = path.resolve(packagesRoot, "..");
+const repositoryRoot = path.resolve(process.env.RELEASE_SOURCE_DIR ?? path.resolve(fileURLToPath(import.meta.url), "../../.."));
+const packagesRoot = path.join(repositoryRoot, "nodejs");
 const packagesDir = path.join(packagesRoot, "packages");
 if (process.env.GITHUB_ACTIONS !== "true") throw new Error("Production release creation must run in GitHub Actions");
 const artifactsDirectory = path.resolve(repositoryRoot, process.env.RELEASE_ARTIFACTS_DIR ?? "output/npm-release");

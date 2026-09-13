@@ -44,3 +44,5 @@ export function releaseClosure(manifests, changedNames) {
   }
   return selected;
 }
+
+export const changesPackedArtifacts = (files) => files.includes("nodejs/scripts/pack-publishable-package.mjs");

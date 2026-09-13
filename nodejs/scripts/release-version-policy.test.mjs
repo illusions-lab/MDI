@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { nextReleaseVersion, releaseClosure } from './release-version-policy.mjs';
+import { nextReleaseVersion, releaseClosure, changesPackedArtifacts } from './release-version-policy.mjs';
 
 test('starts a new minor at zero and keeps normal patch behavior', () => {
   assert.equal(nextReleaseVersion({baseline:'2.0.6', series:'2.1'}), '2.1.0');
@@ -20,4 +20,9 @@ test('exact target is repeatable before publication and rejects occupied artifac
 test('dependency closure includes optional and peer consumers transitively', () => {
   const manifests = [{name:'core'}, {name:'mdi',dependencies:{core:'workspace:*'}}, {name:'remark',peerDependencies:{mdi:'workspace:*'}}, {name:'cli',optionalDependencies:{remark:'workspace:*'}}, {name:'other'}];
   assert.deepEqual([...releaseClosure(manifests, ['core'])], ['core','mdi','remark','cli']);
+});
+
+test('publishing-tool repairs retain existing artifact versions', () => {
+  assert.equal(changesPackedArtifacts(['nodejs/scripts/publish-versioned-packages.mjs', '.github/workflows/release.yml']), false);
+  assert.equal(changesPackedArtifacts(['nodejs/scripts/pack-publishable-package.mjs']), true);
 });

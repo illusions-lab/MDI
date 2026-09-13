@@ -34,7 +34,10 @@ For a failed publication, rerun the existing workflow attempt. It restores the
 original artifact automatically. To recover from another run, dispatch Release
 with `release_sha` set to the original gated main commit and `resume_run_id` set
 to the original run ID. Leave `target_version` empty or use the saved version.
-Missing or expired recovery artifacts fail closed. Never rebuild or overwrite an
+Registry verification waits up to ten minutes for accepted packages to become visible.
+Recovery uses the current workflow commit for orchestration while the saved manifest
+and checkout still pin the original candidate and archive bytes. Publishing-tool
+repairs do not force new package versions. Missing or expired recovery artifacts fail closed. Never rebuild or overwrite an
 already published version; fix incorrect artifacts with a new patch release.
 
 Rust, Python, Android and Swift retain their existing CI publication workflows.
@@ -51,3 +54,10 @@ round trips and publication omission. Preserve registry versions, source commits
 CI URLs, artifact integrity values and verification results in the release record.
 Partial language publication is an incomplete release; recover each remaining
 artifact without replacing successful publications.
+
+Recovery can select a workflow ref containing corrected publication tooling.
+`publish-versioned-packages.mjs`, `create-github-releases.mjs`, and their shared
+`release-artifacts.mjs` helper are read from that ref; checkout HEAD, the gated source SHA, package versions, checksums, and
+uploaded tarballs remain those of the original candidate. Registry visibility
+is polled after npm acknowledges publication; transient absence never causes
+an immediate repeat upload, and conflicting bytes still fail closed.
