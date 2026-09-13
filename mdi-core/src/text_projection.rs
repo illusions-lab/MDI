@@ -42,7 +42,7 @@ pub(crate) fn plain_inline(node: &serde_json::Value) -> PlainInline<'_> {
                 .unwrap_or_default(),
         ),
         "break" => PlainInline::Break,
-        "footnoteReference" => PlainInline::Skip,
+        "footnoteReference" | "comment" => PlainInline::Skip,
         _ if node.get("children").is_some() => PlainInline::Children,
         _ => node
             .get("value")
@@ -310,7 +310,14 @@ struct Collector<'a> {
 /// Parse once and produce the complete IR envelope plus the Rust-owned text
 /// projection and its UTF-8 source map.
 pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
-    let document = parse_document_without_provenance(source);
+    get_mdi_text_blocks_with_options(source, crate::ParseOptions::default())
+}
+
+pub fn get_mdi_text_blocks_with_options(
+    source: &str,
+    options: crate::ParseOptions,
+) -> MdiTextBlocksResult {
+    let mut document = parse_document_without_provenance(source);
     let mut collector = Collector {
         source,
         blocks: Vec::new(),
@@ -319,10 +326,29 @@ pub fn get_mdi_text_blocks(source: &str) -> MdiTextBlocksResult {
     for node in &document.children {
         collector.collect(node, false);
     }
+    collector
+        .diagnostics
+        .extend(crate::comments::Comments::scan(source).diagnostics);
+    if !options.include_comments {
+        crate::comments::filter_nodes(&mut document.children);
+        for block in &mut collector.blocks {
+            if let Some(children) = block
+                .node
+                .get_mut("children")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                crate::comments::filter_nodes(children);
+            }
+        }
+    }
     MdiTextBlocksResult {
         projection_version: MDI_TEXT_PROJECTION_VERSION,
         position_encoding: "unicode-grapheme-cluster-1-based",
-        ir_version: MDI_IR_VERSION,
+        ir_version: if options.include_comments {
+            crate::MDI_COMMENT_IR_VERSION
+        } else {
+            MDI_IR_VERSION
+        },
         syntax_version: MDI_SPEC_VERSION,
         capabilities: ParserCapabilities {
             mdi: true,
@@ -847,7 +873,7 @@ impl Collector<'_> {
             "html" => self.scalar_block(MdiTextBlockKind::Html, node, "value"),
             "table" => self.table(node),
             "footnoteDefinition" => self.footnote(node),
-            "yaml" | "definition" | "blank" | "pagebreak" | "thematicBreak" => {}
+            "yaml" | "definition" | "blank" | "pagebreak" | "thematicBreak" | "comment" => {}
             _ => {
                 if node_span(node).is_some() {
                     let mut draft = BlockDraft::new(MdiTextBlockKind::Other, node);

@@ -1,6 +1,12 @@
 package app.illusions.mdi
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -12,6 +18,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MdiInstrumentedTest {
+    private fun commentValues(node: JsonElement): List<String> {
+        val obj = node as? JsonObject ?: return emptyList()
+        val own = if (obj["type"]?.jsonPrimitive?.content == "comment") listOf(obj.getValue("value").jsonPrimitive.content) else emptyList()
+        return own + (obj["children"] as? JsonArray).orEmpty().flatMap(::commentValues)
+    }
+
+    @Test
+    fun shared_comment_fixtures() {
+        val text = InstrumentationRegistry.getInstrumentation().context.assets.open("cases.json").bufferedReader().use { it.readText() }
+        for (fixture in Json.parseToJsonElement(text).jsonArray) {
+            val source = fixture.jsonObject.getValue("source").jsonPrimitive.content
+            val expected = fixture.jsonObject.getValue("values").jsonArray.map { it.jsonPrimitive.content }
+            assertEquals(emptyList<String>(), commentValues(Mdi.parse(source).document))
+            val full = Mdi.parse(source, includeComments = true)
+            assertEquals(MDI_COMMENT_IR_VERSION, full.irVersion)
+            assertEquals(expected, commentValues(full.document))
+            assertEquals(expected, commentValues(Mdi.parse(Mdi.serializeMdi(source), includeComments = true).document))
+        }
+    }
+
     @Test
     fun native_warichu_layout_preserves_utf8_positions_and_two_lines() {
         val result = Mdi.layoutWarichuJson("""[{"type":"text","value":"一二三四五六"}]""", 4, 2)

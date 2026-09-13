@@ -6,8 +6,8 @@
 > **illusion Markdown (`.mdi`)** は標準 Markdown に日本語組版向けの拡張構文を加えたフォーマットです。  
 > 見出し・リスト・リンク・表など標準 Markdown の記法はすべてそのまま使えます。このドキュメントでは **MDI 固有の拡張のみ** を解説します。
 
-**This document describes MDI 2.0.** The MDI 1.0 specification is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch.  
-**本ドキュメントは MDI 2.0 の仕様です。** MDI 1.0 の仕様は [`spec/v1.0`](../../tree/spec/v1.0) ブランチに保存されています。
+**This document describes MDI 2.1.** The MDI 1.0 specification is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch.
+**本ドキュメントは MDI 2.1 の仕様です。** MDI 1.0 の仕様は [`spec/v1.0`](../../tree/spec/v1.0) ブランチに保存されています。
 
 ---
 
@@ -907,4 +907,65 @@ Implementations should process MDI syntax in the following order:
 
 ---
 
-*MDI 2.0 Draft — MDI 1.0 is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch. Aozora Bunko notation interop ships in 2.0 as an export-side convention (see [TXT Export Flavors](#txt-export-flavors--txt-書き出しフレーバー)); parse-side Aozora notation interop (e.g. reading `｜base《ruby》` as input) remains planned for a future revision.*
+*MDI 2.1 Draft — MDI 1.0 is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch. Aozora Bunko notation interop ships in 2.0 as an export-side convention (see [TXT Export Flavors](#txt-export-flavors--txt-書き出しフレーバー)); parse-side Aozora notation interop (e.g. reading `｜base《ruby》` as input) remains planned for a future revision.*
+
+
+## 15. Editorial comments / 編集用コメント
+
+*New in 2.1; applies to every document, including declared 2.0 and unversioned input.*
+
+```mdi
+前<!-- 編集メモ -->後
+
+<!--
+複数行のメモ
+-->
+```
+
+`<!--` closes at the nearest `-->`. The payload is an opaque string: empty,
+multiline and Unicode values are valid, and whitespace, HTML entities,
+backslashes and MDI-looking text are preserved. Comments do not nest; an inner
+`<!--` is ordinary payload. Delimiters such as `]]` inside a closed comment
+cannot close an enclosing MDI construct.
+
+Comments are allowed at block level and in body contexts that accept inline
+nodes, including bracket-macro content. Code, front matter, link destinations
+and existing plain-text MDI parameters (including ruby and the boten alias)
+do not acquire comment interpretation. `\<!--` remains literal text.
+
+An unterminated opener stays literal, does not swallow subsequent body text,
+and emits a `mdi.comment.unterminated` warning with a UTF-8 source span.
+Export remains available: text intended to be private may therefore appear
+in the publication. Diagnostics never duplicate valid comment payloads.
+
+Removing inline comments adds no spaces. Standalone block comments add no
+blank paragraphs. Body projections, word counts, search defaults and layout
+measurement omit comments. Publication HTML/HAST, every TXT flavor, PDF,
+EPUB and DOCX always omit valid comments, including hidden DOM, metadata and
+archive entries; requesting a comment-inclusive IR does not alter this rule.
+
+The Rust internal document and canonical source serializer retain comments.
+Public document APIs omit them by default and return IR **1.0**. Explicit
+`includeComments: true` returns IR **1.1**, with `{ type: "comment", value,
+span: { startByte, endByte } }` at the original tree position. Spans are
+half-open UTF-8 byte offsets; the parent determines block/inline context.
+The parser reports syntax version **2.1** without rewriting an existing
+front-matter version. Body projection version and coordinates remain unchanged;
+comments never enter the ruby-reading annotation channel. Text on either side
+may merge in the public tree while source-map runs retain the byte gap.
+
+For lossless comment retention, use the source serialization API or an
+explicitly comment-inclusive IR. Comments removed from an external IR cannot
+be recovered. This update intentionally changes old documents whose valid
+comments previously appeared as visible HTML text: they now disappear from
+publication output. It does not promise identical output for every 2.0 input.
+
+`<!--` から最初の `-->` までを編集用コメントとします。空・複数行・Unicode を
+許可し、内部の空白、エンティティ、バックスラッシュ、MDI 記法をそのまま保持
+します。入れ子にはなりません。コード、フロントマター、リンク先、既存の
+プレーンテキスト引数では解釈しません。`\<!--` は通常の文字列です。
+未閉鎖の場合は原文と後続本文を残し、warning を返します。公開したくない文字が
+出力される可能性があります。保存では保持し、本文投影と全出版形式では除外します。
+既定 API は IR 1.0、明示的な `includeComments: true` はコメント付き IR 1.1 を
+返します。2.0 宣言も同じ規則で処理しますが、宣言を書き換えません。従来 HTML
+文字列として見えていた有効なコメントが出版物から消える点は、意図した変更です。

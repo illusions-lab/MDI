@@ -1,81 +1,36 @@
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { globSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { packPublishablePackage } from "./pack-publishable-package.mjs";
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { registryArtifactMatches, verifyReleaseArtifacts } from './release-artifacts.mjs';
 
-// Packages stay in nodejs/, while the pnpm workspace moved to the repository
-// root. Keep those two locations explicit: publishing a package must build the
-// root workspace, not an obsolete nodejs/package.json.
-const packagesRoot = resolve(new URL("..", import.meta.url).pathname);
-const repositoryRoot = resolve(packagesRoot, "..");
-const manifests = globSync(join(packagesRoot, "packages", "*", "package.json"));
-const pending = [];
-const releasePackages = [];
-const dryRun = process.argv.includes("--dry-run");
-const selectedPackages = JSON.parse(process.env.RELEASE_PACKAGES ?? "[]");
-const selectedNames = new Set(selectedPackages.map(({ name }) => name));
+const root = resolve(import.meta.dirname, '../..');
+const directory = resolve(root,process.env.RELEASE_ARTIFACTS_DIR ?? 'output/npm-release');
+const sourceSha = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+const manifest = verifyReleaseArtifacts(JSON.parse(readFileSync(join(directory,'manifest.json'),'utf8')),directory,sourceSha);
+const dryRun = process.argv.includes('--dry-run');
+if (!dryRun && process.env.GITHUB_ACTIONS !== 'true') throw new Error('Production publication must run in GitHub Actions');
 
-for (const manifestPath of manifests) {
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (manifest.private || !selectedNames.has(manifest.name)) continue;
-  releasePackages.push({ name: manifest.name, version: manifest.version });
+function registryIntegrity(artifact) {
   try {
-    execFileSync(
-      "npm",
-      ["view", `${manifest.name}@${manifest.version}`, "version"],
-      {
-        cwd: packagesRoot,
-        stdio: "ignore",
-      }
-    );
-  } catch {
-    pending.push({ name: manifest.name, manifestPath });
+    return JSON.parse(execFileSync('npm',['view',`${artifact.name}@${artifact.version}`,'dist.integrity','--json'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  } catch (error) {
+    let code;
+    try { code = JSON.parse(String(error.stdout)).error?.code; } catch { /* fail closed on non-registry errors */ }
+    if (code === 'E404') return undefined;
+    throw new Error(`Unable to verify registry artifact ${artifact.name}@${artifact.version}`,{cause:error});
   }
 }
 
-if (pending.length > 0 && !dryRun) {
-  execFileSync("pnpm", ["run", "build"], {
-    cwd: repositoryRoot,
-    stdio: "inherit",
-  });
-  for (const { manifestPath } of pending) {
-    const artifactsDirectory = mkdtempSync(join(tmpdir(), "mdi-npm-publish-"));
-    // npm CLI detects GitHub Actions OIDC and exchanges it for a short-lived
-    // publish credential. Do not replace this with pnpm publish: trusted
-    // publishing authentication is implemented by npm itself.
-    try {
-      const tarball = packPublishablePackage({
-        packageDirectory: dirname(manifestPath),
-        workspaceRoot: packagesRoot,
-        outputDirectory: artifactsDirectory,
-      });
-      execFileSync("npm", ["publish", tarball, "--access", "public"], {
-        cwd: packagesRoot,
-        stdio: "inherit",
-      });
-    } finally {
-      rmSync(artifactsDirectory, { recursive: true, force: true });
-    }
+// Validate every existing artifact before the first publication. Recovery may
+// skip only byte-identical files; an occupied foreign version is a conflict.
+const pending = manifest.artifacts.filter((artifact) => !registryArtifactMatches(artifact,registryIntegrity(artifact)));
+if (!dryRun) {
+  for (const artifact of pending) {
+    execFileSync('npm',['publish',join(directory,artifact.filename),'--access','public'],{cwd:root,stdio:'inherit'});
+    if (!registryArtifactMatches(artifact,registryIntegrity(artifact))) throw new Error(`Published artifact is not yet visible: ${artifact.name}`);
   }
 }
-
 if (process.env.GITHUB_OUTPUT) {
-  // A manual dispatch is also used to repair/create GitHub Releases for
-  // versions already on npm. The release script is idempotent and skips tags
-  // that already exist.
-  appendFileSync(process.env.GITHUB_OUTPUT, `published=${pending.length > 0}\n`);
-  appendFileSync(
-    process.env.GITHUB_OUTPUT,
-    `publishedPackages=${JSON.stringify(releasePackages)}\n`
-  );
+  appendFileSync(process.env.GITHUB_OUTPUT,`published=${pending.length > 0}\nready=${manifest.artifacts.length > 0}\npublishedPackages=${JSON.stringify(manifest.artifacts.map(({name,version})=>({name,version})))}\n`);
 }
-
-console.log(
-  pending.length > 0
-    ? `${dryRun ? "Would publish" : "Published"} ${pending
-        .map(({ name }) => name)
-        .join(", ")}`
-    : "No unpublished workspace packages."
-);
+console.log(`${dryRun ? 'Would publish' : 'Published'} ${pending.length} artifacts; ${manifest.artifacts.length - pending.length} identical registry artifacts retained`);

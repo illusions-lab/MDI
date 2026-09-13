@@ -46,7 +46,7 @@ def test_exposes_the_complete_versioned_rust_document_contract() -> None:
     result = mdi.parse(SOURCE)
 
     assert result["irVersion"] == mdi.MDI_IR_VERSION == "1.0"
-    assert result["syntaxVersion"] == mdi.MDI_SPEC_VERSION == "2.0"
+    assert result["syntaxVersion"] == mdi.MDI_SPEC_VERSION == "2.1"
     assert result["capabilities"] == {
         "mdi": True,
         "commonMark": True,
@@ -98,7 +98,7 @@ def test_returns_recoverable_diagnostics_with_utf8_byte_spans() -> None:
     assert result["diagnostics"] == [{
         "severity": "warning",
         "code": "mdi.version.unsupported",
-        "message": "MDI 3.0 is newer than the supported 2.0",
+        "message": "MDI 3.0 is newer than the supported 2.1",
         "span": {"startByte": 0, "endByte": 18},
     }]
     assert result["document"]["span"]["endByte"] == len(source.encode())
@@ -173,6 +173,7 @@ def test_public_api_exports_and_legacy_alias() -> None:
         "layout_warichu",
         "MDI_IR_VERSION",
         "MDI_SPEC_VERSION",
+        "MDI_COMMENT_IR_VERSION",
         "MdiRenderError",
         "TextFormat",
         "parse",

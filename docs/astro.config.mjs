@@ -132,6 +132,7 @@ gtag('config', '${gaMeasurementId}');`,
 							slug: 'guides/getting-started',
 						},
 						{ label: 'Full syntax reference', translations: { ja: '完全構文リファレンス', 'zh-TW': '完整語法參考' }, slug: 'syntax/reference' },
+						{ label: 'Editorial comments', slug: 'syntax/comments' },
 					],
 				},
 				{

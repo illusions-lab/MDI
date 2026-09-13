@@ -1,7 +1,7 @@
 {
   "name": "mdast-util-mdi",
-  "version": "2.0.16",
-  "description": "mdast serialization extension for Rust-owned MDI 2.0 nodes",
+  "version": "2.1.0",
+  "description": "mdast serialization extension for Rust-owned MDI 2.1 nodes",
   "license": "MIT",
   "repository": {
     "type": "git",

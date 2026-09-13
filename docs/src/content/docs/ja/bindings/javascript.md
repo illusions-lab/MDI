@@ -148,3 +148,18 @@ Node の default PDF host には別途 `npm install @illusions-lab/mdi-to-pdf` �
 ### Automatic warichu layout
 
 自動割注は本文の50%の文字サイズで2行に配置します。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` がRustの分割処理を呼び出します。閲覧用HTMLには `attachMdiWarichuLayout(container)`、印刷前には `settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` を使用します。自動分割は表示のみで、保存するMDIは変わりません。スクリプトなしのHTML・EPUBも2行構造を保持しますが、リーダーによる再配置は異なる場合があります。
+
+
+## Editorial comments in MDI 2.1
+
+```javascript
+parse(source, { includeComments: true })
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

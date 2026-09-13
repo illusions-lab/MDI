@@ -43,6 +43,7 @@ struct Unit {
 
 fn visible(node: &Value) -> String {
     match node["type"].as_str().unwrap_or_default() {
+        "comment" | "mdiComment" => String::new(),
         "ruby" => node["base"].as_str().unwrap_or_default().to_owned(),
         "image" => node["alt"].as_str().unwrap_or_default().to_owned(),
         _ => node["value"]
@@ -66,11 +67,25 @@ fn weight(text: &str) -> usize {
         .sum()
 }
 
+fn without_comments(mut node: Value) -> Value {
+    if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {
+        *children = std::mem::take(children)
+            .into_iter()
+            .filter(|child| !matches!(child["type"].as_str(), Some("comment" | "mdiComment")))
+            .map(without_comments)
+            .collect();
+    }
+    node
+}
+
 fn units(nodes: &[Value], wrappers: &[Value], path: &[usize], out: &mut Vec<Unit>) {
     for (index, node) in nodes.iter().enumerate() {
         let mut path = path.to_vec();
         path.push(index);
         let kind = node["type"].as_str().unwrap_or_default();
+        if matches!(kind, "comment" | "mdiComment") {
+            continue;
+        }
         if matches!(
             kind,
             "strong" | "emphasis" | "delete" | "em" | "kern" | "link"
@@ -88,7 +103,7 @@ fn units(nodes: &[Value], wrappers: &[Value], path: &[usize], out: &mut Vec<Unit
                 .map(|g| json!({"type":"text", "value":g.to_string()}))
                 .collect::<Vec<_>>()
         } else {
-            vec![node.clone()]
+            vec![without_comments(node.clone())]
         };
         let mut offset = 0;
         for mut part in parts {

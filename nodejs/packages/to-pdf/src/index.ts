@@ -9,7 +9,7 @@ import { prepareChromiumPrintProfile } from "./profile.js";
 export { applyPdfProfile, prepareChromiumPrintProfile } from "./profile.js";
 export type { ChromiumPrintPageNumber, ChromiumPrintProfile } from "./profile.js";
 
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 
 /**
  * Print a complete, already-rendered MDI HTML document through Chromium.

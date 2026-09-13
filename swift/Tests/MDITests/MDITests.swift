@@ -44,7 +44,7 @@ final class MDITests: XCTestCase {
             MDIDiagnostic(
                 severity: .warning,
                 code: "mdi.version.unsupported",
-                message: "MDI 3.0 is newer than the supported 2.0",
+                message: "MDI 3.0 is newer than the supported 2.1",
                 span: MDISourceSpan(startByte: 0, endByte: 18)
             ),
         ])

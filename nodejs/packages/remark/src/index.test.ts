@@ -64,7 +64,7 @@ title: Example
 		expect(parse("---\nwriting-mode: vertical\n---\n").data?.frontmatter)
 			.toMatchObject({ writingMode: "vertical", pageProgression: "rtl" });
 		expect(parse("plain text").data?.frontmatter).toEqual({
-			mdi: "2.0",
+			mdi: "2.1",
 			title: undefined,
 			author: undefined,
 			lang: "ja",
@@ -93,7 +93,7 @@ title: Example
 
 	it("falls back to defaults for malformed YAML and treats TOML fences as content", () => {
 		expect(parse("---\ntitle: [unterminated\n---\ntext").data?.frontmatter).toMatchObject({
-			mdi: "2.0", lang: "ja", writingMode: "horizontal", pageProgression: "ltr",
+			mdi: "2.1", lang: "ja", writingMode: "horizontal", pageProgression: "ltr",
 		});
 		const toml = parse("+++\ntitle = 'Not YAML front matter'\n+++\n\ntext");
 		expect(toml.data?.frontmatter?.title).toBeUndefined();
@@ -211,4 +211,19 @@ same
 		expect(serialized).toContain("{東京|とうきょう}");
 		expect(serialized).not.toContain("mdiProvenance");
 	});
+});
+
+
+describe("editorial comment adaptation", () => {
+  for (const source of ["前<!--secret-->後", "> 前<!--\n秘密\n-->後", "- 前<!--\n秘密\n-->後", "[^a]: 前<!--\n秘密\n-->後\n\n本文[^a]"]) {
+    it(`preserves opaque nodes through stringify: ${JSON.stringify(source)}`, () => {
+      const compiler = unified().use(remarkParse).use(remarkMdi, {includeComments:true}).use(remarkStringify);
+      const tree = compiler.runSync(compiler.parse(source)) as Root;
+      expect(nodeTypes(tree)).toContain("mdiComment");
+      expect(nodeTypes(parse(source))).not.toContain("mdiComment");
+      const serialized = compiler.stringify(tree);
+      const comments = (node: any): string[] => [...(node.type === "mdiComment" ? [node.value] : []), ...(node.children ?? []).flatMap(comments)];
+      expect(comments(compiler.runSync(compiler.parse(serialized)))).toEqual(comments(tree));
+    });
+  }
 });

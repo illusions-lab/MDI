@@ -1,11 +1,20 @@
+import { gfmToMarkdown } from "mdast-util-gfm";
+import { defaultHandlers } from "mdast-util-to-markdown";
 import type { Handle, Options as ToMarkdownExtension } from "mdast-util-to-markdown";
 import type { Paragraph } from "mdast";
 import { escapeMdi } from "./escape.js";
-import type { MdiEm, MdiKern, MdiNoBreak, MdiPagebreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
+import type { MdiComment, MdiEm, MdiKern, MdiNoBreak, MdiPagebreak, MdiRuby, MdiTcy, MdiWarichu } from "./types.js";
+
+const gfmHandlers = Object.assign({}, ...gfmToMarkdown().extensions!.map((extension) => extension.handlers)) as Record<string, Handle>;
 
 export function mdiToMarkdown(): ToMarkdownExtension {
 	return {
 		handlers: {
+			mdiComment,
+			blockquote: preserveCommentPayloads(defaultHandlers.blockquote),
+			list: preserveCommentPayloads(defaultHandlers.list),
+			footnoteDefinition: preserveCommentPayloads(gfmHandlers.footnoteDefinition),
+			table: preserveCommentPayloads(gfmHandlers.table),
 			mdiRuby,
 			mdiTcy,
 			mdiBreak,
@@ -67,3 +76,33 @@ const paragraph: Handle = (node, _parent, state, info) => {
 
 	return value;
 };
+
+const mdiComment: Handle = (node) => `<!--${(node as MdiComment).value}-->`;
+
+/** Container indentation must never become part of an opaque comment value.
+ * Nodes remain the only storage: shielding lasts only for this serializer call.
+ */
+function preserveCommentPayloads(handler: Handle): Handle {
+	return (node, parent, state, info) => {
+		const previous = state.handlers.mdiComment;
+		// An outer container already shields this subtree, including nesting.
+		if (previous !== mdiComment) return handler(node, parent, state, info);
+		const payloads: string[] = [];
+		let prefix = "\uE000mdiComment";
+		const serializedNode = JSON.stringify(node);
+		while (serializedNode.includes(prefix)) prefix += "x";
+		state.handlers.mdiComment = (comment) => {
+			const index = payloads.push(`<!--${(comment as MdiComment).value}-->`) - 1;
+			return `${prefix}${index}\uE001`;
+		};
+		try {
+			let result = handler(node, parent, state, info);
+			for (let index = 0; index < payloads.length; index += 1) {
+				result = result.replace(`${prefix}${index}\uE001`, () => payloads[index]);
+			}
+			return result;
+		} finally {
+			state.handlers.mdiComment = previous;
+		}
+	};
+}

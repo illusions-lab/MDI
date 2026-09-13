@@ -1,21 +1,21 @@
 #!/usr/bin/env node
-// Creates one GitHub Release per package changesets/action just published,
-// each with a packed npm tarball attached (so a package can be downloaded
-// straight from the GitHub Releases page, not just npm) and release notes
-// taken from that package's own CHANGELOG.md entry for the version.
-//
-// Invoked from .github/workflows/release.yml after a successful publish,
-// with `publishedPackages` passed in via PUBLISHED_PACKAGES. Changesets emits
-// a JSON array of {name, version}; the manual release path may emit names.
+// Create package releases from the verified immutable npm artifact manifest.
+// Recovery verifies existing assets and never overwrites published bytes.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
+import { integrity, verifyReleaseArtifacts } from "./release-artifacts.mjs";
 import { fileURLToPath } from "node:url";
 
 const packagesRoot = path.resolve(fileURLToPath(import.meta.url), "../..");
 const repositoryRoot = path.resolve(packagesRoot, "..");
 const packagesDir = path.join(packagesRoot, "packages");
+if (process.env.GITHUB_ACTIONS !== "true") throw new Error("Production release creation must run in GitHub Actions");
+const artifactsDirectory = path.resolve(repositoryRoot, process.env.RELEASE_ARTIFACTS_DIR ?? "output/npm-release");
+const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {cwd:repositoryRoot,encoding:"utf8"}).trim();
+const manifest = verifyReleaseArtifacts(JSON.parse(readFileSync(path.join(artifactsDirectory,"manifest.json"),"utf8")),artifactsDirectory,sourceSha);
 
 const raw = process.env.PUBLISHED_PACKAGES;
 if (!raw) {
@@ -49,10 +49,9 @@ for (const entry of published) {
 		throw new Error("Each published package must include a name and version.");
 	}
 
-	console.log(`Packing ${name}@${version}...`);
-	const packOutput = execFileSync("npm", ["pack", "--json"], { cwd: dir, encoding: "utf8" });
-	const [{ filename }] = JSON.parse(packOutput);
-	const tarballPath = path.join(dir, filename);
+	const artifact = manifest.artifacts.find((artifact) => artifact.name === name && artifact.version === version);
+	if (!artifact) throw new Error(`No verified artifact for ${name}@${version}`);
+	const tarballPath = path.join(artifactsDirectory, artifact.filename);
 
 	const notes = changelogEntry(dir, version) ?? `${name} ${version}`;
 	const tag = `${name}@${version}`;
@@ -66,19 +65,23 @@ for (const entry of published) {
 		}
 	})();
 
-	if (!exists) {
-		console.log(`Creating GitHub Release ${tag}...`);
-		execFileSync("gh", ["release", "create", tag, "--title", tag, "--notes", notes], {
-			cwd: repositoryRoot,
-			stdio: "inherit",
-		});
+	const temporary = mkdtempSync(path.join(tmpdir(), "mdi-release-notes-"));
+	try {
+		if (!exists) {
+			const notesPath = path.join(temporary, "notes.md");
+			writeFileSync(notesPath, notes);
+			execFileSync("gh", ["release", "create", tag, "--target", sourceSha, "--title", tag, "--notes-file", notesPath], { cwd: repositoryRoot, stdio: "inherit" });
+		}
+		const release = JSON.parse(execFileSync("gh", ["release", "view", tag, "--json", "assets"], { cwd: repositoryRoot, encoding: "utf8" }));
+		if (release.assets.some((asset) => asset.name === artifact.filename)) {
+			execFileSync("gh", ["release", "download", tag, "--pattern", artifact.filename, "--dir", temporary], {cwd:repositoryRoot,stdio:"inherit"});
+			if (integrity(readFileSync(path.join(temporary,artifact.filename))) !== artifact.integrity) throw new Error(`Existing GitHub asset differs for ${tag}; publish a new patch`);
+		} else {
+			execFileSync("gh", ["release", "upload", tag, tarballPath], { cwd: repositoryRoot, stdio: "inherit" });
+		}
+	} finally {
+		rmSync(temporary, {recursive:true,force:true});
 	}
-
-	console.log(`Uploading tarball for ${tag}...`);
-	execFileSync("gh", ["release", "upload", tag, tarballPath, "--clobber"], {
-		cwd: repositoryRoot,
-		stdio: "inherit",
-	});
 }
 
 /** Extracts the "## <version>" section from a package's CHANGELOG.md, if present. */
@@ -87,7 +90,7 @@ function changelogEntry(dir, version) {
 	if (!existsSync(changelogPath)) return undefined;
 
 	const lines = readFileSync(changelogPath, "utf8").split("\n");
-	const startIndex = lines.findIndex((line) => line.trim() === `## ${version}`);
+	const startIndex = lines.findIndex((line) => (line.trim() === `## ${version}` || line.startsWith(`## ${version} `)));
 	if (startIndex === -1) return undefined;
 
 	const endIndex = lines.findIndex((line, index) => index > startIndex && /^## /.test(line));
