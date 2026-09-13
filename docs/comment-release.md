@@ -56,8 +56,8 @@ Partial language publication is an incomplete release; recover each remaining
 artifact without replacing successful publications.
 
 Recovery can select a workflow ref containing corrected publication tooling.
-Only `release-artifacts.mjs` and `publish-versioned-packages.mjs` are read from
-that ref; checkout HEAD, the gated source SHA, package versions, checksums, and
+`publish-versioned-packages.mjs`, `create-github-releases.mjs`, and their shared
+`release-artifacts.mjs` helper are read from that ref; checkout HEAD, the gated source SHA, package versions, checksums, and
 uploaded tarballs remain those of the original candidate. Registry visibility
 is polled after npm acknowledges publication; transient absence never causes
 an immediate repeat upload, and conflicting bytes still fail closed.
