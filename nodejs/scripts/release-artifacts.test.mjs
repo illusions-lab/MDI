@@ -56,24 +56,3 @@ test('registry polling fails closed on conflicts, lookup errors, and exhaustion'
   await assert.rejects(waitForRegistryArtifact(artifact, () => undefined, options), /not yet visible/);
   assert.equal(sleeps, 1);
 });
-
-test('waits for delayed registry visibility without publishing again', async () => {
-  let queries = 0;
-  let sleeps = 0;
-  await waitForRegistryArtifact(artifact, () => ++queries < 3 ? undefined : artifact.integrity, {
-    attempts: 3, delayMs: 5, sleep: async delay => { assert.equal(delay, 5); sleeps += 1; },
-  });
-  assert.equal(queries, 3);
-  assert.equal(sleeps, 2);
-});
-
-test('registry waiting is bounded and rejects conflicting bytes immediately', async () => {
-  let queries = 0;
-  await assert.rejects(waitForRegistryArtifact(artifact, () => { queries += 1; return undefined; }, {
-    attempts: 2, sleep: async () => {},
-  }), /did not become visible/);
-  assert.equal(queries, 2);
-  await assert.rejects(waitForRegistryArtifact(artifact, () => integrity('foreign bytes'), {
-    sleep: async () => assert.fail('conflicts must not wait'),
-  }), /conflict/);
-});

@@ -2,7 +2,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { globSync } from "node:fs";
 import { join, relative } from "node:path";
-import { nextReleaseVersion, releaseClosure } from "./release-version-policy.mjs";
+import { nextReleaseVersion, releaseClosure, changesPackedArtifacts } from "./release-version-policy.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const dryRun = process.argv.includes("--dry-run");
@@ -39,11 +39,7 @@ const changedFiles = execFileSync(
   .filter(Boolean);
 const changedPackages = new Set();
 const dependencyRoots = new Set();
-const packagingChanged = changedFiles.some(
-  (file) =>
-    file === "nodejs/scripts/pack-publishable-package.mjs" ||
-    file === "nodejs/scripts/publish-versioned-packages.mjs"
-);
+const packagingChanged = changesPackedArtifacts(changedFiles);
 
 for (const file of changedFiles) {
   const nodejsRelative = relative(root, join(root, "..", file));

@@ -34,7 +34,7 @@ For a failed publication, rerun the existing workflow attempt. It restores the
 original artifact automatically. To recover from another run, dispatch Release
 with `release_sha` set to the original gated main commit and `resume_run_id` set
 to the original run ID. Leave `target_version` empty or use the saved version.
-Registry verification waits up to five minutes for accepted packages to become visible.
+Registry verification waits up to ten minutes for accepted packages to become visible.
 Recovery uses the current workflow commit for orchestration while the saved manifest
 and checkout still pin the original candidate and archive bytes. Publishing-tool
 repairs do not force new package versions. Missing or expired recovery artifacts fail closed. Never rebuild or overwrite an
