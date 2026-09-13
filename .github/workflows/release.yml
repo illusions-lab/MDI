@@ -33,6 +33,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.release_sha || github.sha }}
       RELEASE_ARTIFACTS_DIR: output/npm-release
+      RELEASE_SOURCE_DIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +53,14 @@ jobs:
               --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
           )
           test "$count" -gt 0
+
+      # Recovery can use repaired orchestration without rebuilding the original
+      # candidate. The manifest still pins the candidate SHA and every byte.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          persist-credentials: false
 
       - uses: jetli/wasm-pack-action@v0.4.0
       - uses: pnpm/action-setup@v4
@@ -123,13 +132,24 @@ jobs:
           RELEASE_TARGET_VERSION: ${{ inputs.target_version }}
         run: node nodejs/scripts/prepare-release-artifacts.mjs --reuse
 
+      - name: Use the selected recovery tooling with the original candidate
+        if: inputs.resume_run_id != ''
+        env:
+          RECOVERY_TOOLING_SHA: ${{ github.sha }}
+        run: |
+          # Only publication tooling may change during recovery. HEAD, package
+          # manifests, and the saved tarballs still belong to RELEASE_SHA.
+          for script in release-artifacts.mjs publish-versioned-packages.mjs; do
+            git show "$RECOVERY_TOOLING_SHA:nodejs/scripts/$script" > "nodejs/scripts/$script"
+          done
+
       - name: Publish or verify the original artifacts using OIDC
         id: publish
-        run: node nodejs/scripts/publish-versioned-packages.mjs
+        run: node .release-tools/nodejs/scripts/publish-versioned-packages.mjs
 
       - name: Create GitHub Releases with the original tarballs
         if: steps.publish.outputs.ready == 'true'
-        run: node nodejs/scripts/create-github-releases.mjs
+        run: node .release-tools/nodejs/scripts/create-github-releases.mjs
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISHED_PACKAGES: ${{ steps.candidate.outputs.publishedPackages }}
