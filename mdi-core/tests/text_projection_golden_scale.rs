@@ -104,7 +104,7 @@ fn golden_selected_schema_covers_kitchen_sink_markdown_malformed_unicode_and_nes
                 "projectionVersion": "1.0",
                 "positionEncoding": "unicode-grapheme-cluster-1-based",
                 "irVersion": "1.0",
-                "syntaxVersion": "2.0",
+                "syntaxVersion": "2.1",
                 "documentSpan": [0, 89],
                 "blocks": [
                     {
@@ -137,7 +137,7 @@ fn golden_selected_schema_covers_kitchen_sink_markdown_malformed_unicode_and_nes
             json!({
                 "projectionVersion": "1.0",
                 "positionEncoding": "unicode-grapheme-cluster-1-based",
-                "irVersion": "1.0", "syntaxVersion": "2.0", "documentSpan": [0, 90],
+                "irVersion": "1.0", "syntaxVersion": "2.1", "documentSpan": [0, 90],
                 "blocks": [{
                     "index": 1, "kind": "paragraph", "nodeType": "paragraph",
                     "text": "bold em gone label alt code * &", "range": [1, 1, 1, 32],
@@ -152,7 +152,7 @@ fn golden_selected_schema_covers_kitchen_sink_markdown_malformed_unicode_and_nes
             json!({
                 "projectionVersion": "1.0",
                 "positionEncoding": "unicode-grapheme-cluster-1-based",
-                "irVersion": "1.0", "syntaxVersion": "2.0", "documentSpan": [0, 53],
+                "irVersion": "1.0", "syntaxVersion": "2.1", "documentSpan": [0, 53],
                 "blocks": [
                     {
                         "index": 1, "kind": "paragraph", "nodeType": "paragraph",
@@ -179,7 +179,7 @@ fn golden_selected_schema_covers_kitchen_sink_markdown_malformed_unicode_and_nes
             json!({
                 "projectionVersion": "1.0",
                 "positionEncoding": "unicode-grapheme-cluster-1-based",
-                "irVersion": "1.0", "syntaxVersion": "2.0", "documentSpan": [0, 59],
+                "irVersion": "1.0", "syntaxVersion": "2.1", "documentSpan": [0, 59],
                 "blocks": [{
                     "index": 1, "kind": "paragraph", "nodeType": "paragraph",
                     "text": "e\u{301} é 👩🏽‍💻 ✈️ 🇯🇵 1️⃣ क्‍ष", "range": [1, 1, 1, 14],
@@ -194,7 +194,7 @@ fn golden_selected_schema_covers_kitchen_sink_markdown_malformed_unicode_and_nes
             json!({
                 "projectionVersion": "1.0",
                 "positionEncoding": "unicode-grapheme-cluster-1-based",
-                "irVersion": "1.0", "syntaxVersion": "2.0", "documentSpan": [0, 117],
+                "irVersion": "1.0", "syntaxVersion": "2.1", "documentSpan": [0, 117],
                 "blocks": [
                     {"index": 1, "kind": "blockquote", "nodeType": "paragraph", "text": "quote one", "range": [1, 1, 1, 10], "synthetic": [], "unmapped": [], "annotations": []},
                     {"index": 2, "kind": "listItem", "nodeType": "listItem", "text": "quoted item", "range": [2, 1, 2, 12], "synthetic": [], "unmapped": [], "annotations": []},

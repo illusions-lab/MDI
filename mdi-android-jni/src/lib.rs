@@ -6,7 +6,7 @@
 
 use jni::JNIEnv;
 use jni::objects::{JObject, JString};
-use jni::sys::{jbyteArray, jstring};
+use jni::sys::{jboolean, jbyteArray, jstring};
 use mdi_core::{
     TextFormat, parse_json, render_docx, render_epub, render_html, render_text, render_text_format,
     serialize_mdi,
@@ -73,6 +73,24 @@ pub extern "system" fn Java_app_illusions_mdi_internal_MdiNative_parseJson(
     value: JString<'_>,
 ) -> jstring {
     let result = read_source(&mut env, value).map(|source| parse_json(&source));
+    into_jstring(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_illusions_mdi_internal_MdiNative_parseJsonWithOptions(
+    mut env: JNIEnv<'_>,
+    _: JObject<'_>,
+    value: JString<'_>,
+    include_comments: jboolean,
+) -> jstring {
+    let result = read_source(&mut env, value).map(|source| {
+        mdi_core::parse_json_with_options(
+            &source,
+            mdi_core::ParseOptions {
+                include_comments: include_comments != 0,
+            },
+        )
+    });
     into_jstring(&mut env, result)
 }
 

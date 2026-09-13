@@ -42,3 +42,8 @@ export const unescapeRubyText = (...args) => (requireInitialized(), bindings.une
 export const layoutWarichuJson = (...args) => (requireInitialized(), bindings.layoutWarichuJson(...args));
 
 export const layoutWarichuOptionsJson = (...args) => (requireInitialized(), bindings.layoutWarichuOptionsJson(...args));
+
+export const parseMdiSyntaxWithOptionsJson = (...args) => (requireInitialized(), bindings.parseMdiSyntaxWithOptionsJson(...args));
+export const parseMdiMdastWithOptionsJson = (...args) => (requireInitialized(), bindings.parseMdiMdastWithOptionsJson(...args));
+
+export const getMdiTextBlocksWithOptionsJson = (...args) => (requireInitialized(), bindings.getMdiTextBlocksWithOptionsJson(...args));

@@ -34,7 +34,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test:browser
-      - run: node --test nodejs/scripts/pack-publishable-package.test.mjs
+      - run: node --test nodejs/scripts/pack-publishable-package.test.mjs nodejs/scripts/release-version-policy.test.mjs nodejs/scripts/release-artifacts.test.mjs
       - run: pnpm test:coverage
 
       - name: Upload Node.js coverage to Codecov

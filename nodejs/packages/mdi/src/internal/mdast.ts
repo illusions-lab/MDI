@@ -1,6 +1,8 @@
-import { parseMdiMdastJson } from "@illusions-lab/mdi-core";
+import { parseMdiMdastWithOptionsJson } from "@illusions-lab/mdi-core";
 import {
 	MDI_IR_VERSION,
+	MDI_COMMENT_IR_VERSION,
+	type MdiParseOptions,
 	MDI_SPEC_VERSION,
 	type MdiDiagnostic,
 	type MdiDocument,
@@ -48,7 +50,7 @@ export type MdiMdastDocument = Omit<MdiDocument, "frontmatter" | "children"> & {
 };
 
 export interface MdiMdastParseResult {
-	irVersion: typeof MDI_IR_VERSION;
+	irVersion: typeof MDI_IR_VERSION | typeof MDI_COMMENT_IR_VERSION;
 	syntaxVersion: typeof MDI_SPEC_VERSION;
 	capabilities: MdiParserCapabilities;
 	document: MdiMdastDocument;
@@ -56,10 +58,10 @@ export interface MdiMdastParseResult {
 }
 
 /** Rust-backed transport exclusively for mdast adapters. */
-export function parseForMdast(source: string): MdiMdastParseResult {
+export function parseForMdast(source: string, options: MdiParseOptions = {}): MdiMdastParseResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
-	const result = JSON.parse(parseMdiMdastJson(source)) as MdiMdastParseResult;
-	if (result.irVersion !== MDI_IR_VERSION) {
+	const result = JSON.parse(parseMdiMdastWithOptionsJson(source, JSON.stringify(options))) as MdiMdastParseResult;
+	if (result.irVersion !== MDI_IR_VERSION && result.irVersion !== MDI_COMMENT_IR_VERSION) {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}
 	return result;

@@ -6,10 +6,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /** MDI syntax version supported by this Android binding. */
-public const val MDI_SPEC_VERSION: String = "2.0"
+public const val MDI_SPEC_VERSION: String = "2.1"
 
 /** Version of the Rust-owned document IR understood by this binding. */
 public const val MDI_IR_VERSION: String = "1.0"
+public const val MDI_COMMENT_IR_VERSION: String = "1.1"
 
 /** Complete Android interface to the Rust-authoritative MDI implementation. */
 public object Mdi {
@@ -22,9 +23,16 @@ public object Mdi {
 
     /** Parses complete MDI source; Kotlin does not tokenize or repair syntax. */
     @JvmStatic
-    public fun parse(source: String): MdiParseResult {
-        val result = MdiJson.decode(MdiBridgeHolder.bridge.parseJson(source))
-        require(result.irVersion == MDI_IR_VERSION) {
+    public fun parse(source: String): MdiParseResult = parse(source, includeComments = false)
+
+    @JvmStatic
+    public fun parse(source: String, includeComments: Boolean): MdiParseResult {
+        val result = MdiJson.decode(if (includeComments) {
+            MdiBridgeHolder.bridge.parseJsonWithOptions(source, true)
+        } else {
+            MdiBridgeHolder.bridge.parseJson(source)
+        })
+        require(result.irVersion == MDI_IR_VERSION || result.irVersion == MDI_COMMENT_IR_VERSION) {
             "Unsupported MDI IR version: ${result.irVersion}"
         }
         return result
@@ -101,6 +109,7 @@ internal object MdiJson {
 internal interface MdiBridge {
     fun layoutWarichuJson(nodes: String, options: String): String
     fun parseJson(source: String): String
+    fun parseJsonWithOptions(source: String, includeComments: Boolean): String
     fun renderHtml(source: String): String
     fun serializeMdi(source: String): String
     fun renderText(source: String): String
@@ -112,6 +121,7 @@ internal interface MdiBridge {
 internal object NativeMdiBridge : MdiBridge {
     override fun layoutWarichuJson(nodes: String, options: String): String = MdiNative.layoutWarichuJson(nodes, options)
     override fun parseJson(source: String): String = MdiNative.parseJson(source)
+    override fun parseJsonWithOptions(source: String, includeComments: Boolean): String = MdiNative.parseJsonWithOptions(source, includeComments)
     override fun renderHtml(source: String): String = MdiNative.renderHtml(source)
     override fun serializeMdi(source: String): String = MdiNative.serializeMdi(source)
     override fun renderText(source: String): String = MdiNative.renderText(source)

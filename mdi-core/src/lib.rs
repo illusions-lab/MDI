@@ -15,6 +15,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
+mod comments;
 mod docx;
 mod warichu;
 pub use warichu::{
@@ -37,17 +38,27 @@ pub use text_projection::{
     MdiSourceSpanRelation, MdiSourceSpanResolutionError, MdiSourceSpanTextMatch,
     MdiSourceSpanTextResolution, MdiTextAnnotation, MdiTextBlock, MdiTextBlockKind,
     MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap, MdiTextSourceRun,
-    get_mdi_text_blocks, get_mdi_text_blocks_json, resolve_mdi_source_span,
-    resolve_mdi_source_span_json, resolve_mdi_source_spans, resolve_mdi_source_spans_json,
+    get_mdi_text_blocks, get_mdi_text_blocks_json, get_mdi_text_blocks_with_options,
+    resolve_mdi_source_span, resolve_mdi_source_span_json, resolve_mdi_source_spans,
+    resolve_mdi_source_spans_json,
 };
 
 /// MDI syntax version implemented by this crate.
-pub const MDI_SPEC_VERSION: &str = "2.0";
+pub const MDI_SPEC_VERSION: &str = "2.1";
 
 /// Version of the language-neutral wire format returned by the bindings.
 ///
 /// This version changes only for incompatible wire-schema changes.
 pub const MDI_IR_VERSION: &str = "1.0";
+/// Wire format used only when editorial comment nodes are explicitly requested.
+pub const MDI_COMMENT_IR_VERSION: &str = "1.1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ParseOptions {
+    #[serde(default)]
+    pub include_comments: bool,
+}
 
 /// Version of the transient Rust-owned mdast provenance contract.
 ///
@@ -299,7 +310,15 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
-    parse_document_without_provenance(source)
+    parse_document_with_options(source, ParseOptions::default())
+}
+
+pub fn parse_document_with_options(source: &str, options: ParseOptions) -> Document {
+    let mut document = parse_document_without_provenance(source);
+    if !options.include_comments {
+        comments::filter_nodes(&mut document.children);
+    }
+    document
 }
 
 /// Parse a document for the Rust-to-mdast adapter boundary. The adapter-only
@@ -320,12 +339,13 @@ pub(crate) fn parse_document_without_provenance(source: &str) -> Document {
 }
 
 fn parse_document_unchecked(source: &str) -> Document {
-    // markdown-rs 1.0 can corrupt its mdast parent stack when a document
-    // contains a second frontmatter-shaped fence later in the body. On Wasm,
-    // that panic aborts before `catch_unwind` can recover, so reject this
-    // malformed shape before entering the dependency and preserve it literally.
+    let comments = comments::Comments::scan(source);
+    let original_source = source;
+    let masked_source = comments.mask(source);
+    let source = masked_source.as_ref();
+    // Check the Markdown input after editorial payloads have been shielded.
     if has_late_frontmatter_like_block(source) {
-        return literal_fallback_document(source);
+        return comments.literal_document(source, original_source);
     }
     let prepared = prepare_block_markers(source);
     let mut constructs = markdown::Constructs::gfm();
@@ -338,13 +358,14 @@ fn parse_document_unchecked(source: &str) -> Document {
         ..markdown::ParseOptions::default()
     };
     let Ok(tree) = markdown::to_mdast(&prepared.markdown, &options) else {
-        return literal_fallback_document(source);
+        return comments.literal_document(source, original_source);
     };
     let mut root = serde_json::to_value(tree).expect("markdown AST is serializable");
     let frontmatter = extract_frontmatter(&root, source);
     annotate_and_lower(&mut root, source, false);
     lower_markdown_inside_mdi(&mut root, source);
     inject_block_markers(&mut root, &prepared.markers);
+    comments.restore(&mut root, original_source);
     let children = root
         .get_mut("children")
         .and_then(serde_json::Value::as_array_mut)
@@ -1187,9 +1208,19 @@ fn diagnostics(document: &Document) -> Vec<Diagnostic> {
 /// Parse the complete CommonMark, GFM, front-matter, and MDI document and
 /// return the versioned wire envelope used by language bindings.
 pub fn parse_output(source: &str) -> ParseOutput {
-    let document = parse_document(source);
+    parse_output_with_options(source, ParseOptions::default())
+}
+
+pub fn parse_output_with_options(source: &str, options: ParseOptions) -> ParseOutput {
+    let document = parse_document_with_options(source, options);
+    let mut diagnostics = diagnostics(&document);
+    diagnostics.extend(comments::Comments::scan(source).diagnostics);
     ParseOutput {
-        ir_version: MDI_IR_VERSION,
+        ir_version: if options.include_comments {
+            MDI_COMMENT_IR_VERSION
+        } else {
+            MDI_IR_VERSION
+        },
         syntax_version: MDI_SPEC_VERSION,
         capabilities: ParserCapabilities {
             mdi: true,
@@ -1198,7 +1229,7 @@ pub fn parse_output(source: &str) -> ParseOutput {
             front_matter: true,
             source_spans: true,
         },
-        diagnostics: diagnostics(&document),
+        diagnostics,
         document,
     }
 }
@@ -1213,17 +1244,34 @@ pub fn parse_json(source: &str) -> String {
         .expect("serializing the MDI parse output cannot fail")
 }
 
+pub fn parse_json_with_options(source: &str, options: ParseOptions) -> String {
+    serde_json::to_string(&parse_output_with_options(source, options))
+        .expect("serializing the MDI parse output cannot fail")
+}
+
 /// Serialize the Rust-owned IR plus transient mdast provenance. This narrow
 /// boundary exists solely for `@illusions-lab/mdi-remark`.
 #[cfg(any(test, feature = "wasm"))]
 pub(crate) fn parse_mdast_json(source: &str) -> String {
-    let document = parse_document_for_mdast(source);
+    parse_mdast_json_with_options(source, ParseOptions::default())
+}
+
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_mdast_json_with_options(source: &str, options: ParseOptions) -> String {
+    let mut document = parse_document_for_mdast(source);
+    if !options.include_comments {
+        comments::filter_nodes(&mut document.children);
+    }
     let frontmatter_span = document
         .frontmatter
         .as_ref()
         .map(|frontmatter| frontmatter.span);
     let output = ParseOutput {
-        ir_version: MDI_IR_VERSION,
+        ir_version: if options.include_comments {
+            MDI_COMMENT_IR_VERSION
+        } else {
+            MDI_IR_VERSION
+        },
         syntax_version: MDI_SPEC_VERSION,
         capabilities: ParserCapabilities {
             mdi: true,
@@ -1232,7 +1280,11 @@ pub(crate) fn parse_mdast_json(source: &str) -> String {
             front_matter: true,
             source_spans: true,
         },
-        diagnostics: diagnostics(&document),
+        diagnostics: {
+            let mut diagnostics = diagnostics(&document);
+            diagnostics.extend(comments::Comments::scan(source).diagnostics);
+            diagnostics
+        },
         document,
     };
     let mut output = serde_json::to_value(output).expect("mdast parse output is serializable");
@@ -1358,6 +1410,24 @@ pub mod ffi {
     #[unsafe(no_mangle)]
     pub extern "C" fn mdi_parse_json(data: *const u8, len: usize) -> MdiFfiResult {
         string_result(data, len, parse_json)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_parse_json_with_options(
+        data: *const u8,
+        len: usize,
+        options_data: *const u8,
+        options_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|source| {
+            let options = utf8_argument(options_data, options_len, "parse options")?;
+            let options = serde_json::from_str::<super::ParseOptions>(options)
+                .map_err(|error| error.to_string())?;
+            Ok(super::parse_json_with_options(source, options))
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
+            Err(error) => failure(error),
+        }
     }
     #[unsafe(no_mangle)]
     pub extern "C" fn mdi_render_html(data: *const u8, len: usize) -> MdiFfiResult {
@@ -1504,7 +1574,7 @@ pub fn render_html_document(document: &Document) -> String {
 
 /// Parse and serialize source to canonical MDI/Markdown spelling in Rust.
 pub fn serialize_mdi(source: &str) -> String {
-    serialize_mdi_document(&parse_document(source))
+    serialize_mdi_document(&parse_document_without_provenance(source))
 }
 
 /// Serialize a parsed document without invoking a host Markdown serializer.
@@ -1535,6 +1605,9 @@ pub fn render_text(source: &str) -> String {
 pub fn render_text_document(document: &Document) -> String {
     let mut output = String::new();
     for node in &document.children {
+        if node["type"] == "comment" {
+            continue;
+        }
         render_text_node(node, &mut output);
         if !output.ends_with('\n') {
             output.push('\n');
@@ -2531,11 +2604,25 @@ fn serialize_block(node: &serde_json::Value, out: &mut String, prefix: &str) {
             for child in children(node) {
                 serialize_block(child, &mut content, "");
             }
-            for line in content.trim_end_matches('\n').lines() {
-                out.push_str(prefix);
-                out.push_str("> ");
+            let comments = comments::Comments::scan(&content);
+            let mut offset = 0;
+            for line in content.trim_end_matches('\n').split_inclusive('\n') {
+                let comment_index = comments
+                    .spans
+                    .partition_point(|span| span.end_byte as usize <= offset);
+                let inside_comment = comments
+                    .spans
+                    .get(comment_index)
+                    .is_some_and(|span| (span.start_byte as usize) < offset);
+                if !inside_comment {
+                    out.push_str(prefix);
+                    out.push_str("> ");
+                }
                 out.push_str(line);
-                out.push('\n');
+                if !line.ends_with('\n') {
+                    out.push('\n');
+                }
+                offset += line.len();
             }
         }
         "list" => {
@@ -2701,10 +2788,21 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
     match kind {
+        "comment" => {
+            out.push_str("<!--");
+            out.push_str(
+                node.get("value")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("-->");
+        }
         "text" => out.push_str(
-            node.get("value")
+            &node
+                .get("value")
                 .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
+                .unwrap_or_default()
+                .replace("<!--", "\\<!--"),
         ),
         "html" => out.push_str(
             node.get("value")
@@ -4300,10 +4398,43 @@ mod wasm {
         parse_json(source)
     }
 
+    #[wasm_bindgen(js_name = parseMdiSyntaxWithOptionsJson)]
+    pub fn wasm_parse_mdi_syntax_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(super::parse_json_with_options(source, options))
+    }
+
+    #[wasm_bindgen(js_name = parseMdiMdastWithOptionsJson)]
+    pub fn wasm_parse_mdi_mdast_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(super::parse_mdast_json_with_options(source, options))
+    }
+
     /// Parse through Rust with transient metadata for the mdast adapter only.
     #[wasm_bindgen(js_name = parseMdiMdastJson)]
     pub fn wasm_parse_mdi_mdast_json(source: &str) -> String {
         parse_mdast_json(source)
+    }
+
+    #[wasm_bindgen(js_name = getMdiTextBlocksWithOptionsJson)]
+    pub fn wasm_get_mdi_text_blocks_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(
+            serde_json::to_string(&super::get_mdi_text_blocks_with_options(source, options))
+                .expect("serializable text projection"),
+        )
     }
 
     /// Project source-order searchable text and exact UTF-8 source maps in Rust.
@@ -4848,7 +4979,7 @@ mod tests {
                 .expect("parse output is valid JSON");
 
         assert_eq!(value["irVersion"], "1.0");
-        assert_eq!(value["syntaxVersion"], "2.0");
+        assert_eq!(value["syntaxVersion"], "2.1");
         assert_eq!(value["capabilities"]["mdi"], true);
         assert_eq!(value["capabilities"]["commonMark"], true);
         assert_eq!(value["capabilities"]["gfm"], true);

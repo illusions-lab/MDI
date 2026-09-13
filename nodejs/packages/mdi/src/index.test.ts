@@ -415,7 +415,7 @@ describe("Rust MDI JavaScript binding", () => {
 				{ type: "paragraph", indent: 2, bottom: 1 }, { type: "unknown" },
 			],
 		} as never);
-		expect(tree.data?.frontmatter).toMatchObject({ mdi: "2.0", lang: "ja", writingMode: "horizontal" });
+		expect(tree.data?.frontmatter).toMatchObject({ mdi: "2.1", lang: "ja", writingMode: "horizontal" });
 		expect(tree.children.map((node) => node.type)).toEqual([
 			"yaml", "mdiRuby", "mdiTcy", "mdiBreak", "mdiEm", "mdiNoBreak", "mdiWarichu", "mdiKern", "mdiBlank", "mdiPagebreak", "paragraph", "unknown",
 		]);

@@ -2,10 +2,11 @@ import Foundation
 import MDICore
 
 /// MDI's supported language-specification version.
-public let mdiSpecVersion = "2.0"
+public let mdiSpecVersion = "2.1"
 
 /// The version of the Rust-owned JSON document contract.
 public let mdiIRVersion = "1.0"
+public let mdiCommentIRVersion = "1.1"
 
 public enum MDIError: Error, Equatable, LocalizedError, Sendable {
     case core(String)
@@ -109,11 +110,22 @@ public enum MDI {
         try parseResult(from: call(source, operation: mdi_parse_json))
     }
 
+    public static func parse(_ source: String, includeComments: Bool) throws -> MDIParseResult {
+        let bytes = Array(source.utf8)
+        let options = Array(try JSONEncoder().encode(["includeComments": includeComments]))
+        let result = bytes.withUnsafeBufferPointer { bytes in
+            options.withUnsafeBufferPointer { options in
+                mdi_parse_json_with_options(bytes.baseAddress, bytes.count, options.baseAddress, options.count)
+            }
+        }
+        return try parseResult(from: data(from: result))
+    }
+
     static func parseResult(from data: Data) throws -> MDIParseResult {
         let result: MDIParseResult
         do { result = try JSONDecoder().decode(MDIParseResult.self, from: data) }
         catch { throw MDIError.invalidWireFormat("MDI core returned invalid parse JSON: \(error.localizedDescription)") }
-        guard result.irVersion == mdiIRVersion else {
+        guard result.irVersion == mdiIRVersion || result.irVersion == mdiCommentIRVersion else {
             throw MDIError.invalidWireFormat("Unsupported MDI IR version: \(result.irVersion)")
         }
         return result

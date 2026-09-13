@@ -187,3 +187,12 @@ An implementation is part of MDI only if all of the following are true:
 - configured EPUB/DOCX and PDF print profiles resolve through `mdi-core`;
 - PDF uses HTML/CSS produced from the Rust IR and is orchestrated by Rust;
 - no host-language package contains an alternative MDI tokenizer or parser.
+
+
+### Editorial comment IR (2.1)
+
+Rust retains comments internally. Default document interfaces filter them and
+keep IR 1.0; explicit `includeComments` selects IR 1.1. Canonical source saving
+uses the retained tree. Publication and body projections always omit comments.
+The mdast boundary transports `mdiComment` leaves, never ordinary HTML nodes.
+See [the normative comment contract](./SYNTAX.md#15-editorial-comments--編集用コメント).

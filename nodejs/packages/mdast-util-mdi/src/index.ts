@@ -1,7 +1,8 @@
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 
 export type {
 	MdiPhrasingContent,
+	MdiComment,
 	MdiRuby,
 	MdiTcy,
 	MdiBreak,

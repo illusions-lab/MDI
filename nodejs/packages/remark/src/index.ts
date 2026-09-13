@@ -3,6 +3,7 @@ import {
 	type MdiMdastDocument,
 	type MdiMdastNode,
 } from "@illusions-lab/mdi/internal/mdast";
+import type { MdiParseOptions } from "@illusions-lab/mdi";
 import { mdiToMarkdown } from "mdast-util-mdi";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -12,7 +13,7 @@ import type {} from "remark-stringify";
 import type { Processor } from "unified";
 import { resolveFrontmatter } from "./frontmatter.js";
 
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 export { MDI_MDAST_PROVENANCE_VERSION } from "@illusions-lab/mdi/internal/mdast";
 export type { MdiMdastProvenance, MdiMdastProvenanceTarget } from "@illusions-lab/mdi/internal/mdast";
 export type { MdiFrontmatter } from "./frontmatter.js";
@@ -25,16 +26,19 @@ export { initializeMdi } from "@illusions-lab/mdi";
  * CommonMark, GFM, front matter, and MDI boundaries are decided by
  * `@illusions-lab/mdi` (WASM/Rust), then mapped into ordinary mdast objects.
  */
-export default function remarkMdi(this: Processor): void {
-	const data = this.data();
-	(data.toMarkdownExtensions ??= []).push(mdiToMarkdown());
-
+export default function remarkMdi(this: Processor, options: MdiParseOptions = {}): void {
 	// remark-gfm still contributes mdast-to-markdown handlers for serialization.
 	// Its parser hooks are never reached because this adapter owns `Parser`.
 	this.use(remarkGfm);
 	this.use(remarkFrontmatter, ["yaml"]);
+	// Register after GFM so its table and footnote handlers cannot overwrite
+	// the wrappers that preserve opaque multiline comment payloads.
+	this.use(function commentSerialization() {
+		const data = this.data();
+		(data.toMarkdownExtensions ??= []).push(mdiToMarkdown());
+	});
 	(this as unknown as { parser: (source: string) => Root }).parser = (source) => {
-		const tree = toMdast(parseForMdast(source).document);
+		const tree = toMdast(parseForMdast(source, options).document);
 		resolveFrontmatter(tree);
 		return tree;
 	};
@@ -65,6 +69,7 @@ function toMdastNode(node: MdiMdastNode): Record<string, unknown> {
 			const ruby = node.ruby as { type: string; value: string | string[] };
 			return { ...mapped, type: "mdiRuby", ruby: ruby.value };
 		}
+		case "comment": return { ...mapped, type: "mdiComment", span: _span };
 		case "tcy": return { ...mapped, type: "mdiTcy" };
 		case "break": return { ...mapped, type: "mdiBreak" };
 		case "em": return { ...mapped, type: "mdiEm" };

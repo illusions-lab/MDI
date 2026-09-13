@@ -49,6 +49,7 @@ if (!epubCheckJar) {
   throw new Error("EPUBCHECK_JAR must point to the official EPUBCheck jar");
 }
 
+const commentSentinel = "MDI_PRIVATE_COMMENT_21_SENTINEL";
 const source = `---
 title: 契約試験
 author: MDI
@@ -58,7 +59,9 @@ date: 2026-07-23
 
 # 第一章
 
-本文には{東京|とうきょう}、縦中横^12^、[[em:圏点]]、[[kern:0.1em:字間]]がある。
+<!--${commentSentinel}-->
+
+本文には<!--${commentSentinel}-->{東京|とうきょう}、縦中横^12^、[[em:圏点]]、[[kern:0.1em:字間]]がある。
 
 本文[[warichu:一**二**三四五六]]続き。[[warichu:{東京|とうきょう}^12^]]
 
@@ -361,6 +364,12 @@ Raw <em>markup</em> and {東京|とうきょう}.
     });
   }
 
+  for (const path of [...docxPaths, ...epubPaths]) {
+    assert.ok(!execFileSync("unzip", ["-p", path], { maxBuffer: 64 * 1024 * 1024 }).includes(commentSentinel), `${path}: comment leaked into archive`);
+  }
+  for (const path of htmlPaths) {
+    assert.ok(!readFileSync(path, "utf8").includes(commentSentinel), `${path}: comment leaked into HTML`);
+  }
   validateDocx(docxPaths);
   await validateLibreOfficeDocx(libreOfficeDocxPaths);
   await validatePdfs(pdfCases);
@@ -477,11 +486,17 @@ async function validatePdf(path, bytes) {
   });
   const document = await loadingTask.promise;
   try {
+    assert.ok(!JSON.stringify(await document.getMetadata()).includes(commentSentinel), `${path}: comment leaked into PDF metadata`);
+    const attachments = await document.getAttachments();
+    for (const attachment of Object.values(attachments ?? {})) {
+      assert.ok(!Buffer.from(attachment.content).includes(commentSentinel), `${path}: comment leaked into PDF attachment`);
+    }
     if (document.numPages < 1) throw new Error(`${path}: PDF has no pages`);
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
       await page.getOperatorList();
-      await page.getTextContent();
+      const text = await page.getTextContent();
+      assert.ok(!JSON.stringify(text).includes(commentSentinel), `${path}: comment leaked into PDF text`);
     }
     console.log(`PDF.js valid: ${basename(path)} (${document.numPages} page(s))`);
   } finally {

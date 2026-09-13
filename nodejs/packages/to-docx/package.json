@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-to-docx",
-  "version": "2.0.17",
+  "version": "2.1.0",
   "description": "Render MDI (.mdi) documents to DOCX",
   "license": "MIT",
   "repository": {

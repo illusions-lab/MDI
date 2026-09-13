@@ -665,3 +665,8 @@ These outputs are contract-tested against the platform-owned [Narou ruby help](h
 - [Live showcase](/syntax/showcase/) — every construct above, rendered live by this documentation site.
 - [Document IR](/core/document-ir/) — the full node-type catalogue in one place.
 - [Ecosystem: Migration and compatibility](/ecosystem/compatibility/) — every current spec-vs-implementation gap, tracked in one page.
+
+
+## Editorial comments in MDI 2.1
+
+[Editorial comments in MDI 2.1](/syntax/comments/)

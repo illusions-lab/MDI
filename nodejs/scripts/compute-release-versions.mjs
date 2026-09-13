@@ -2,9 +2,14 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { globSync } from "node:fs";
 import { join, relative } from "node:path";
+import { nextReleaseVersion, releaseClosure } from "./release-version-policy.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const dryRun = process.argv.includes("--dry-run");
+const targetArgument = process.argv.indexOf("--target-version");
+const targetVersion = targetArgument >= 0 ? process.argv[targetArgument + 1] : process.env.RELEASE_TARGET_VERSION || undefined;
+if (targetArgument >= 0 && (!targetVersion || targetVersion.startsWith("--"))) throw new Error("--target-version requires a stable X.Y.Z version");
+const { series } = JSON.parse(readFileSync(new URL("../../config/release-series.json", import.meta.url), "utf8"));
 const baseArgument = process.argv.indexOf("--base");
 const baseRef =
   baseArgument >= 0
@@ -71,86 +76,47 @@ for (const file of changedFiles) {
 // The publish packer determines the manifest inside every npm tarball. When
 // it changes, existing registry releases cannot be repaired in place, so all
 // public packages need a new patch release with the corrected artifact.
-if (packagingChanged) {
+if (packagingChanged || targetVersion || changedFiles.includes("config/release-series.json")) {
   for (const { manifest } of allPackages) {
     changedPackages.add(manifest.name);
     dependencyRoots.add(manifest.name);
   }
 }
 
-const releaseNames = new Set(changedPackages);
-let expanded = true;
-while (expanded) {
-  expanded = false;
-  for (const { manifest } of allPackages) {
-    const dependencies = {
-      ...manifest.dependencies,
-      ...manifest.optionalDependencies,
-      ...manifest.peerDependencies,
-    };
-    if (
-      !releaseNames.has(manifest.name) &&
-      Object.keys(dependencies).some((name) => dependencyRoots.has(name))
-    ) {
-      releaseNames.add(manifest.name);
-      dependencyRoots.add(manifest.name);
-      expanded = true;
-    }
-  }
-}
+const releaseNames = new Set([
+  ...changedPackages,
+  ...releaseClosure(allPackages.map(({ manifest }) => manifest), dependencyRoots),
+]);
 
 const packages = allPackages.filter(({ manifest }) => releaseNames.has(manifest.name));
 const released = [];
 
-for (const { manifestPath, manifest } of packages) {
-  const [major, minor, patch] = manifest.version.split(".");
-  if (!/^\d+$/.test(major) || !/^\d+$/.test(minor) || !/^\d+$/.test(patch)) {
-    throw new Error(
-      `${manifest.name} must use a stable X.Y.Z version as its release baseline.`
-    );
-  }
-
-  const tagPrefix = `${manifest.name}@${major}.${minor}.`;
-  const tags = execFileSync("git", ["tag", "-l", `${tagPrefix}*`], {
-    cwd: root,
-    encoding: "utf8",
-  })
-    .trim()
-    .split("\n")
-    .filter(Boolean);
-  const patches = tags
-    .map((tag) => tag.slice(tagPrefix.length))
-    .filter((patch) => /^\d+$/.test(patch))
-    .map(Number);
-  let registryPatch = 0;
+// Resolve every version before modifying any manifest: a conflict or registry
+// outage must leave the checkout untouched.
+for (const { manifest } of packages) {
+  const prefix = `${manifest.name}@`;
+  const tagged = execFileSync("git", ["tag", "-l", `${prefix}*`], { cwd: root, encoding: "utf8" })
+    .trim().split("\n").filter(Boolean).map((tag) => tag.slice(prefix.length));
+  let published = [];
   try {
-    const published = execFileSync("npm", ["view", manifest.name, "version"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    const [publishedMajor, publishedMinor, publishedPatch] = published.split(".");
-    if (
-      publishedMajor === major &&
-      publishedMinor === minor &&
-      /^\d+$/.test(publishedPatch)
-    ) {
-      registryPatch = Number(publishedPatch);
-    }
-  } catch {
-    // A first publication has no npm version yet; tags and the manifest still
-    // provide a deterministic next patch.
+    const result = JSON.parse(execFileSync("npm", ["view", manifest.name, "versions", "--json"], {
+      cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    }));
+    published = Array.isArray(result) ? result : [result];
+  } catch (error) {
+    let code;
+    try { code = JSON.parse(String(error.stdout)).error?.code; } catch { /* not a registry JSON error */ }
+    if (code !== "E404") throw new Error(`Unable to verify registry versions for ${manifest.name}`, { cause: error });
   }
-  const manifestPatch = Number(patch);
-  const nextVersion = `${major}.${minor}.${
-    Math.max(0, manifestPatch, registryPatch, ...patches) + 1
-  }`;
+  const version = nextReleaseVersion({ baseline: manifest.version, published, tagged, targetVersion, series });
+  released.push({ name: manifest.name, version });
+}
 
-  if (!dryRun) {
-    manifest.version = nextVersion;
+if (!dryRun) {
+  for (const { manifestPath, manifest } of packages) {
+    manifest.version = released.find(({ name }) => name === manifest.name).version;
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
   }
-  released.push({ name: manifest.name, version: nextVersion });
 }
 
 if (process.env.GITHUB_OUTPUT) {

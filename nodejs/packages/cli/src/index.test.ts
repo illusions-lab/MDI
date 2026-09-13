@@ -154,7 +154,10 @@ describe("public command parser", () => {
 });
 
 describe("version service", () => {
-  it("reads the installed package version", () => expect(currentVersion()).toBe("2.0.18"));
+  it("reads the installed package version", async () => {
+    const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+    expect(currentVersion()).toBe(manifest.version);
+  });
 
   it.each([
     ["2.1.0", "2.0.18", 1], ["2.0.18", "2.0.18", 0], ["2.0.17", "2.0.18", -1],
@@ -534,7 +537,7 @@ describe("CLI command output", () => {
       await expect(runCli(["build", input, "--to", "json"])).resolves.toBe(0);
       const result = JSON.parse(await readFile(output, "utf8"));
       expect(result.irVersion).toBe("1.0");
-      expect(result.syntaxVersion).toBe("2.0");
+      expect(result.syntaxVersion).toBe("2.1");
       expect(result.document.children[0].type).toBe("heading");
       expect(result.diagnostics).toEqual([]);
       expect(await readFile(output, "utf8")).toContain("\n  \"irVersion\":");
@@ -716,4 +719,23 @@ describe("vertical Kitchen Sink export artifacts", () => {
       await rm(directory, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+
+it("includes comment IR only when explicitly requested by CLI", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "mdi-cli-comments-"));
+  try {
+    const input = join(directory, "book.mdi");
+    await writeFile(input, "前<!--UNIQUE_COMMENT_SENTINEL-->後");
+    for (const argv of [[input, "--include-comments", "--to", "json"], [input, "--to", "json", "--include-comments"]]) {
+      expect(parseCommand(argv)).toMatchObject({command:"build",args:{includeComments:true}});
+      expect(parseArgs(argv)).toMatchObject({includeComments:true});
+    }
+    expect(parseCommand([input, "--include-comments", "--include-comments"])).toBeUndefined();
+    const output = await build(input, "json", {includeComments:true});
+    expect(JSON.parse(await readFile(output,"utf8")).irVersion).toBe("1.1");
+    expect(await readFile(output,"utf8")).toContain("UNIQUE_COMMENT_SENTINEL");
+    const html = await build(input, "html", {includeComments:true});
+    expect(await readFile(html,"utf8")).not.toContain("UNIQUE_COMMENT_SENTINEL");
+  } finally { await rm(directory,{recursive:true,force:true}); }
 });

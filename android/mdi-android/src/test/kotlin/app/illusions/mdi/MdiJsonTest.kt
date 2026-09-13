@@ -49,6 +49,13 @@ class MdiJsonTest {
     }
 
     @Test
+    fun comments_are_explicit_and_extended_ir_is_supported() {
+        bridge.parseJson = validParseJson.replace("\"irVersion\":\"1.0\"", "\"irVersion\":\"1.1\"")
+        assertEquals(MDI_COMMENT_IR_VERSION, Mdi.parse("source", includeComments = true).irVersion)
+        assertEquals(listOf("parse:source:true"), bridge.calls)
+    }
+
+    @Test
     fun public_api_forwards_every_renderer_to_the_host_bridge() {
         assertEquals(MDI_IR_VERSION, Mdi.parse("source").irVersion)
         assertEquals("<html>", Mdi.renderHtml("source"))
@@ -124,6 +131,7 @@ class MdiJsonTest {
         val calls = mutableListOf<String>()
         var parseJson: String = validParseJson
 
+        override fun parseJsonWithOptions(source: String, includeComments: Boolean): String = parseJson.also { calls += "parse:$source:$includeComments" }
         override fun parseJson(source: String): String = parseJson.also { calls += "parse:$source" }
         override fun renderHtml(source: String): String = "<html>".also { calls += "html:$source" }
         override fun serializeMdi(source: String): String = "normalized".also { calls += "serialize:$source" }

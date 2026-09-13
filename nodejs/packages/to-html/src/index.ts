@@ -2,7 +2,7 @@ import { renderHtml } from "@illusions-lab/mdi-core";
 import { mdastToMdiSource } from "mdast-util-mdi";
 import type { Root } from "mdast";
 
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 
 /**
  * Preserve the mdast-facing API while Rust remains the only HTML renderer.

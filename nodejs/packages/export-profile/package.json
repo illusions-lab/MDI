@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-export-profile",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Shared export profile schema for MDI converters",
   "license": "MIT",
   "repository": {

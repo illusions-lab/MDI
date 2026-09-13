@@ -21,6 +21,8 @@ android {
         }
     }
 
+    sourceSets.getByName("androidTest").assets.srcDir("../../mdi-core/tests/fixtures/comments")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }

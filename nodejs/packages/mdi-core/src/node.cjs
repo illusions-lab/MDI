@@ -35,3 +35,7 @@ exports.unescapeRubyText = bindings.unescapeRubyText;
 exports.layoutWarichuJson = bindings.layoutWarichuJson;
 
 exports.layoutWarichuOptionsJson = (...args) => bindings.layoutWarichuOptionsJson(...args);
+
+exports.parseMdiSyntaxWithOptionsJson = bindings.parseMdiSyntaxWithOptionsJson;
+exports.parseMdiMdastWithOptionsJson = bindings.parseMdiMdastWithOptionsJson;
+exports.getMdiTextBlocksWithOptionsJson = bindings.getMdiTextBlocksWithOptionsJson;

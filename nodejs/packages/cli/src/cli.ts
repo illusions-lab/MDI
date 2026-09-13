@@ -35,6 +35,7 @@ Commands:
     mdi --help, -h             Show this help
 
   Options:
+  --include-comments Include comments in JSON IR; publication output omits them
   --to <format>       Select an output format
   -o, --output <file> Write to a specific path (its extension can select format)
   --config <file>     EPUB/DOCX/PDF export profile JSON
@@ -163,6 +164,7 @@ export async function run(argv = process.argv.slice(2)): Promise<number> {
   try {
     const built = await build(command.args.input, command.args.format, {
       output: command.args.output,
+      includeComments: command.args.includeComments,
       profile: await loadExportProfile(command.args.config),
     });
     for (const path of Array.isArray(built) ? built : [built]) console.log(`Written ${path}`);

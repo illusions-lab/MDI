@@ -13,6 +13,9 @@ MDI_SPEC_VERSION: Final = _native.MDI_SPEC_VERSION
 MDI_IR_VERSION: Final = _native.MDI_IR_VERSION
 """Version of the document-IR wire schema returned by :func:`parse`."""
 
+MDI_COMMENT_IR_VERSION: Final = _native.MDI_COMMENT_IR_VERSION
+"""Extended IR version used when comments are requested."""
+
 TextFormat = Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 """A Rust-supported plain-text export convention."""
 
@@ -20,14 +23,14 @@ MdiRenderError = _native.MdiRenderError
 """Raised when Rust cannot create an EPUB or DOCX archive."""
 
 
-def parse(source: str) -> dict[str, Any]:
+def parse(source: str, *, include_comments: bool = False) -> dict[str, Any]:
     """Parse complete MDI source into the versioned Rust-owned document IR.
 
     Source spans use half-open UTF-8 *byte* offsets. Recoverable syntax issues
     are returned in the ``diagnostics`` list.
     """
-    result = json.loads(_native.parse_json(source))
-    if result["irVersion"] != MDI_IR_VERSION:
+    result = json.loads(_native.parse_json(source, include_comments=True) if include_comments else _native.parse_json(source))
+    if result["irVersion"] not in (MDI_IR_VERSION, MDI_COMMENT_IR_VERSION):
         raise RuntimeError(f"Unsupported MDI IR version: {result['irVersion']}")
     return result
 
@@ -65,7 +68,7 @@ def render_docx(source: str) -> bytes:
 parse_mdi_syntax = parse
 
 __all__ = [
-    "layout_warichu", "MDI_IR_VERSION", "MDI_SPEC_VERSION", "MdiRenderError", "TextFormat", "parse",
+    "layout_warichu", "MDI_COMMENT_IR_VERSION", "MDI_IR_VERSION", "MDI_SPEC_VERSION", "MdiRenderError", "TextFormat", "parse",
     "parse_mdi_syntax", "render_docx", "render_epub", "render_html", "render_text",
     "render_text_format", "serialize_mdi",
 ]

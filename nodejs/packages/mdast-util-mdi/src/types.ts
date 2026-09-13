@@ -9,6 +9,7 @@ import type { PhrasingContent } from "mdast";
  */
 export type MdiPhrasingContent =
 	| PhrasingContent
+	| MdiComment
 	| MdiRuby
 	| MdiTcy
 	| MdiBreak
@@ -136,6 +137,7 @@ declare module "mdast" {
 	}
 
 	interface PhrasingContentMap {
+		mdiComment: MdiComment;
 		mdiRuby: MdiRuby;
 		mdiTcy: MdiTcy;
 		mdiBreak: MdiBreak;
@@ -146,6 +148,7 @@ declare module "mdast" {
 	}
 
 	interface BlockContentMap {
+		mdiComment: MdiComment;
 		mdiBlank: MdiBlank;
 		mdiPagebreak: MdiPagebreak;
 	}
@@ -155,6 +158,7 @@ declare module "mdast" {
 	// `PhrasingContentMap`/`BlockContentMap` above, so every custom node
 	// must be registered here for downstream mdast tools.
 	interface RootContentMap {
+		mdiComment: MdiComment;
 		mdiRuby: MdiRuby;
 		mdiTcy: MdiTcy;
 		mdiBreak: MdiBreak;
@@ -165,4 +169,11 @@ declare module "mdast" {
 		mdiBlank: MdiBlank;
 		mdiPagebreak: MdiPagebreak;
 	}
+}
+
+/** Editorial payload; parent context determines block or inline placement. */
+export interface MdiComment extends Node {
+	type: "mdiComment";
+	value: string;
+	span?: { startByte: number; endByte: number };
 }

@@ -256,3 +256,8 @@ CSS 沒有原生的割注表現，`SYNTAX.md` 規定用 `display: inline-block` 
 - [即時渲染展示](/zh-tw/syntax/showcase/) ―— 上述每個構文都由本站即時渲染。
 - [文件 IR](/zh-tw/core/document-ir/) ―— 完整的節點型別目錄。
 - [遷移與相容性](/zh-tw/ecosystem/compatibility/) ―— 目前所有規範與實作的落差，集中在同一頁。
+
+
+## Editorial comments in MDI 2.1
+
+[Editorial comments in MDI 2.1](/zh-tw/syntax/comments/)

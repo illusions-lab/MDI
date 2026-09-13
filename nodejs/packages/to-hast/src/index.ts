@@ -22,7 +22,7 @@ declare module "mdast" {
 }
 import { MDI_STYLESHEET } from "./stylesheet.js";
 
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 export { MDI_STYLESHEET };
 
 export interface MdiToHastResult {
@@ -174,6 +174,7 @@ const paragraph: Handler = (state, node) => {
  * block-alignment data (`[[indent:N]]` / `[[bottom]]`) as classes.
  */
 export const mdiHandlers: Record<string, Handler> = {
+	mdiComment: () => undefined,
 	mdiRuby,
 	mdiTcy,
 	mdiBreak,

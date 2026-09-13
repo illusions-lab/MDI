@@ -6,8 +6,21 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      target_version:
+        description: Optional exact stable version for all packages; occupied versions fail preflight
+        required: false
+        type: string
+      release_sha:
+        description: Optional already-gated main commit (required when recovering an older candidate)
+        required: false
+        type: string
+      resume_run_id:
+        description: Recover the original immutable npm artifacts from this workflow run
+        required: false
+        type: string
 
-concurrency: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
+concurrency: release-npm-${{ github.event.workflow_run.head_sha || inputs.release_sha || github.sha }}
 
 jobs:
   release:
@@ -18,7 +31,8 @@ jobs:
       contents: write
       id-token: write
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.release_sha || github.sha }}
+      RELEASE_ARTIFACTS_DIR: output/npm-release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,56 +44,92 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           count=$(
             gh api --method GET \
               "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-              -f head_sha="$RELEASE_SHA" \
-              -f status=completed \
-              -f per_page=100 \
+              -f head_sha="$RELEASE_SHA" -f status=completed -f per_page=100 \
               --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
           )
           test "$count" -gt 0
 
       - uses: jetli/wasm-pack-action@v0.4.0
-
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-
       - uses: actions/setup-node@v4
         with:
-          # npm trusted publishing requires Node >= 22.14 and npm >= 11.5.1.
           node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
       - run: pnpm install --frozen-lockfile
-
       - run: npm install --global npm@^11.5.1
 
-      - name: Resolve the already-released first-parent baseline
-        id: base
-        run: |
-          base_sha=$(git rev-parse "${RELEASE_SHA}^")
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Calculate next patch versions
-        id: versions
-        run: node nodejs/scripts/compute-release-versions.mjs
+      - name: Locate original artifacts before calculating any versions
+        id: saved
         env:
-          # Main is protected by CI and normally advances by one merge/squash
-          # commit, so its first parent is the exact already-released baseline.
-          RELEASE_BASE_SHA: ${{ steps.base.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        run: |
+          run_id=${RESUME_RUN_ID:-$GITHUB_RUN_ID}
+          artifacts=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" -f per_page=100)
+          count=$(jq --arg name "npm-release-$RELEASE_SHA" '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"$artifacts")
+          if [[ "$count" -gt 0 ]]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          else
+            test -z "$RESUME_RUN_ID"
+            test "$GITHUB_RUN_ATTEMPT" = '1'
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Publish next patch versions
-        id: publish
-        run: node nodejs/scripts/publish-versioned-packages.mjs
+      - uses: actions/download-artifact@v4
+        if: steps.saved.outputs.exists == 'true'
+        with:
+          name: npm-release-${{ env.RELEASE_SHA }}
+          path: ${{ env.RELEASE_ARTIFACTS_DIR }}
+          run-id: ${{ steps.saved.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Calculate release versions
+        if: steps.saved.outputs.exists != 'true'
+        id: versions
+        env:
+          RELEASE_TARGET_VERSION: ${{ inputs.target_version }}
+        run: |
+          RELEASE_BASE_SHA=$(git rev-parse "${RELEASE_SHA}^")
+          export RELEASE_BASE_SHA
+          node nodejs/scripts/compute-release-versions.mjs
+
+      - name: Build and pack the complete immutable candidate
+        if: steps.saved.outputs.exists != 'true'
         env:
           RELEASE_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
+        run: node nodejs/scripts/prepare-release-artifacts.mjs
 
-      - name: Create GitHub Releases with downloadable tarballs
-        if: steps.publish.outputs.published == 'true'
+      # Publication cannot start until the original bytes and checksums have
+      # been retained. A partial registry failure reuses this exact artifact.
+      - uses: actions/upload-artifact@v4
+        if: steps.saved.outputs.exists != 'true'
+        with:
+          name: npm-release-${{ env.RELEASE_SHA }}
+          path: ${{ env.RELEASE_ARTIFACTS_DIR }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Verify saved checksums and apply the saved versions
+        id: candidate
+        env:
+          RELEASE_TARGET_VERSION: ${{ inputs.target_version }}
+        run: node nodejs/scripts/prepare-release-artifacts.mjs --reuse
+
+      - name: Publish or verify the original artifacts using OIDC
+        id: publish
+        run: node nodejs/scripts/publish-versioned-packages.mjs
+
+      - name: Create GitHub Releases with the original tarballs
+        if: steps.publish.outputs.ready == 'true'
         run: node nodejs/scripts/create-github-releases.mjs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISHED_PACKAGES: ${{ steps.versions.outputs.publishedPackages }}
+          GH_TOKEN: ${{ github.token }}
+          PUBLISHED_PACKAGES: ${{ steps.candidate.outputs.publishedPackages }}

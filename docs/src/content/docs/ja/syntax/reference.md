@@ -254,3 +254,8 @@ GFM/Pandoc の脚注記法をそのまま継承します。MDI 独自の記法�
 - [ライブ・ショーケース](/ja/syntax/showcase/) — 記法の表示例を確認する。
 - [ドキュメント IR](/ja/core/document-ir/) — 解析結果の構造を確認する。
 - [互換性と移行](/ja/ecosystem/compatibility/) — 仕様と実装の差異を確認する。
+
+
+## Editorial comments in MDI 2.1
+
+[Editorial comments in MDI 2.1](/ja/syntax/comments/)

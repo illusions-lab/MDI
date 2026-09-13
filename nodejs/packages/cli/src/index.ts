@@ -27,7 +27,7 @@ export {
 } from "./version.js";
 export type { VersionCache, VersionServiceOptions } from "./version.js";
 
-export const MDI_SPEC_VERSION = "2.0";
+export const MDI_SPEC_VERSION = "2.1";
 export type OutputFormat =
   | "json"
   | "html"
@@ -44,6 +44,7 @@ export type OutputFormat =
 type TextOutputFormat = Extract<OutputFormat, "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora" | "note">;
 const TEXT_OUTPUT_FORMATS: readonly TextOutputFormat[] = ["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"];
 export interface BuildOptions {
+  includeComments?: boolean;
   output?: string;
   profile?: ExportProfile;
 }
@@ -100,7 +101,7 @@ export async function build(
   if (format === "json") {
     const destination =
       resolvedOptions.output ?? defaultOutputPath(input, format, format);
-    await writeFile(destination, `${JSON.stringify(parse(source), null, 2)}\n`, "utf8");
+    await writeFile(destination, `${JSON.stringify(parse(source, { includeComments: resolvedOptions.includeComments }), null, 2)}\n`, "utf8");
     return resolve(destination);
   }
   const result =
@@ -146,6 +147,7 @@ function rustTextOutput(source: string, profile: ExportProfile | undefined, form
 }
 
 export interface CliArgs {
+  includeComments?: boolean;
   input: string;
   format: OutputFormat;
   output?: string;
@@ -198,9 +200,11 @@ export function parseCommand(argv: string[]): CliCommand | undefined {
   let format: OutputFormat | undefined;
   let output: string | undefined;
   let config: string | undefined;
+  let includeComments = false;
   for (let index = 1; index < buildArgv.length; index += 1) {
     const flag = buildArgv[index];
     if (flag === "-h" || flag === "--help") return { command: "help" };
+    if (flag === "--include-comments" && !includeComments) { includeComments = true; continue; }
     const value = buildArgv[index + 1];
     if (!value || value.startsWith("-")) return undefined;
     if (flag === "--to" && !format && isFormat(value)) format = value;
@@ -213,7 +217,7 @@ export function parseCommand(argv: string[]): CliCommand | undefined {
   if (!inferred) return undefined;
   if (output && format && OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()] &&
       !formatsMatchOutputExtension(format, OUTPUT_EXTENSIONS[extname(output).slice(1).toLowerCase()])) return undefined;
-  return { command: "build", args: { input, format: inferred, ...(output ? { output } : {}), ...(config ? { config } : {}) } };
+  return { command: "build", args: { input, format: inferred, ...(includeComments ? { includeComments } : {}), ...(output ? { output } : {}), ...(config ? { config } : {}) } };
 }
 export function parseArgs(args: string[]): CliArgs | undefined {
   const [input, ...tail] = args;
@@ -221,8 +225,10 @@ export function parseArgs(args: string[]): CliArgs | undefined {
   let format: OutputFormat | undefined;
   let output: string | undefined;
   let config: string | undefined;
+  let includeComments = false;
   for (let index = 0; index < tail.length; index += 2) {
     const flag = tail[index];
+    if (flag === "--include-comments" && !includeComments) { includeComments = true; index -= 1; continue; }
     const value = tail[index + 1];
     if (!value) return undefined;
     if (flag === "--to" && isFormat(value) && !format) format = value;
@@ -234,6 +240,7 @@ export function parseArgs(args: string[]): CliArgs | undefined {
     ? {
         input,
         format,
+        ...(includeComments ? { includeComments } : {}),
         ...(output ? { output } : {}),
         ...(config ? { config } : {}),
       }

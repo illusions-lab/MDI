@@ -5,9 +5,7 @@ import type { Root } from "mdast";
 import { parse as parseYaml } from "yaml";
 
 const {
-	getMdiTextBlocksJson,
 	resolveMdiSourceSpansJson,
-	parseMdiSyntaxJson,
 	renderHtml: renderHtmlFromRust,
 	renderEpub: renderEpubFromRust,
 	renderEpubWithProfile: renderEpubWithProfileFromRust,
@@ -101,10 +99,22 @@ export type MdiDocxExportProfile = ExportProfile & {
 };
 
 /** MDI specification version implemented by this binding. */
-export const MDI_SPEC_VERSION = "2.0" as const;
+export const MDI_SPEC_VERSION = "2.1" as const;
 
 /** Version of the complete Rust-owned document IR. */
 export const MDI_IR_VERSION = "1.0" as const;
+export const MDI_COMMENT_IR_VERSION = "1.1" as const;
+
+export interface MdiParseOptions {
+	/** Include editorial comments in the returned tree; exports still omit them. */
+	includeComments?: boolean;
+}
+
+export interface MdiComment {
+	type: "comment";
+	value: string;
+	span: MdiSourceSpan;
+}
 
 /** Version of the Rust-owned searchable text projection. */
 export const MDI_TEXT_PROJECTION_VERSION = "1.0" as const;
@@ -176,7 +186,7 @@ export interface MdiTextBlock {
 export interface MdiTextBlocksResult {
 	projectionVersion: "1.0";
 	positionEncoding: "unicode-grapheme-cluster-1-based";
-	irVersion: typeof MDI_IR_VERSION;
+	irVersion: typeof MDI_IR_VERSION | typeof MDI_COMMENT_IR_VERSION;
 	syntaxVersion: typeof MDI_SPEC_VERSION;
 	capabilities: MdiParserCapabilities;
 	blocks: MdiTextBlock[];
@@ -271,7 +281,7 @@ export interface MdiHeading {
 }
 
 /** HTML output controls that do not alter MDI semantics. */
-export interface MdiHtmlRenderOptions {
+export interface MdiHtmlRenderOptions extends MdiParseOptions {
 	/** Return the semantic contents of `<body>` rather than a standalone page. */
 	bodyOnly?: boolean;
 }
@@ -291,7 +301,7 @@ export interface MdiRenderResult<T> {
  * this complete Rust-owned document tree.
  */
 export interface MdiSyntaxParseResult {
-	irVersion: typeof MDI_IR_VERSION;
+	irVersion: typeof MDI_IR_VERSION | typeof MDI_COMMENT_IR_VERSION;
 	syntaxVersion: typeof MDI_SPEC_VERSION;
 	capabilities: MdiParserCapabilities;
 	document: MdiDocument;
@@ -305,10 +315,10 @@ export type MdiSyntaxDocument = MdiDocument;
  * Parse the complete `.mdi` source in Rust and return the versioned
  * language-neutral document IR. JavaScript performs no grammar work.
  */
-export function parse(source: string): MdiSyntaxParseResult {
+export function parse(source: string, options: MdiParseOptions = {}): MdiSyntaxParseResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
-	const result = JSON.parse(parseMdiSyntaxJson(source)) as MdiSyntaxParseResult;
-	if (result.irVersion !== MDI_IR_VERSION) {
+	const result = JSON.parse(Object.keys(options).length === 0 ? mdiCore.parseMdiSyntaxJson(source) : mdiCore.parseMdiSyntaxWithOptionsJson(source, JSON.stringify(options))) as MdiSyntaxParseResult;
+	if (result.irVersion !== MDI_IR_VERSION && result.irVersion !== MDI_COMMENT_IR_VERSION) {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}
 	return result;
@@ -318,9 +328,9 @@ export function parse(source: string): MdiSyntaxParseResult {
  * Parse once in Rust and return source-order plaintext blocks, annotations,
  * and grapheme-precise UTF-8 source maps alongside the complete document IR.
  */
-export function getMdiTextBlocks(source: string): MdiTextBlocksResult {
+export function getMdiTextBlocks(source: string, options: MdiParseOptions = {}): MdiTextBlocksResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
-	const result = JSON.parse(getMdiTextBlocksJson(source)) as MdiTextBlocksResult;
+	const result = JSON.parse(Object.keys(options).length === 0 ? mdiCore.getMdiTextBlocksJson(source) : mdiCore.getMdiTextBlocksWithOptionsJson(source, JSON.stringify(options))) as MdiTextBlocksResult;
 	if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
 		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
 	}
@@ -523,7 +533,7 @@ export function renderHtmlWithDiagnostics(
 ): MdiRenderResult<string> {
 	assertSource(source);
 	assertHtmlOptions(options);
-	return renderWithDiagnostics(source, () => renderHtml(source, options));
+	return renderWithDiagnostics(source, () => renderHtml(source, options), options?.includeComments === undefined ? {} : { includeComments: options.includeComments });
 }
 
 /**
@@ -531,8 +541,8 @@ export function renderHtmlWithDiagnostics(
  * spans before selecting one of the renderer APIs. The returned document is
  * Rust-owned IR and must not be mutated as an input to a renderer.
  */
-export function prepareRender(source: string): MdiSyntaxParseResult {
-	return parse(source);
+export function prepareRender(source: string, options: MdiParseOptions = {}): MdiSyntaxParseResult {
+	return parse(source, options);
 }
 
 /** Build a baseline EPUB 3 archive from complete source in Rust. */
@@ -558,18 +568,21 @@ export function renderEpub(
 }
 
 /** Build a baseline Rust EPUB while retaining diagnostics for an export UI. */
+export function renderEpubWithDiagnostics(source: string, options: undefined, parseOptions: MdiParseOptions): MdiRenderResult<Uint8Array>;
 export function renderEpubWithDiagnostics(source: string): MdiRenderResult<Uint8Array>;
 export function renderEpubWithDiagnostics(
 	source: string,
 	options: MdiEpubExportOptions,
+	parseOptions?: MdiParseOptions,
 ): Promise<MdiRenderResult<Uint8Array>>;
 export function renderEpubWithDiagnostics(
 	source: string,
 	options?: MdiEpubExportOptions,
+	parseOptions: MdiParseOptions = {},
 ): MdiRenderResult<Uint8Array> | Promise<MdiRenderResult<Uint8Array>> {
 	return options === undefined
-		? renderWithDiagnostics(source, () => renderEpub(source))
-		: renderWithDiagnosticsAsync(source, () => renderEpub(source, options));
+		? renderWithDiagnostics(source, () => renderEpub(source), parseOptions)
+		: renderWithDiagnosticsAsync(source, () => renderEpub(source, options), parseOptions);
 }
 
 /** Build a baseline DOCX archive from complete source in Rust. */
@@ -595,18 +608,21 @@ export function renderDocx(
 }
 
 /** Build a baseline Rust DOCX while retaining diagnostics for an export UI. */
+export function renderDocxWithDiagnostics(source: string, profile: undefined, parseOptions: MdiParseOptions): MdiRenderResult<Uint8Array>;
 export function renderDocxWithDiagnostics(source: string): MdiRenderResult<Uint8Array>;
 export function renderDocxWithDiagnostics(
 	source: string,
 	profile: MdiDocxExportProfile,
+	parseOptions?: MdiParseOptions,
 ): Promise<MdiRenderResult<Uint8Array>>;
 export function renderDocxWithDiagnostics(
 	source: string,
 	profile?: MdiDocxExportProfile,
+	parseOptions: MdiParseOptions = {},
 ): MdiRenderResult<Uint8Array> | Promise<MdiRenderResult<Uint8Array>> {
 	return profile === undefined
-		? renderWithDiagnostics(source, () => renderDocx(source))
-		: renderWithDiagnosticsAsync(source, () => renderDocx(source, profile));
+		? renderWithDiagnostics(source, () => renderDocx(source), parseOptions)
+		: renderWithDiagnosticsAsync(source, () => renderDocx(source, profile), parseOptions);
 }
 
 /**
@@ -651,8 +667,8 @@ export async function renderDocxWithProfile(
  * workflows. This performs no parsing and preserves the established mdast
  * node conventions.
  */
-export function toPublicationMdast(document: MdiDocument): MdiPublicationRoot {
-	const children = document.children.map(toPublicationMdastNode) as unknown as Root["children"];
+export function toPublicationMdast(document: MdiDocument, options: MdiParseOptions = {}): MdiPublicationRoot {
+	const children = document.children.filter((node) => options.includeComments || node.type !== "comment").map((node) => toPublicationMdastNode(node, options)) as unknown as Root["children"];
 	const tree = { type: "root", children } as MdiPublicationRoot;
 	if (document.frontmatter) {
 		children.unshift({ type: "yaml", value: document.frontmatter.raw } as Root["children"][number]);
@@ -663,15 +679,16 @@ export function toPublicationMdast(document: MdiDocument): MdiPublicationRoot {
 	return tree;
 }
 
-function toPublicationMdastNode(node: MdiNode): Record<string, unknown> {
+function toPublicationMdastNode(node: MdiNode, options: MdiParseOptions): Record<string, unknown> {
 	const { span: _span, children, ...rest } = node;
 	const mapped: Record<string, unknown> = { ...rest };
-	if (children) mapped.children = children.map(toPublicationMdastNode);
+	if (children) mapped.children = children.filter((node) => options.includeComments || node.type !== "comment").map((node) => toPublicationMdastNode(node, options));
 	switch (node.type) {
 		case "ruby": {
 			const ruby = node.ruby as { value: string | string[] };
 			return { ...mapped, type: "mdiRuby", ruby: ruby.value };
 		}
+		case "comment": return { ...mapped, type: "mdiComment", span: _span };
 		case "tcy": return { ...mapped, type: "mdiTcy" };
 		case "break": return { ...mapped, type: "mdiBreak" };
 		case "em": return { ...mapped, type: "mdiEm" };
@@ -702,7 +719,7 @@ function publicationFrontmatter(raw: string): MdiPublicationFrontmatter {
 	const source = isRecord(value) ? value : {};
 	const writingMode = source["writing-mode"] === "vertical" ? "vertical" : "horizontal";
 	return {
-		mdi: stringValue(source.mdi) ?? "2.0",
+		mdi: stringValue(source.mdi) ?? "2.1",
 		title: stringValue(source.title),
 		author: stringValue(source.author),
 		lang: stringValue(source.lang) ?? "ja",
@@ -722,8 +739,8 @@ function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-function renderWithDiagnostics<T>(source: string, render: () => T): MdiRenderResult<T> {
-	const parsed = parse(source);
+function renderWithDiagnostics<T>(source: string, render: () => T, options: MdiParseOptions = {}): MdiRenderResult<T> {
+	const parsed = parse(source, options);
 	return {
 		output: render(),
 		document: parsed.document,
@@ -735,8 +752,9 @@ function renderWithDiagnostics<T>(source: string, render: () => T): MdiRenderRes
 async function renderWithDiagnosticsAsync<T>(
 	source: string,
 	render: () => Promise<T>,
+	options: MdiParseOptions = {},
 ): Promise<MdiRenderResult<T>> {
-	const parsed = parse(source);
+	const parsed = parse(source, options);
 	return {
 		output: await render(),
 		document: parsed.document,
@@ -789,6 +807,7 @@ function isHeadingDepth(value: unknown): value is MdiHeading["depth"] {
 }
 
 function plainNodeText(node: MdiNode): string {
+	if (node.type === "comment") return "";
 	if (node.type === "ruby" && typeof node.base === "string") return node.base;
 	const value = node.value;
 	const ownText = typeof value === "string" ? value : "";
@@ -899,8 +918,8 @@ export function renderText(source: string): string {
 }
 
 /** Render plain text without discarding Rust diagnostics and source spans. */
-export function renderTextWithDiagnostics(source: string): MdiRenderResult<string> {
-	return renderWithDiagnostics(source, () => renderText(source));
+export function renderTextWithDiagnostics(source: string, options: MdiParseOptions = {}): MdiRenderResult<string> {
+	return renderWithDiagnostics(source, () => renderText(source), options);
 }
 
 export type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora" | "note";
@@ -922,8 +941,9 @@ export function renderTextFormatWithDiagnostics(
 	source: string,
 	format: MdiTextFormat,
 	indentPrefix = "",
+	options: MdiParseOptions = {},
 ): MdiRenderResult<string> {
-	return renderWithDiagnostics(source, () => renderTextFormat(source, format, indentPrefix));
+	return renderWithDiagnostics(source, () => renderTextFormat(source, format, indentPrefix), options);
 }
 
 /** @deprecated Use {@link parse}; it now parses the complete document. */

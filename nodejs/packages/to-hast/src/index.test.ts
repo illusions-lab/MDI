@@ -145,3 +145,9 @@ it('preserves atomic overflow, repeated authored breaks and formatted ruby withi
  expect(output).toContain('<ruby');
  expect(output).toContain('mdi-tcy');
 });
+
+
+it("omits explicit comment extension nodes from HAST", () => {
+  const tree = {type:"root",children:[{type:"mdiComment",value:"UNIQUE_COMMENT_SENTINEL"},{type:"paragraph",children:[{type:"text",value:"前"},{type:"mdiComment",value:"UNIQUE_COMMENT_SENTINEL"},{type:"text",value:"後"}]}]} as Root;
+  expect(toHtml(mdiToHast(tree).hast)).toBe("<p>前後</p>");
+});
