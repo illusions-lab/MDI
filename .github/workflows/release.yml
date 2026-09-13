@@ -132,17 +132,6 @@ jobs:
           RELEASE_TARGET_VERSION: ${{ inputs.target_version }}
         run: node nodejs/scripts/prepare-release-artifacts.mjs --reuse
 
-      - name: Use the selected recovery tooling with the original candidate
-        if: inputs.resume_run_id != ''
-        env:
-          RECOVERY_TOOLING_SHA: ${{ github.sha }}
-        run: |
-          # Only publication tooling may change during recovery. HEAD, package
-          # manifests, and the saved tarballs still belong to RELEASE_SHA.
-          for script in release-artifacts.mjs publish-versioned-packages.mjs; do
-            git show "$RECOVERY_TOOLING_SHA:nodejs/scripts/$script" > "nodejs/scripts/$script"
-          done
-
       - name: Publish or verify the original artifacts using OIDC
         id: publish
         run: node .release-tools/nodejs/scripts/publish-versioned-packages.mjs

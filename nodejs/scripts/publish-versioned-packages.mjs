@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { registryArtifactMatches, verifyReleaseArtifacts, waitForRegistryArtifact, waitForRegistryArtifact } from './release-artifacts.mjs';
+import { registryArtifactMatches, verifyReleaseArtifacts, waitForRegistryArtifact } from './release-artifacts.mjs';
 
 const root = resolve(process.env.RELEASE_SOURCE_DIR ?? resolve(import.meta.dirname, '../..'));
 const directory = resolve(root,process.env.RELEASE_ARTIFACTS_DIR ?? 'output/npm-release');

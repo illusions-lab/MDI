@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,4 +57,11 @@ test('registry polling fails closed on conflicts, lookup errors, and exhaustion'
   assert.equal(sleeps, 0);
   await assert.rejects(waitForRegistryArtifact(artifact, () => undefined, options), /not yet visible/);
   assert.equal(sleeps, 1);
+});
+
+// Exercise executable modules as well as their shared helper imports.
+test('release entry points remain valid JavaScript after recovery changes', () => {
+  for (const script of ['publish-versioned-packages.mjs', 'create-github-releases.mjs', 'compute-release-versions.mjs', 'prepare-release-artifacts.mjs']) {
+    execFileSync(process.execPath, ['--check', fileURLToPath(new URL(script, import.meta.url))]);
+  }
 });
