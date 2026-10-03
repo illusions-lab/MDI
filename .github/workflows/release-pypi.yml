@@ -2,51 +2,189 @@ name: Publish illusion-markdown to PyPI
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish (for example, 2.0.4)
+        required: true
+        type: string
+      release_sha:
+        description: Commit on main whose complete CI run succeeded
+        required: true
+        type: string
   push:
     tags:
       - "illusion-markdown-v*"
 
+concurrency:
+  group: release-pypi-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
+  actions: read
   contents: read
 
+env:
+  EXPECTED_VERSION: ${{ inputs.version || github.ref_name }}
+  RELEASE_SHA: ${{ inputs.release_sha || github.sha }}
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('illusion-markdown-v{0}', inputs.version) || github.ref_name }}
+
 jobs:
+  verify-release:
+    name: Verify version and complete CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve the expected version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            EXPECTED_VERSION=${EXPECTED_VERSION#illusion-markdown-v}
+            echo "EXPECTED_VERSION=$EXPECTED_VERSION" >> "$GITHUB_ENV"
+          fi
+
+          if [[ ! "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid package version: $EXPECTED_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Verify Python and Cargo package versions agree
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          expected = os.environ["EXPECTED_VERSION"]
+          manifests = {
+              "python/pyproject.toml": "project",
+              "python/Cargo.toml": "package",
+          }
+          for filename, table in manifests.items():
+              actual = tomllib.loads(Path(filename).read_text())[table]["version"]
+              if actual != expected:
+                  raise SystemExit(f"{filename} has version {actual}, expected {expected}")
+          PY
+
+          cargo_version=$(
+            cargo metadata --locked --no-deps \
+              --manifest-path python/Cargo.toml \
+              --format-version 1 |
+              jq -r '.packages[] | select(.name == "illusion-markdown-python") | .version'
+          )
+          test "$cargo_version" = "$EXPECTED_VERSION"
+
+      - name: Verify the release commit passed the complete CI gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+            test "$RELEASE_SHA" = "$main_sha"
+          fi
+
+          checked_out_sha=$(git rev-parse HEAD)
+          test "$checked_out_sha" = "$RELEASE_SHA"
+
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$RELEASE_SHA" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
+
+      - name: Verify the release tag is not attached to a different commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if tag_sha=$(
+            gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" \
+              --jq '.sha' 2>/dev/null
+          ); then
+            test "$tag_sha" = "$RELEASE_SHA"
+          fi
+
   build-wheels:
-    name: Build ${{ matrix.target }} wheel
+    name: Build and test ${{ matrix.target }} wheel
+    needs: verify-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64
+            target: linux-x86_64
             manylinux: "2014"
           - os: macos-15-intel
-            target: x86_64
+            target: macos-x86_64
           - os: macos-15
-            target: aarch64
+            target: macos-aarch64
           - os: windows-latest
-            target: x86_64
+            target: windows-x86_64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve the expected version
+        if: github.event_name == 'push'
+        shell: bash
+        run: echo "EXPECTED_VERSION=${EXPECTED_VERSION#illusion-markdown-v}" >> "$GITHUB_ENV"
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --manifest-path python/Cargo.toml --out dist
+          args: --release --locked --manifest-path python/Cargo.toml --out dist
           manylinux: ${{ matrix.manylinux }}
+
+      - name: Install and smoke-test the wheel
+        shell: bash
+        run: |
+          python -m pip install --no-index --find-links dist "illusion-markdown==$EXPECTED_VERSION"
+          python python/tests/test_package_smoke.py \
+            --expected-version "$EXPECTED_VERSION"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          name: wheel-${{ matrix.target }}
           path: dist/*.whl
           if-no-files-found: error
 
   build-sdist:
-    name: Build source distribution
+    name: Build and test source distribution
+    needs: verify-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve the expected version
+        if: github.event_name == 'push'
+        shell: bash
+        run: echo "EXPECTED_VERSION=${EXPECTED_VERSION#illusion-markdown-v}" >> "$GITHUB_ENV"
 
       - name: Build source distribution
         uses: PyO3/maturin-action@v1
@@ -54,25 +192,138 @@ jobs:
           command: sdist
           args: --manifest-path python/Cargo.toml --out dist
 
+      - name: Install and smoke-test the source distribution
+        run: |
+          python -m pip install dist/*.tar.gz
+          python python/tests/test_package_smoke.py \
+            --expected-version "$EXPECTED_VERSION"
+
       - uses: actions/upload-artifact@v4
         with:
           name: source-distribution
           path: dist/*.tar.gz
           if-no-files-found: error
 
+  validate-formats:
+    name: Validate installed-package publication formats
+    needs: [verify-release, build-wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve the expected version
+        if: github.event_name == 'push'
+        shell: bash
+        run: echo "EXPECTED_VERSION=${EXPECTED_VERSION#illusion-markdown-v}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-linux-x86_64
+          path: dist
+
+      - name: Install the built wheel and authoritative consumers
+        run: |
+          python -m pip install --no-index --find-links dist \
+            "illusion-markdown==$EXPECTED_VERSION"
+          sudo apt-get update
+          sudo apt-get install --yes libreoffice-writer
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/vnu" --no-save vnu-jar@25.12.31
+
+      - name: Generate every public format from the installed wheel
+        run: |
+          python python/tests/test_package_smoke.py \
+            --expected-version "$EXPECTED_VERSION" \
+            --output-dir "$RUNNER_TEMP/python-package-smoke"
+
+      - name: Validate HTML with the Nu Html Checker
+        run: |
+          java -jar \
+            "$RUNNER_TEMP/vnu/node_modules/vnu-jar/build/dist/vnu.jar" \
+            --errors-only "$RUNNER_TEMP/python-package-smoke/smoke.html"
+
+      - name: Validate EPUB with the official W3C EPUBCheck
+        run: |
+          java -jar "$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar" \
+            "$RUNNER_TEMP/python-package-smoke/smoke.epub"
+
+      - name: Validate DOCX with the Open XML SDK
+        run: |
+          dotnet run \
+            --project nodejs/format-contracts/openxml-validator/OpenXmlValidator.csproj \
+            -- "$RUNNER_TEMP/python-package-smoke/smoke.docx"
+
+      - name: Open DOCX with LibreOffice Writer
+        run: |
+          mkdir -p "$RUNNER_TEMP/libreoffice-output"
+          soffice \
+            "-env:UserInstallation=file://$RUNNER_TEMP/libreoffice-profile" \
+            --headless \
+            --convert-to pdf \
+            --outdir "$RUNNER_TEMP/libreoffice-output" \
+            "$RUNNER_TEMP/python-package-smoke/smoke.docx"
+          test -s "$RUNNER_TEMP/libreoffice-output/smoke.pdf"
+
   publish:
-    name: Publish to PyPI
-    needs: [build-wheels, build-sdist]
+    name: Publish to PyPI and create GitHub release
+    needs: [build-wheels, build-sdist, validate-formats]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      actions: read
+      contents: write
       id-token: write
     steps:
+      - name: Resolve the expected version
+        if: github.event_name == 'push'
+        shell: bash
+        run: echo "EXPECTED_VERSION=${EXPECTED_VERSION#illusion-markdown-v}" >> "$GITHUB_ENV"
+
       - uses: actions/download-artifact@v4
         with:
           pattern: "*"
           merge-multiple: true
           path: dist
 
+      - name: Check package distributions
+        run: |
+          python -m pip install --disable-pip-version-check twine
+          python -m twine check dist/*
+          test "$(find dist -maxdepth 1 -name '*.whl' | wc -l)" -eq 4
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title "illusion-markdown $EXPECTED_VERSION" \
+            --generate-notes \
+            dist/*

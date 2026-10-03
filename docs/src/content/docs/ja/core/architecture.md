@@ -20,12 +20,13 @@ description: 実行可能な文法は一つ、バージョン付き IR も一つ
 ```text
 .mdi source → mdi-core (Rust) → versioned Document IR
                               ├→ Rust: HTML / TXT / EPUB / DOCX / PDF
-                              ├→ Node.js / Python / Swift / Kotlin（実装済み）
+                              ├→ Node.js / Python / Swift（実装済み）
+                              ├→ Android / Kotlin（開発中）
                               └→ remark/mdast adapter (実装済み)
 HTML + print CSS → Chromium → PDF
 ```
 
-Rust、Node.js、Swift、Kotlin、Python はいずれもこの同じ Rust core を呼びます。具体的な API は [Bindings](/ja/bindings/javascript/) を参照してください。
+公開済みの Rust、Node.js、Swift、Python はいずれもこの同じ Rust core を呼びます。Android / Kotlin は開発中で、Maven Central では安定版の公開 package としてまだ配布していません。具体的な API は [Bindings](/ja/bindings/javascript/) を参照してください。
 
 ## なぜ一回の解析なのか
 
@@ -56,12 +57,12 @@ binding は各言語らしい入出力へ変換できます。たとえば EPUB/
 | 層 | 状態 |
 | --- | --- |
 | `mdi-core` の完全な一回解析 | **実装済み** |
-| Rust の HTML / TXT / EPUB / DOCX renderer | **実装済み**（baseline） |
+| Rust の HTML / TXT / EPUB / DOCX renderer | **実装済み。**Baseline と設定付き EPUB/DOCX は同じ Rust renderer を使い、cover、chapter、typography、page geometry、page number も扱います。 |
 | Chromium を Rust が起動する PDF | **実装済み**。 [レンダリング](/ja/core/rendering/) |
 | JavaScript/WASM、CLI、remark adapter | **実装済み** |
 | Python PyO3 binding | **実装済み**。PyPI: `illusion-markdown` |
 | Swift binding | **実装済み**。 [Swift](/ja/bindings/swift/) |
-| Android / Kotlin binding | **実装済み**。 [Android / Kotlin](/ja/bindings/android/) |
+| Android / Kotlin binding | **開発中**。source とローカル検証手順はありますが、Maven Central では安定版の公開 package としてまだ配布していません。 [Android / Kotlin](/ja/bindings/android/) |
 
 ## 次へ
 

@@ -63,6 +63,19 @@ match render_pdf(source, &PdfOptions::default()) {
 
 `MDI_IR_VERSION` and `MDI_SPEC_VERSION` are `&'static str` constants exported directly — check them if you're persisting a `ParseOutput` and reloading it later, the same way any other binding must. `SourceSpan { start_byte: u32, end_byte: u32 }` is a half-open UTF-8 byte range, exactly as described in [Diagnostics and UTF-8 source spans](/core/diagnostics/) — being in Rust doesn't change the unit; it's still bytes, not `char` indices, because `str` in Rust is itself UTF-8 bytes and indexing by anything else would require an extra pass every binding would have to pay for.
 
+For searchable canonical text, use `get_mdi_text_blocks(source)`. Its inverse,
+`resolve_mdi_source_span(source, span)`, validates ordering, bounds, and UTF-8
+boundaries, then returns all maximal block-text and annotation grapheme ranges.
+Coverage is `Complete`, `Partial`, or `None`; matches are `Exact` only when the
+complete forward coverage equals the input. Empty spans return no matches, and
+structural, synthetic, or unmapped bytes do not gain invented ranges. Ruby's
+separate channels and multi-to-one/discontinuous mappings mean round trips are
+not generally bijective.
+
+For a diagnostics or decoration batch, use `resolve_mdi_source_spans(source,
+spans)`. It validates the full slice, parses/projects once, and returns the
+resolutions in input order.
+
 ## Current implementation status
 
 Parsing (`parse_document`/`parse_output`), serialization (`serialize_mdi`), and every renderer (`render_html`, `render_text_format`, `render_epub`, `render_docx`, `render_pdf`) are implemented today, at the "baseline" level described on [Rust Core API status](/core/rust-api/#not-yet-implemented). There is no separate `validate`/`normalize` API distinct from `parse_output`/`serialize_mdi` — see that same page for exactly what's missing.
@@ -76,3 +89,30 @@ Parsing (`parse_document`/`parse_output`), serialization (`serialize_mdi`), and 
 - [Rust Core API status](/core/rust-api/) — every function, in full.
 - [API reference on docs.rs](https://docs.rs/mdi-core/).
 - [Rendering model](/core/rendering/) — what each renderer's output actually contains, including the Chromium/PDF boundary.
+
+## Automatic warichu layout
+
+Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+
+```rust
+let children = serde_json::json!([{"type":"text", "value":"一二三四五六"}]);
+let fragments = mdi_core::layout_warichu_with_options(children.as_array().unwrap(),
+    &mdi_core::WarichuOptions { first_capacity: 2, continuation_capacity: 4 });
+```
+
+Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+
+
+## Editorial comments in MDI 2.1
+
+```rust
+parse_output_with_options(source, ParseOptions { include_comments: true })
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

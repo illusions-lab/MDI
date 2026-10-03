@@ -10,20 +10,25 @@ Every output below is a transformation of the **same** MDI document IR (see [Doc
 | Format | Package | What it actually is |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi` (`renderHtml`) | A standalone HTML document plus the embedded `.mdi-*` stylesheet |
-| TXT (5 flavors) | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | Plain, ruby-preserving, or a specific Japanese publishing platform's plain-text convention — see [TXT export flavors](/syntax/reference/#txt-export-flavors) |
+| TXT (6 flavors) | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | Plain, ruby-preserving, or a specific Japanese publishing platform's plain-text convention — including [note export](/ecosystem/note/) |
 | EPUB | `@illusions-lab/mdi` (`renderEpub`) | A real EPUB 3 archive: reflowable XHTML chapters + `nav.xhtml` + CSS + OPF package, zipped by Rust |
 | DOCX | `@illusions-lab/mdi` (`renderDocx`) | A real OOXML (WordprocessingML) document, zipped by Rust |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust-rendered HTML/print CSS, laid out and rasterized by a locally installed Chromium-family browser |
 
-Four of these five are produced **entirely inside Rust** — the CLI and the JavaScript package call straight into `mdi-core`'s renderer functions with no intermediate JavaScript rendering step. PDF is the one exception, and only because generating a PDF requires launching an OS process (Chromium), which the Rust core itself does (via `render_pdf`/`find_chromium`) when called from a native host, and which the Node.js CLI reaches through `@illusions-lab/mdi-to-pdf`.
+Four of these five are produced **entirely inside Rust**, including profile-configured EPUB and DOCX. The CLI and JavaScript package call straight into `mdi-core`; their JavaScript layers normalize arguments but do not render documents. PDF uses Rust-resolved profile data and Rust-prepared HTML/print CSS, then asks a native or Node host to launch Chromium.
 
 ## Legacy compatibility packages
 
-`@illusions-lab/mdi-to-hast`, `@illusions-lab/mdi-to-html`, `@illusions-lab/mdi-to-epub`, and `@illusions-lab/mdi-to-docx` still exist and are still published — they predate the current Rust-native renderers and operate on `mdast`/HAST trees instead of calling Rust's render functions directly. They remain useful for `unified`-ecosystem consumers who already have an `mdast` tree (via [the remark adapter](/ecosystem/remark/)) and want to render it without a second parse. **The CLI itself no longer uses them** for its own `build` command — see [Bindings: CLI](/bindings/cli/) for exactly which Rust function backs each `--to` value today. One concrete, current difference worth knowing: `@illusions-lab/mdi-to-hast`'s stylesheet matches `SYNTAX.md` more closely than the CSS Rust's own `render_html` embeds — see [Migration and compatibility: stylesheet parity](/ecosystem/compatibility/#stylesheet-parity).
+`@illusions-lab/mdi-to-hast`, `@illusions-lab/mdi-to-html`, `@illusions-lab/mdi-to-epub`, and `@illusions-lab/mdi-to-docx` remain published for `unified` consumers that already hold an `mdast`/HAST tree. The EPUB and DOCX compatibility entries serialize that tree and delegate final generation to Rust; they no longer carry independent archive generators. **The CLI itself does not use these tree-facing entries** for `build`. One current difference worth knowing: `@illusions-lab/mdi-to-hast`'s stylesheet matches `SYNTAX.md` more closely than the CSS Rust's own `render_html` embeds — see [Migration and compatibility: stylesheet parity](/ecosystem/compatibility/#stylesheet-parity).
 
-## What's still pending across every renderer
+## Profile-configured output
 
-Cover images, configurable chapter-split level, and full page-geometry/font control for EPUB and DOCX are not yet wired to an [export profile](/ecosystem/export-profiles/) — both renderers currently only read metadata (`title`/`author`/`lang`/`writing-mode`) straight from front matter. This is tracked explicitly on [Rust Core API status: not yet implemented](/core/rust-api/#not-yet-implemented), not silently absent.
+Configured EPUB supports metadata, writing mode, typography, chapter splitting,
+and PNG/JPEG cover images. Configured DOCX supports metadata, page geometry,
+mirrored margins, writing mode, typography, strict or flowing grids, and page
+numbers. Both routes resolve the same [export profile](/ecosystem/export-profiles/)
+in Rust, so future Python, Swift, or Android APIs can expose the same behavior
+without recreating it.
 
 ## Next steps
 

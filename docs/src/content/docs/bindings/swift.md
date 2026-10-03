@@ -21,7 +21,7 @@ that uses it:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.2"),
+    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.3"),
 ]
 
 // In a target:
@@ -55,11 +55,17 @@ All renderers take MDI source text:
 let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
 let mdi = try MDI.serialize("{東京|とうきょう} ^12^")
 let text = try MDI.renderText("# Title")
+let note = try MDI.renderTextFormat(
+    "# Title\n\n{東京|とうきょう}",
+    format: .note
+)
 
 let epub: Data = try MDI.renderEPUB("# Chapter")
 let docx: Data = try MDI.renderDOCX("# Chapter")
 ```
 
+`MDITextFormat` exposes the same six Rust-owned conventions as the other
+bindings: `plain`, `ruby`, `narou`, `kakuyomu`, `aozora`, and `note`.
 `renderEPUB` and `renderDOCX` return ZIP-based `Data`; write the data to a
 file with the appropriate extension.
 
@@ -83,8 +89,35 @@ do {
 ## Development and releases
 
 The repository's `swift/Package.swift` is the local development package. CI
-builds an XCFramework, runs XCTest with a 90% line-coverage gate for
+builds an XCFramework, runs XCTest with a 95% line-coverage gate for
 `swift/Sources/MDI`, and uploads the report to Codecov. The release workflow
 creates a manifest pull request and publishes the approved artifact after that
 PR is merged. It uses GitHub Actions' built-in token; no PAT or second
 repository is required.
+
+## Automatic warichu layout
+
+Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+
+```swift
+let fragments = try MDI.layoutWarichu(
+    [.object(["type": .string("text"), "value": .string("一二三四五六")])],
+    capacity: 4, firstCapacity: 2)
+```
+
+Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+
+
+## Editorial comments in MDI 2.1
+
+```swift
+try MDI.parse(source, includeComments: true)
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

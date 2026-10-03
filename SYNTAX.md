@@ -6,8 +6,8 @@
 > **illusion Markdown (`.mdi`)** は標準 Markdown に日本語組版向けの拡張構文を加えたフォーマットです。  
 > 見出し・リスト・リンク・表など標準 Markdown の記法はすべてそのまま使えます。このドキュメントでは **MDI 固有の拡張のみ** を解説します。
 
-**This document describes MDI 2.0.** The MDI 1.0 specification is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch.  
-**本ドキュメントは MDI 2.0 の仕様です。** MDI 1.0 の仕様は [`spec/v1.0`](../../tree/spec/v1.0) ブランチに保存されています。
+**This document describes MDI 2.1.** The MDI 1.0 specification is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch.
+**本ドキュメントは MDI 2.1 の仕様です。** MDI 1.0 の仕様は [`spec/v1.0`](../../tree/spec/v1.0) ブランチに保存されています。
 
 ---
 
@@ -497,23 +497,13 @@ Warichu is an inline annotation set in two half-height lines within the line of 
 
 ### HTML Output / HTML 出力
 
-```html
-<span class="mdi-warichu">六曜の一つで吉日とされる</span>
-```
+Renderers may generate two-line fragments without changing the inline children
+or inserting `[[br]]` into the document. The Rust renderer uses presentation-only
+`.mdi-warichu-fragment` and `.mdi-warichu-line` spans at 50% body size.
+See [automatic layout decisions and current limitations](./WARICHU-LAYOUT.md).
 
-```css
-.mdi-warichu {
-  display: inline-block;
-  font-size: 0.5em;
-  line-height: 1.1;
-  max-inline-size: 10em;
-  vertical-align: middle;
-  text-align: start;
-}
-```
-
-CSS has no native warichu support; the inline-block approximation above wraps the note into two short lines. Renderers targeting formats with native warichu (e.g. InDesign, some EPUB readers) should map it directly.  
-CSS に割注のネイティブサポートはないため、上記の inline-block による近似で二行組を再現します。割注をネイティブに持つ出力先（InDesign 等）ではそちらへマップします。
+レンダラーは文書の内容や `[[br]]` を変更せず、表示用の二行組を生成できます。
+自動分割は保存される構文ではありません。既存の明示的な改行は保持されます。
 
 ---
 
@@ -792,26 +782,27 @@ MDI の区切り文字をリテラルとして書くには `\` を前置しま�
 
 *New in 2.0.*
 
-HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no styling layer — every MDI construct must be flattened to a specific textual convention, and more than one such convention is in real-world use. Conforming TXT exporters SHOULD support at least the following five flavors. Any MDI construct with no equivalent in a given flavor is flattened to its base text (macro dropped, content kept).  
-HTML・PDF・EPUB は同じ CSS 駆動の描画モデルを共有しますが、プレーンテキストにはスタイル層がなく、MDI の各構成要素を具体的な文字表現へフラット化する必要があります。その表現の慣例は実務上一つではありません。**準拠する TXT エクスポータは、少なくとも以下 5 種類のフレーバーをサポートすることが望ましい（SHOULD）。** あるフレーバーに対応する慣例がない構成要素は、マクロを除去し中身のテキストのみを残します（フラット化）。
+HTML/PDF/EPUB share one CSS-driven rendering model, but plain text has no styling layer — every MDI construct must be flattened to a specific textual convention, and more than one such convention is in real-world use. Conforming TXT exporters SHOULD support at least the following six flavors. Any MDI construct with no equivalent in a given flavor is flattened to its base text (macro dropped, content kept).
+HTML・PDF・EPUB は同じ CSS 駆動の描画モデルを共有しますが、プレーンテキストにはスタイル層がなく、MDI の各構成要素を具体的な文字表現へフラット化する必要があります。その表現の慣例は実務上一つではありません。**準拠する TXT エクスポータは、少なくとも以下 6 種類のフレーバーをサポートすることが望ましい（SHOULD）。** あるフレーバーに対応する慣例がない構成要素は、マクロを除去し中身のテキストのみを残します（フラット化）。
 
 | Flavor | Purpose / 用途 |
 |--------|----------------|
-| `plain` | Simplest export: ruby discarded, every macro flattened to base text. / 最も単純な書き出し。ルビは破棄。 |
-| `ruby-paren` | Ruby rendered as fullwidth parentheses: `漢字（かんじ）`. / ルビを全角括弧で表現。 |
+| `txt` | Simplest export: ruby discarded, every macro flattened to base text. / 最も単純な書き出し。ルビは破棄。 |
+| `txt-ruby` | Ruby kept in round-trippable MDI form: `{漢字\|かんじ}`. / ルビを再解析可能な MDI 形式で保持。 |
 | `narou` | 小説家になろう submission format. Ruby via `｜《》`; boten via per-character dot ruby (the site has no boten notation). / 小説家になろうの投稿フォーマット。ルビは `｜《》`、傍点はサイトに専用記法がないため一字ずつの圏点ルビで表現。 |
 | `kakuyomu` | カクヨム submission format. Ruby via `｜《》`; boten via the site's native `《《》》` notation. / カクヨムの投稿フォーマット。ルビは `｜《》`、傍点はサイト固有の `《《》》` 記法。 |
 | `aozora` | Aozora Bunko (青空文庫) annotation ("注記") convention. / 青空文庫注記形式。 |
+| `note` | UTF-8 input profile for note's rich-text editor. Native ruby uses `｜親文字《よみ》`; documented Markdown spellings remain editor shortcuts rather than a general import format. / note の rich-text editor 向け UTF-8 入力 profile。ルビは `｜親文字《よみ》`。Markdown 表記は一般的な import format ではなく editor shortcut。 |
 
-The three platform flavors are contract-bound to the platform-owned documentation: [Narou ruby](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Narou boten](https://syosetu.com/helpcenter/helppage/helppageid/43/), [Kakuyomu notation](https://kakuyomu.jp/help/entry/notation), and the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/). Consequently the two posting-site outputs also differ in limits and literal escaping, not only boten. Ruby outside a site's documented limits is flattened to readable base text rather than emitting an invalid tag.
-三つのプラットフォーム向けフレーバーは、各公式文書（[なろうのルビ](https://syosetu.com/helpcenter/helppage/helppageid/42/)、[なろうの傍点](https://syosetu.com/helpcenter/helppage/helppageid/43/)、[カクヨム記法](https://kakuyomu.jp/help/entry/notation)、[青空文庫作業マニュアル](https://www.aozora.gr.jp/aozora-manual/index-input.html) と [注記一覧](https://www.aozora.gr.jp/annotation/)）を契約とします。そのため、投稿サイト向けの二形式は傍点だけでなく、字数上限とリテラルのエスケープも異なります。公式上限を超えるルビは、不正なタグを出力せず、読みやすい親文字へフラット化します。
+The four platform flavors are contract-bound to platform-owned documentation: [Narou ruby](https://syosetu.com/helpcenter/helppage/helppageid/42/), [Narou boten](https://syosetu.com/helpcenter/helppage/helppageid/43/), [Kakuyomu notation](https://kakuyomu.jp/help/entry/notation), the [Aozora input manual](https://www.aozora.gr.jp/aozora-manual/index-input.html) plus [annotation list](https://www.aozora.gr.jp/annotation/), and note's [editor features](https://www.help-note.com/hc/ja/articles/360012426133-%E3%82%A8%E3%83%87%E3%82%A3%E3%82%BF-%E8%A8%98%E4%BA%8B%E7%B7%A8%E9%9B%86%E7%94%BB%E9%9D%A2-%E3%81%A7%E3%81%A7%E3%81%8D%E3%82%8B%E3%81%93%E3%81%A8), [Markdown shortcuts](https://www.help-note.com/hc/ja/articles/4410617032217-Markdown%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88), [ruby](https://www.help-note.com/hc/ja/articles/4406430353817-%E3%83%AB%E3%83%93-%E3%81%B5%E3%82%8A%E3%81%8C%E3%81%AA-%E3%82%92%E3%81%B5%E3%82%8B), and [TeX](https://www.help-note.com/hc/ja/articles/4410665086873-%E6%95%B0%E5%BC%8F%E8%A8%98%E6%B3%95%E3%81%AE%E4%BD%BF%E3%81%84%E6%96%B9) documentation.
+四つのプラットフォーム向けフレーバーは、上記各サービスの公式文書を契約とします。note は pure Markdown importer ではないため、plain-text で表せない toolbar・upload 専用機能をサポート済みとみなしてはなりません（MUST NOT）。
 
 ### Mapping table / 対応表
 
-| MDI | `plain` | `ruby-paren` | `narou` | `kakuyomu` | `aozora` |
+| MDI | `txt` | `txt-ruby` | `narou` | `kakuyomu` | `aozora` |
 |-----|---------|--------------|---------|------------|----------|
-| `{東京\|とうきょう}` (group ruby) | `東京` | `東京（とうきょう）` | `｜東京《とうきょう》` (base/reading 1–10 characters; `&"<>` rejected) | `｜東京《とうきょう》` (base ≤20, reading ≤50) | `｜東京《とうきょう》` |
-| `{東京\|とう.きょう}` (split ruby) | `東京` | `東京（とうきょう）` (dots removed) | `｜東京《とうきょう》` | same notation, with Kakuyomu limits | `｜東京《とうきょう》` |
+| `{東京\|とうきょう}` (group ruby) | `東京` | `{東京\|とうきょう}` | `｜東京《とうきょう》` (base/reading 1–10 characters; `&"<>` rejected) | `｜東京《とうきょう》` (base ≤20, reading ≤50) | `｜東京《とうきょう》` |
+| `{東京\|とう.きょう}` (split ruby) | `東京` | `{東京\|とう.きょう}` | `｜東京《とうきょう》` | same notation, with Kakuyomu limits | `｜東京《とうきょう》` |
 | `^12^` (tate-chu-yoko) | `12` | `12` | `12` (no convention; flattened) | same as narou | `12［＃「12」は縦中横］` |
 | `[[em:それ]]` (boten, default mark) | `それ` | `それ` | `｜そ《・》｜れ《・》` (per-character valid ruby; `<mark>` dropped) | `《《それ》》` (native Kakuyomu notation; `<mark>` dropped) | `［＃傍点］それ［＃傍点終わり］` (recognized marks map to official names, e.g. `●`→`丸傍点`, `﹆`→`白ゴマ傍点`) |
 | `[[no-break:...]]` | text kept, macro dropped | same | same | same | same (no aozora equivalent) |
@@ -825,11 +816,54 @@ The three platform flavors are contract-bound to the platform-owned documentatio
 | Markdown headings | text kept | same | same | same | official 大／中／小 hierarchy; a fourth distinct level is left unannotated and adds the required note at file end |
 | `[^id]` (footnote) | implementation-defined (e.g. inline number + note appended at document end) | same | same | same | same |
 
+### note mapping / note 対応
+
+The `note` flavor emits `##` for an MDI H1 and `###` for every deeper heading,
+because note exposes only large and small headings. It emits the documented
+editor-input sequences for strong, GFM deletion, ordered/unordered lists,
+block quotes, fenced code, and thematic breaks. Strong/delete sequences include
+the required following half-width space. These are interactive editor
+shortcuts, not a whole-document Markdown import contract: consumers may need
+to retype a marker plus space/Return. Visual list indentation remains readable,
+but real nesting must be set with note's Tab/Shift+Tab controls. Only an exact
+triple-backtick `mermaid` block carries note's documented diagram contract.
+Native ruby and supported body-context TeX literals retain their documented
+notation. Split ruby readings concatenate without MDI's dots. Tables become
+tab-separated text; footnotes become numbered references and end notes.
+Unsupported page typography (tate-chu-yoko, boten, warichu, kerning, no-break,
+alignment, and pagination) MUST retain readable content but MAY lose styling.
+Page breaks become visual dividers and lose pagination semantics. Links and
+images MUST retain their label/alt and URL as readable text, but an exporter
+MUST NOT claim that note will import Markdown link/image syntax. Applying text
+links, uploading images, setting alt/descriptions/alignment, quote sources,
+TOC, cover, attachments, native audio, and comic content are editor-only
+operations. note documents no backslash escape for shortcut/ruby delimiters,
+so literal delimiter collisions have no lossless representation in this
+plain-text profile. `--to note` is neither WXR nor MT and MUST NOT be described
+as input for note's Import screen.
+
+`note` フレーバーは、MDI H1 を `##`、それより深い見出しを `###` とします。
+strong、GFM delete、list、引用、fenced code、区切り線は公式の editor-input
+sequence を出力し、strong/delete には必要な末尾の半角空白を含めます。
+これらは文書全体の Markdown import 契約ではないため、marker と空白／Return
+の再入力が必要な場合があります。list の字下げは可読性のためで、実際の
+階層は note の Tab／Shift+Tab で設定します。Mermaid の公式契約は exact
+triple-backtick `mermaid` block に限ります。note native ruby と対応する
+本文 context の TeX literal は公式表記を保持します。table は TSV、
+footnote は番号参照と文末注へ変換します。縦中横・傍点・割注・kerning・
+no-break・配置・改ページは可読内容を残して style を失ってもよい（MAY）。
+改ページは視覚的な区切り線となり pagination semantics を失います。
+link/image は label/alt と URL を可読 text として保持しなければなりません
+（MUST）が、note が Markdown link/image を import するとは主張しては
+なりません（MUST NOT）。note には shortcut/ruby delimiter の公式
+backslash escape がないため、literal collision は lossless に表現できません。
+`--to note` は WXR/MT ではなく、note Import 画面の入力ではありません。
+
 Literal platform delimiters are protected according to the same contracts: Kakuyomu `《` becomes `｜《`; Narou parenthesized prose gets the documented leading vertical bar so it is not mistaken for shorthand ruby; and Aozora's nine reserved characters are emitted with the official external-character annotations. The CLI writes Aozora files as Shift_JIS with CRLF and rejects characters outside that repertoire instead of silently replacing them with `?`.
 プラットフォームの区切り記号を本文として書く場合も、同じ公式契約に従います。カクヨムの `《` は `｜《`、なろうの括弧書きは簡易ルビと誤認されないよう公式どおり直前に縦線を置き、青空文庫の予約済み9文字は公式の外字注記へ変換します。CLI の青空文庫ファイルは Shift_JIS・CRLF で、範囲外文字を `?` に黙って置換せずエラーにします。
 
-Implementations MAY offer additional flavors beyond these five; they are the minimum interoperability baseline so that `.mdi → txt` conversions stay predictable across tools.  
-実装はこれ以外のフレーバーを追加してもよい（MAY）。上記 5 種類は、`.mdi → txt` の変換がツール間で予測可能であるための最小限の相互運用ベースラインです。
+Implementations MAY offer additional flavors beyond these six; they are the minimum interoperability baseline so that `.mdi → txt` conversions stay predictable across tools.
+実装はこれ以外のフレーバーを追加してもよい（MAY）。上記 6 種類は、`.mdi → txt` の変換がツール間で予測可能であるための最小限の相互運用ベースラインです。
 
 ---
 
@@ -873,4 +907,65 @@ Implementations should process MDI syntax in the following order:
 
 ---
 
-*MDI 2.0 Draft — MDI 1.0 is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch. Aozora Bunko notation interop ships in 2.0 as an export-side convention (see [TXT Export Flavors](#txt-export-flavors--txt-書き出しフレーバー)); parse-side Aozora notation interop (e.g. reading `｜base《ruby》` as input) remains planned for a future revision.*
+*MDI 2.1 Draft — MDI 1.0 is preserved on the [`spec/v1.0`](../../tree/spec/v1.0) branch. Aozora Bunko notation interop ships in 2.0 as an export-side convention (see [TXT Export Flavors](#txt-export-flavors--txt-書き出しフレーバー)); parse-side Aozora notation interop (e.g. reading `｜base《ruby》` as input) remains planned for a future revision.*
+
+
+## 15. Editorial comments / 編集用コメント
+
+*New in 2.1; applies to every document, including declared 2.0 and unversioned input.*
+
+```mdi
+前<!-- 編集メモ -->後
+
+<!--
+複数行のメモ
+-->
+```
+
+`<!--` closes at the nearest `-->`. The payload is an opaque string: empty,
+multiline and Unicode values are valid, and whitespace, HTML entities,
+backslashes and MDI-looking text are preserved. Comments do not nest; an inner
+`<!--` is ordinary payload. Delimiters such as `]]` inside a closed comment
+cannot close an enclosing MDI construct.
+
+Comments are allowed at block level and in body contexts that accept inline
+nodes, including bracket-macro content. Code, front matter, link destinations
+and existing plain-text MDI parameters (including ruby and the boten alias)
+do not acquire comment interpretation. `\<!--` remains literal text.
+
+An unterminated opener stays literal, does not swallow subsequent body text,
+and emits a `mdi.comment.unterminated` warning with a UTF-8 source span.
+Export remains available: text intended to be private may therefore appear
+in the publication. Diagnostics never duplicate valid comment payloads.
+
+Removing inline comments adds no spaces. Standalone block comments add no
+blank paragraphs. Body projections, word counts, search defaults and layout
+measurement omit comments. Publication HTML/HAST, every TXT flavor, PDF,
+EPUB and DOCX always omit valid comments, including hidden DOM, metadata and
+archive entries; requesting a comment-inclusive IR does not alter this rule.
+
+The Rust internal document and canonical source serializer retain comments.
+Public document APIs omit them by default and return IR **1.0**. Explicit
+`includeComments: true` returns IR **1.1**, with `{ type: "comment", value,
+span: { startByte, endByte } }` at the original tree position. Spans are
+half-open UTF-8 byte offsets; the parent determines block/inline context.
+The parser reports syntax version **2.1** without rewriting an existing
+front-matter version. Body projection version and coordinates remain unchanged;
+comments never enter the ruby-reading annotation channel. Text on either side
+may merge in the public tree while source-map runs retain the byte gap.
+
+For lossless comment retention, use the source serialization API or an
+explicitly comment-inclusive IR. Comments removed from an external IR cannot
+be recovered. This update intentionally changes old documents whose valid
+comments previously appeared as visible HTML text: they now disappear from
+publication output. It does not promise identical output for every 2.0 input.
+
+`<!--` から最初の `-->` までを編集用コメントとします。空・複数行・Unicode を
+許可し、内部の空白、エンティティ、バックスラッシュ、MDI 記法をそのまま保持
+します。入れ子にはなりません。コード、フロントマター、リンク先、既存の
+プレーンテキスト引数では解釈しません。`\<!--` は通常の文字列です。
+未閉鎖の場合は原文と後続本文を残し、warning を返します。公開したくない文字が
+出力される可能性があります。保存では保持し、本文投影と全出版形式では除外します。
+既定 API は IR 1.0、明示的な `includeComments: true` はコメント付き IR 1.1 を
+返します。2.0 宣言も同じ規則で処理しますが、宣言を書き換えません。従来 HTML
+文字列として見えていた有効なコメントが出版物から消える点は、意図した変更です。

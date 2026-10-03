@@ -66,7 +66,7 @@ description: 文法、IR、span、診斷、capabilities ―― 每個 MDI 接口
 { "severity": "warning", "code": "mdi.version.unsupported", "message": "MDI 2.1 is newer than the supported 2.0", "span": { "startByte": 0, "endByte": 34 } }
 ```
 
-`parse()` 幾乎不會丟例外。錯誤或有歧義的 MDI 語法（沒配對的 `^`、無效數值的 `[[kern:`、對不上的 ruby 分割點）都由每個構文自己的**純文字退回規則**處理（見[完整語法參考](/zh-tw/syntax/reference/)各節），通常連診斷都不會產生 ―— 這跟 Markdown 本身處理未知語法的寬容作法一致：保留成文字，別讓整份文件失敗。例外只保留給診斷描述不了的狀況：引數不是字串，或原生資源失敗（例如找不到 PDF 用的 Chromium）。目前完整的診斷代碼列表（目前恰好一個）請見[診斷與 UTF-8 原始碼 span](/zh-tw/core/diagnostics/)。
+`parse()` 幾乎不會丟例外。錯誤或有歧義的 MDI 語法（沒配對的 `^`、無效數值的 `[[kern:`、對不上的 ruby 分割點）都由每個構文自己的**純文字退回規則**處理（見[完整語法參考](/zh-tw/syntax/reference/)各節），通常連診斷都不會產生 ―— 這跟 Markdown 本身處理未知語法的寬容作法一致：保留成文字，別讓整份文件失敗。例外只保留給診斷描述不了的狀況：引數不是字串，或原生資源失敗（例如找不到 PDF 用的 Chromium）。完整的診斷代碼列表請見[診斷與 UTF-8 原始碼 span](/zh-tw/core/diagnostics/)。
 
 ## 5. capabilities 描述的是「這一次剖析」，不是對未來的承諾
 

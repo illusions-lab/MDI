@@ -16,14 +16,9 @@ export const MDI_STYLESHEET = `.mdi-em {
 .mdi-blank {
   min-block-size: 1lh; /* an empty <p> otherwise collapses to zero height */
 }
-.mdi-warichu {
-  display: inline-block;
-  font-size: 0.5em;
-  line-height: 1.1;
-  max-inline-size: 10em;
-  vertical-align: middle;
-  text-align: start;
-}
+.mdi-warichu { font-size: .5em; line-height: 1; }
+.mdi-warichu-fragment { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: start; }
+.mdi-warichu-line { display: block; white-space: nowrap; min-block-size: 1em; }
 .mdi-kern {
   letter-spacing: var(--mdi-kern, 0em);
 }

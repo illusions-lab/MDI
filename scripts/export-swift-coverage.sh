@@ -18,13 +18,14 @@ coverage_percent="$(jq -r '
   [ .data[].files[]
     | select(.filename | endswith("/swift/Sources/MDI/MDI.swift"))
     | .summary.lines
-    | (.covered / .count * 100)
+    | if .count > 0 then (.covered / .count * 100) else error("MDI source has no coverable lines") end
   ] | if length == 1 then .[0] else error("expected exactly one MDI source coverage record") end
 ' "$coverage_json")"
 
 awk -v coverage="$coverage_percent" 'BEGIN {
-  printf "Swift MDI line coverage: %.2f%%\\n", coverage
-  exit !(coverage >= 90)
+  minimum = 95
+  printf "Swift MDI line coverage: %.2f%% (required: %.2f%%)\n", coverage, minimum
+  exit !(coverage >= minimum)
 }'
 
 xcrun llvm-cov export "$test_binary" \

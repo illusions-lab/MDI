@@ -8,20 +8,25 @@ description: 各出力の意味、renderer、layout の担当範囲。
 | Format | package | 実体 |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi` (`renderHtml`) | embedded `.mdi-*` CSS を含む standalone HTML |
-| TXT（5種） | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | plain、ruby-preserving、投稿サイト規約 text。 [TXT 書き出し](/ja/syntax/reference/) を参照 |
+| TXT（6種） | `@illusions-lab/mdi` (`renderTextFormat`) / CLI | plain、ruby-preserving、投稿サイト規約 text。[note 書き出し](/ja/ecosystem/note/) を含む |
 | EPUB | `@illusions-lab/mdi` (`renderEpub`) | reflowable XHTML、`nav.xhtml`、CSS、OPF を Rust が zip する EPUB 3 archive |
 | DOCX | `@illusions-lab/mdi` (`renderDocx`) | Rust が zip する OOXML（WordprocessingML）document |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust HTML/print CSS を local Chromium が layout |
 
-PDF 以外の四形式は Rust 内で直接生成されます。CLI と JavaScript package に中間 JavaScript renderer はありません。PDF も native host の `render_pdf` / `find_chromium` を使い、Chromium は `.mdi` source ではなく完成 HTML/CSS だけを受け取ります。
+PDF 以外の四形式は、profile 設定付き EPUB/DOCX も含めて Rust 内で直接生成されます。CLI と JavaScript package は argument を整えるだけで、中間 JavaScript renderer はありません。PDF は Rust が解決した profile と準備済み HTML/print CSS を使い、native または Node host が Chromium を起動します。
 
 ## Legacy compatibility packages
 
-`mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` は published のままです。これは current Rust-native renderer より前からある mdast/HAST path 向けです。[remark adapter](/ja/ecosystem/remark/) で既に `mdast` tree を持つ unified consumer は、二度目の parse なしに利用できます。CLI `build` は使用しません。`mdi-to-hast` の CSS は Rust `render_html` embedded CSS より `SYNTAX.md` に近い点があり、詳細は [stylesheet parity](/ja/ecosystem/compatibility/#stylesheet-parity) を参照してください。
+`mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` は published のままです。既に `mdast`/HAST tree を持つ unified consumer のための compatibility entry で、EPUB/DOCX は tree を MDI に serialize して最終生成を Rust に委ねます。独立した archive generator は残していません。CLI `build` はこの tree-facing entry を使いません。`mdi-to-hast` の CSS は Rust `render_html` embedded CSS より `SYNTAX.md` に近い点があり、詳細は [stylesheet parity](/ja/ecosystem/compatibility/#stylesheet-parity) を参照してください。
 
-## 全 renderer でまだ pending のこと
+## Profile 設定付き output
 
-EPUB/DOCX の cover、configurable chapter split、page geometry/font の export-profile 対応は pending です。現在は front matter の `title`、`author`、`lang`、`writing-mode` のみを読みます。これは静かな欠落ではなく [Rust Core API](/ja/core/rust-api/#not-yet-implemented) に追跡されている後続 API です。
+設定付き EPUB は metadata、writing mode、typography、chapter split、
+PNG/JPEG cover を扱います。設定付き DOCX は metadata、page geometry、
+mirror margin、writing mode、typography、strict／flowing grid、page number
+を扱います。どちらも Rust で同じ [Export profile](/ja/ecosystem/export-profiles/)
+を解決するため、将来 Python、Swift、Android に公開するときも同じ処理を
+書き直す必要はありません。
 
 ## 次へ
 

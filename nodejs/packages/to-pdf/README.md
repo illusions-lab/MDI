@@ -48,13 +48,16 @@ for the shared CSS layout; page-number headers and footers remain host-specific.
 MDI source → Rust parser + HTML renderer → Chromium layout → PDF bytes
 ```
 
-This package owns only the final print-layout step: page size, margins,
-writing mode, page numbers, and the browser process. It never receives MDI
-source and cannot make syntax or semantic-rendering decisions.
+Rust resolves the page size, margins, writing mode, type settings, and page
+number templates. This package owns the final host step: loading that prepared
+HTML in Chromium and requesting PDF bytes. It never receives MDI source and
+cannot make syntax, profile-validation, or semantic-rendering decisions.
 
 ## Documentation
 
 - [Rendering and Chromium boundary](https://mdi.illusions.app/core/rendering/)
-- [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
+- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-pdf/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+
+Print hosts must pass `prepared.page` to `settleMdiPrintLayout(evaluate, { page: prepared.page })`. The Node PDF adapter does this automatically, constraining measurement to the physical printable page before font/layout stabilization.

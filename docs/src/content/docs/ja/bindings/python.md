@@ -49,7 +49,7 @@ mdi.parse_mdi_syntax  # deprecated alias
 
 ## Diagnostic と error handling
 
-不正な MDI 記法は例外ではなく literal fallback と diagnostics で扱います。現在実装されている diagnostic は [唯一の `mdi.version.unsupported`](/ja/core/diagnostics/) です。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX archive writer の実際の失敗だけは `mdi.MdiRenderError` です。`mdi.parse()` を diagnostics の代わりに `try`/`except` で包まないでください。
+不正な MDI 記法は例外ではなく literal fallback と diagnostics で扱います。warning の全一覧は [Diagnostics](/ja/core/diagnostics/) を参照してください。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX archive writer の実際の失敗だけは `mdi.MdiRenderError` です。`mdi.parse()` を diagnostics の代わりに `try`/`except` で包まないでください。
 
 ```python
 mdi.parse(None)                              # TypeError
@@ -67,15 +67,41 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## 現在の実装状況
 
-Python binding は **実装済み・公開済み・テスト済み** です。test suite は IR shape、diagnostic、byte span、五つの text format、EPUB/DOCX archive、ここにある error path を検証し、branch coverage 95% を要求します。
+Python binding は **実装済み・公開済み・テスト済み** です。test suite は IR shape、diagnostic、byte span、六つの text format、EPUB/DOCX archive、ここにある error path を検証し、branch coverage 95% を要求します。
 
 ## この binding がしないこと
 
 - **PDF function はまだありません。** Python には WASM のような原理的制限はありませんが、現在 `mdi.render_pdf` は export されていません。Python 隣接 workflow の PDF は [CLI](/ja/bindings/cli/) を使ってください。
 - **独自 grammar はありません。** CLI/Rust と差があれば短い wrapper か core のバグです。
-- **export profile を適用しません。** `render_epub`/`render_docx` は source だけを受け、cover、chapter split、page geometry はまだ binding 経由で渡せません。
+- **export profile の引数はまだありません。** `render_epub`/`render_docx` は現在 source だけを受け取ります。設定付き EPUB/DOCX の実装は既に Rust にあり、Python wrapper が profile と cover の引数をまだ公開していない状態です。
 
 ## 次へ
 
 - [Rust Core API](/ja/core/rust-api/)
 - [出力形式](/ja/ecosystem/outputs/)
+
+## 割注の自動組版
+
+分割規則は Rust が一元管理します。本文の50%の字級、固定2行、行間なしで表示します。先頭の断片には本文行の残り幅、後続には行全体の幅を指定できます。幅の単位は割注字級の半角emです。文字幅の推定であり、比例フォントの厳密な均衡は保証しません。
+
+```python
+from mdi import layout_warichu
+fragments = layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
+```
+
+戻り値は `lines`、`html`、`widths`、`overflow`、`hardBreakAfter`、`sources` を含みます。`path` は入力配列からの子インデックス列、`startUtf8` / `endUtf8` は可視文字列内の半開UTF-8バイト範囲です。同一の `group` は書式境界をまたぐ書記素も分割しません。ルビ、縦中横、改行禁止は一体として扱います。明示改行を保ち、自動分割は正規MDIや平文に書き戻しません。静的HTML/EPUBは閲覧ソフトにより再配置が異なります。DOCXはネイティブの双行グループを使います。XMLやインポーターの検証をWordの描画実測とは記載しません。
+
+
+## Editorial comments in MDI 2.1
+
+```python
+mdi.parse(source, include_comments=True)
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

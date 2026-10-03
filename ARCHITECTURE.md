@@ -75,6 +75,8 @@ renderText(document, flavor, profile) -> string
 renderEpub(document, profile) -> bytes
 renderDocx(document, profile) -> bytes
 renderPdf(document, profile) -> bytes
+resolveExportProfile(profile, sourceWritingMode) -> resolved profile
+listPageSizes() -> stable keys and physical dimensions
 ```
 
 Bindings use idiomatic names and types for their host language, but each call
@@ -132,7 +134,7 @@ Deterministic transformations live in Rust:
 | HTML | Rust HTML/CSS renderer |
 | EPUB | Rust XHTML, metadata, CSS, and ZIP packager |
 | DOCX | Rust OOXML and ZIP packager |
-| PDF | Rust HTML/print-CSS renderer and Chromium controller |
+| PDF | Rust profile/HTML/print-CSS preparation and Chromium controller |
 
 Every renderer accepts the versioned Rust IR. A renderer never reparses source
 text, reconstructs MDI boundaries, or delegates document semantics to a host
@@ -161,7 +163,8 @@ server or desktop host running the same Rust PDF API.
 
 A binding may convert strings, bytes, errors, options, and object shapes. It
 may not contain grammar tables, tokenizers, syntax fallbacks, or renderer
-semantics.
+semantics. Publication-profile defaults, validation, paper dimensions, and
+renderer-facing layout decisions follow the same rule: they live in Rust.
 
 The wire boundary carries explicit syntax and IR versions. Bindings reject an
 unsupported IR version instead of guessing its meaning. Diagnostics retain
@@ -181,5 +184,15 @@ An implementation is part of MDI only if all of the following are true:
 - all public parse results declare their syntax and IR versions;
 - every binding passes the shared parse and diagnostic fixtures unchanged;
 - every deterministic renderer consumes the Rust IR;
+- configured EPUB/DOCX and PDF print profiles resolve through `mdi-core`;
 - PDF uses HTML/CSS produced from the Rust IR and is orchestrated by Rust;
 - no host-language package contains an alternative MDI tokenizer or parser.
+
+
+### Editorial comment IR (2.1)
+
+Rust retains comments internally. Default document interfaces filter them and
+keep IR 1.0; explicit `includeComments` selects IR 1.1. Canonical source saving
+uses the retained tree. Publication and body projections always omit comments.
+The mdast boundary transports `mdiComment` leaves, never ordinary HTML nodes.
+See [the normative comment contract](./SYNTAX.md#15-editorial-comments--編集用コメント).

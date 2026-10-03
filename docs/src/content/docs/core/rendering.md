@@ -1,15 +1,15 @@
 ---
 title: Rendering model and the Chromium/PDF boundary
-description: How Rust-owned MDI semantics flow to baseline exports, configured publication adapters, and a host PDF engine.
+description: How Rust turns one MDI document into baseline and configured exports, and where a PDF host takes over.
 ---
 
 **Prerequisites:** [Document IR](/core/document-ir/) and [Export profiles](/ecosystem/export-profiles/).
 
-## One semantic source, two layers of settings
+## One semantic source, one publication contract
 
-Rust owns the `.mdi` parse, diagnostic codes and UTF-8 spans, and semantic HTML/baseline EPUB/DOCX/TXT output. It is the authority for ruby, tate-chu-yoko, no-break, kerning, blank paragraphs, page breaks, and all other MDI meaning.
+Rust owns the `.mdi` parse, diagnostic codes and UTF-8 spans, semantic output, and publication-profile resolution. Ruby, tate-chu-yoko, no-break, kerning, blank paragraphs, page breaks, paper dimensions, and EPUB/DOCX layout are therefore decided in one place.
 
-Publication settings are deliberately separate. EPUB/DOCX adapters apply metadata, chapters, typography, page setup, and numbering to that already-parsed IR. A host applies browser/PDF settings such as Chromium location and application UI preferences. This avoids putting platform-specific print policy into the parser.
+The profile remains separate from document meaning: changing a font or page size never changes how MDI is parsed. Rust validates that profile and applies metadata, chapters, typography, page setup, and numbering. A PDF host is responsible only for locating or launching Chromium and returning its bytes; application UI preferences remain with the application.
 
 Configured publication exports require one explicit `layout.system`. `japanese-publisher` is the strict Japanese book contract: horizontal pages use `Shirokuban`, 10 pt Mincho, mirrored spreads, left binding, and 27×26; vertical pages use the A4-landscape novel manuscript, mirrored spreads, right binding, and 40×30. `word` is intentionally incompatible: A4, 25.4 mm on all four sides, no mirroring, and flowing `typographic` layout; it rejects `strict`.
 
@@ -19,7 +19,7 @@ Configured publication exports require one explicit `layout.system`. `japanese-p
 | TXT | `renderTextFormat(source, format, indentPrefix)` | caller supplies text indentation. |
 | EPUB | `renderEpub(source)` | `await renderEpub(source, { profile, cover })` or aliases such as `title`, `chapterSplitLevel`, and `coverImage`. |
 | DOCX | `renderDocx(source)` | `await renderDocx(source, profile)` with metadata, page, type, and page-number values. |
-| PDF | — | `@illusions-lab/mdi/node` hands Rust HTML and an `ExportProfile` to a Chromium-capable host. |
+| PDF | — | `@illusions-lab/mdi/node` hands Rust-prepared HTML, page geometry, and page-number templates to a Chromium-capable host. |
 
 ## Diagnostics, headings, and semantic HTML
 
@@ -29,7 +29,7 @@ HTML is semantic and stable: `renderHtml` returns a complete page including MDI 
 
 ## EPUB and DOCX
 
-The single-argument calls are synchronous Rust baseline exports: useful when front matter is enough and no publication profile is required. The configured calls are asynchronous because the package structurally converts the Rust IR to the EPUB/DOCX publication adapters — MDI source is not reparsed in JavaScript.
+The single-argument calls are synchronous Rust baseline exports: useful when front matter is enough and no publication profile is required. The configured JavaScript calls retain their asynchronous shape for compatibility, but profile validation and EPUB/DOCX archive generation now run in Rust. JavaScript does not keep a parallel page-size table or document generator.
 
 Configured EPUB accepts title/author/publisher/language/date/identifier, vertical writing, font family, text indent, `h1`/`h2`/`h3`/`none` chapter splitting, and a JPEG/PNG cover. Configured DOCX accepts metadata; page size, orientation and four margins; writing direction, font family, font size, line spacing and indent; and page-number visibility, position and `simple`/`dash`/`fraction` format.
 
@@ -37,9 +37,17 @@ DOCX maps page breaks, writing direction, ordinary paragraphs, and available inl
 
 ## The Chromium/PDF boundary
 
-`preparePdfExport(source, profile)` in `@illusions-lab/mdi/node` returns Rust-produced HTML, the profile, and front-matter writing direction. Electron can print that request through its own BrowserWindow. `renderPdfWithChromium(source, profile)` instead loads the optional, separately installable `@illusions-lab/mdi-to-pdf` Node adapter (Playwright) unless you pass an Electron-compatible `{ renderHtmlToPdf }` adapter.
+`preparePdfExport(source, profile)` in `@illusions-lab/mdi/node` returns Rust-prepared HTML and resolved print data. Electron can print that request through its own BrowserWindow. `renderPdfWithChromium(source, profile)` instead loads the optional, separately installable `@illusions-lab/mdi-to-pdf` Node host (Playwright) unless you pass an Electron-compatible `{ renderHtmlToPdf }` implementation.
 
-The PDF adapter owns Chromium execution and applies paper size, landscape, margins, vertical/horizontal flow, font family/size/line spacing, characters-per-line, lines-per-page, first-line indentation, and page numbers. Browser WASM cannot spawn Chromium; browser code should prepare the request and send it to a Node, Electron, Tauri, or CLI host. Chromium receives completed HTML/CSS, never `.mdi` source, so it cannot change MDI syntax meaning.
+Rust resolves and applies paper size, landscape, margins, vertical/horizontal flow, font family/size/line spacing, characters-per-line, lines-per-page, first-line indentation, and page-number templates. The host owns Chromium execution. Browser WASM cannot spawn Chromium, so browser code should prepare the request and send it to a Node, Electron, Tauri, or CLI host. Chromium receives completed HTML/CSS and print data, never `.mdi` source.
+
+## What the contracts check
+
+Unit and coverage tests run first. Once they pass, the publication suite opens
+DOCX with the .NET Open XML SDK and LibreOffice, checks PDF structure and page
+geometry, validates EPUB with W3C EPUBCheck, and verifies HTML. This catches
+files that are valid ZIP archives but still fail in the applications readers
+actually use.
 
 ## Next steps
 

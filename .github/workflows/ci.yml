@@ -7,7 +7,7 @@ on:
 
 jobs:
   nodejs:
-    name: Node.js
+    name: Node.js unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,11 +29,12 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
-      # to-pdf's tests print through a real headless Chromium.
-      - run: pnpm --filter @illusions-lab/mdi-to-pdf exec playwright install --with-deps chromium
+      # Browser WASM contracts run in all Playwright engines; to-pdf also uses Chromium.
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm typecheck
       - run: pnpm build
-      - run: node --test nodejs/scripts/pack-publishable-package.test.mjs
+      - run: pnpm test:browser
+      - run: node --test nodejs/scripts/pack-publishable-package.test.mjs nodejs/scripts/release-version-policy.test.mjs nodejs/scripts/release-artifacts.test.mjs
       - run: pnpm test:coverage
 
       - name: Upload Node.js coverage to Codecov
@@ -102,6 +103,33 @@ jobs:
           name: rust
           fail_ci_if_error: true
 
+  safari-browser:
+    name: Safari.app packed browser smoke
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Enable Safari remote automation
+        run: safaridriver --enable || sudo safaridriver --enable
+      - name: Launch Safari.app for WebDriver
+        run: |
+          open -a Safari
+          sleep 5
+      - run: pnpm test:safari
+
   swift:
     name: Swift
     runs-on: macos-15
@@ -112,16 +140,36 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install the official W3C EPUBCheck validator
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          ditto -x -k "$RUNNER_TEMP/epubcheck.zip" "$RUNNER_TEMP"
+
       - name: Build the Apple XCFramework
         run: scripts/package-swift-xcframework.sh "$RUNNER_TEMP/mdi-swift"
 
       - name: Test Swift binding with coverage
+        env:
+          MDI_SWIFT_SMOKE_OUTPUT: ${{ runner.temp }}/swift-package-smoke
         run: |
           mkdir -p swift/Artifacts
           ditto "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" swift/Artifacts/MDICore.xcframework
           scripts/write-swift-package-manifest.sh local "swift/Artifacts/MDICore.xcframework"
           swift test --enable-code-coverage
           scripts/export-swift-coverage.sh swift/coverage.lcov
+
+      - name: Open and validate every Swift package format
+        run: >-
+          scripts/verify-swift-package-formats.sh
+          "$RUNNER_TEMP/swift-package-smoke"
+          "$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar"
 
       - name: Upload Swift coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -164,3 +212,127 @@ jobs:
           flags: python
           name: python
           fail_ci_if_error: true
+
+  android:
+    name: Android
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  large-document-performance:
+    name: Large document performance (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: 100k characters
+            test: case_100k
+          - label: 1M characters
+            test: case_1m
+          - label: 10M characters
+            test: case_10m
+          - label: 100M characters
+            test: case_100m
+    defaults:
+      run:
+        working-directory: mdi-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Measure parse and canonical serialization throughput
+        run: |
+          cargo test --release --test large_document_performance "${{ matrix.test }}" -- \
+            --ignored --nocapture --test-threads=1 | tee performance.log
+          sed -n 's/.*PERF_RESULT //p' performance.log > "performance-${{ matrix.test }}.jsonl"
+
+      - name: Upload case result
+        uses: actions/upload-artifact@v4
+        with:
+          name: large-document-performance-${{ matrix.test }}
+          path: mdi-core/performance-${{ matrix.test }}.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
+  large-document-performance-report:
+    name: Large document performance report
+    needs: large-document-performance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download parallel case results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: large-document-performance-*
+          path: performance-results
+          merge-multiple: true
+
+      - name: Write traceable performance report
+        run: node scripts/write-large-document-performance-report.mjs performance-results performance-report
+
+      - name: Publish report in the workflow summary
+        run: cat performance-report/large-document-performance.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: large-document-performance-report-${{ github.run_id }}
+          path: performance-report/
+          if-no-files-found: error
+          retention-days: 90
+
+  publication-contracts:
+    name: Publication contracts
+    needs: [nodejs, rust-native, safari-browser, swift, python, android, large-document-performance-report]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: jetli/wasm-pack-action@v0.4.0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @illusions-lab/mdi-to-pdf exec playwright install --with-deps chromium
+
+      - name: Install LibreOffice DOCX consumer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libreoffice-writer
+
+      - name: Install the official W3C EPUBCheck validator
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          echo "EPUBCHECK_JAR=$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar" >> "$GITHUB_ENV"
+
+      - run: pnpm build
+      - run: pnpm test:contracts

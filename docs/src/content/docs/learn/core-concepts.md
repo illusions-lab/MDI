@@ -66,7 +66,7 @@ A **diagnostic** reports a recoverable problem — it is a plain object in the `
 { "severity": "warning", "code": "mdi.version.unsupported", "message": "MDI 2.1 is newer than the supported 2.0", "span": { "startByte": 0, "endByte": 34 } }
 ```
 
-`parse()` almost never throws. Malformed or ambiguous MDI syntax (an unmatched `^`, a `[[kern:` with an invalid amount, mismatched ruby dot segments) is handled by the **literal-fallback rule** documented on each syntax page — the text is kept as-is in the tree, usually without even a diagnostic, because it's the same tolerant behavior Markdown itself has for unrecognized syntax. Exceptions are reserved for things a diagnostic can't describe: a non-string argument, or a native resource failure (e.g., no Chromium executable for PDF). See [Diagnostics and UTF-8 source spans](/core/diagnostics/) for the complete current list of diagnostic codes (today, exactly one).
+`parse()` almost never throws. Malformed or ambiguous MDI syntax (an unmatched `^`, a `[[kern:` with an invalid amount, mismatched ruby dot segments) is handled by the **literal-fallback rule** documented on each syntax page — the text is kept as-is in the tree, usually without even a diagnostic, because it's the same tolerant behavior Markdown itself has for unrecognized syntax. Exceptions are reserved for things a diagnostic can't describe: a non-string argument, or a native resource failure (e.g., no Chromium executable for PDF). See [Diagnostics and UTF-8 source spans](/core/diagnostics/) for the complete current list of diagnostic codes.
 
 ## 5. Capabilities describe *this* parse, not a promise about the future
 

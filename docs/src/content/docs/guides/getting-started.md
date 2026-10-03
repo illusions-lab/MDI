@@ -35,9 +35,10 @@ Install the CLI globally:
 npm install --global @illusions-lab/mdi-cli
 ```
 
-Run it:
+Run it (HTML is the default):
 
 ```bash
+mdi novel.mdi
 mdi build novel.mdi --to html
 ```
 
@@ -48,13 +49,14 @@ Written /path/to/novel.html
 The full command shape, taken directly from the CLI's own usage message:
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
 ```
 
 | Flag | Meaning |
 | --- | --- |
-| `--to <format>` | Required. One of the formats listed above. |
-| `-o <path>` | Optional. Output path. Without it, output is written beside the input using the format's extension — `novel.mdi --to pdf` writes `novel.pdf`; `--to txt-ruby` writes `novel_ruby.txt` (the CLI names text variants `<stem>_<variant>.txt`, and plain `txt` has no suffix). |
+| `--to <format>` | Optional. One of the formats listed above; defaults to `html`. |
+| `-o <path>` | Optional. Output path. Without it, output is written beside the input using the format's extension. If `--to` is omitted, a recognized output extension (`.html`, `.json`, `.pdf`, `.epub`, `.docx`, `.txt`) selects the format. An explicit format that conflicts with the extension is rejected. |
 | `--config <path>` | Optional. Path to an [export profile](/ecosystem/export-profiles/) JSON file controlling page size, fonts, margins, and text-indent settings. |
 
 Try every output format:
@@ -69,14 +71,23 @@ mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt — rub
 mdi build novel.mdi --to narou                          # novel_narou.txt   — 小説家になろう notation
 mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt — カクヨム notation
 mdi build novel.mdi --to aozora                         # novel_aozora.txt  — 青空文庫 notation, Shift_JIS-encoded
-mdi build novel.mdi --to txt-all                        # writes all five text variants; rejects -o
+mdi build novel.mdi --to note                           # novel_note.txt    — note editor input, UTF-8
+mdi build novel.mdi --to txt-all                        # writes all six text variants; rejects -o
 ```
 
 `--to txt-all` and `-o` are mutually exclusive — using both is a usage error, because `txt-all` always writes multiple files next to the input.
 
+For parser diagnostics, run `mdi check novel.mdi`. Warnings are reported but
+exit `0`; an error diagnostic exits `1`. `mdi --version` prints the installed
+version. `mdi update --check` checks npm without installing, while
+`mdi update --yes` performs an explicitly authorized update. Normal invocations
+perform a best-effort daily cached update check in the background; failures do
+not affect the command. Set `MDI_NO_UPDATE_CHECK=1` in CI when you do not want
+the notice.
+
 ### What actually happens on each format
 
-- **HTML, TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`, EPUB, and DOCX** are rendered **directly by the Rust core** (`renderHtml`, `renderTextFormat`, `renderEpub`, `renderDocx` in `@illusions-lab/mdi`) — the CLI does not reparse or reinterpret anything.
+- **HTML, TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`, EPUB, and DOCX** are rendered **directly by the Rust core** (`renderHtml`, `renderTextFormat`, `renderEpub`, `renderDocx` in `@illusions-lab/mdi`) — the CLI does not reparse or reinterpret anything.
 - **PDF** takes the same Rust-rendered HTML and hands it to a locally installed Chromium-family browser, which performs pagination and calls `printToPDF`. Chromium never receives `.mdi` source and makes no syntax decision. If no Chromium-family browser is found, the command fails with an error naming the missing dependency — see [Rendering model](/core/rendering/) for how to point it at a specific executable.
 - **`aozora`** is encoded to **Shift_JIS** on write, matching what Aozora Bunko's own submission tooling expects; every other text variant is written as UTF-8.
 
@@ -97,7 +108,7 @@ mdi build novel.mdi --to svg
 ```
 
 ```text
-Usage: mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+Usage: mdi <command> [options]
 ```
 
 An unrecognized `--to` value (or any other malformed argument list) prints the usage line above and exits `1` — it does not attempt a best-effort guess at what you meant.

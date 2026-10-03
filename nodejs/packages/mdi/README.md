@@ -25,6 +25,25 @@ console.log(result.document);
 console.log(result.diagnostics);
 ```
 
+### Browser initialization
+
+Browser applications must initialize the Rust WebAssembly module once before
+using the otherwise synchronous APIs. Repeated calls return the same pending
+initialization and are safe during hot reload or shared application startup:
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+Vite and other browser-condition-aware bundlers select the web loader and emit
+its WASM asset automatically. Node.js keeps its existing eager, synchronous
+WASM loading behavior; `initializeMdi()` resolves immediately there, so shared
+startup code can call it in both environments.
+
 ## What the binding does
 
 The package has deliberately narrow responsibilities:
@@ -60,13 +79,54 @@ Applications should treat the IR version as a wire-protocol version. They
 must not infer grammar rules from object shapes or silently accept an
 unsupported version.
 
+## Searchable text blocks
+
+`getMdiTextBlocks(source)` returns Rust-projected heading, paragraph, list,
+blockquote, code, table, footnote, and HTML text in source order. Positions
+such as `3:18` count one-based Unicode grapheme clusters; ruby readings are a
+separate annotation channel anchored to the base-text range.
+
+```ts
+import { getMdiTextBlocks, resolveMdiSourceSpan, resolveMdiSourceSpans, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("{東京|とうきょう}");
+const block = result.blocks[0];
+console.log(block.text); // 東京
+console.log(block.annotations[0].anchor); // { start: "1:1", end: "1:3" }
+console.log(sourceSpansForTextRange(block, { start: "1:1", end: "1:3" }));
+console.log(resolveMdiSourceSpan("{東京|とうきょう}", { startByte: 1, endByte: 7 }));
+console.log(resolveMdiSourceSpans("same same", [{ startByte: 0, endByte: 4 }, { startByte: 5, endByte: 9 }]));
+```
+
+`resolveMdiSourceSpan` accepts half-open UTF-8 byte offsets and returns ordered
+`blockText` and `annotation` matches in canonical grapheme coordinates.
+`coverage` is `complete`, `partial`, or `none`; each match is `exact` only when
+its complete forward source coverage equals the requested span. Ruby base text
+and readings are separate channels, and annotation indexes are zero-based.
+Zero-width spans are valid and return no matches. Pure Markdown/MDI delimiters,
+synthetic separators, and unmapped text do not acquire invented ranges, though
+a delimiter token already owned by one projected grapheme (such as an explicit
+break) can match. Reverse and forward mapping are therefore not generally
+bijective, especially for annotations, multi-byte token mappings, partial
+graphemes, discontinuous runs, and synthetic or unmapped text.
+For multiple lookups against one document, use `resolveMdiSourceSpans`. It
+validates the full array, performs one Rust parse/projection, and preserves
+input order; repeated calls to the singular convenience API each parse anew.
+
+Each source-derived grapheme is represented by a `sourceMap.runs` boundary;
+table tabs/newlines and multi-paragraph joiners appear in `synthetic` and do
+not receive invented source spans. `parseMdiTextPosition`,
+`formatMdiTextPosition`, and `formatMdiTextRange` provide stateless coordinate
+helpers.
+
 ## Rendering
 
-Rendering starts from the same Rust IR. Canonical MDI, plain text, HTML, and
-the one-argument baseline EPUB/DOCX renderers execute in Rust and are exposed
-through this package. PDF uses Rust HTML as its input to a host layout adapter such as
-`@illusions-lab/mdi-to-pdf`; the adapter may control Chromium, but it never
-parses MDI or produces semantic HTML.
+Rendering starts from the same Rust IR. Canonical MDI, plain text, HTML, EPUB,
+and DOCX—including profile-configured EPUB and DOCX—execute in Rust and are
+exposed through this package. PDF uses Rust-prepared HTML, print CSS, page
+geometry, and header/footer data as input to a host such as
+`@illusions-lab/mdi-to-pdf`. The host launches Chromium, but it never parses
+MDI or decides publication settings.
 
 Browser WebAssembly cannot start Chromium. Browser code sends Rust-rendered
 HTML to a server or desktop host when it needs PDF output.
@@ -94,25 +154,28 @@ Rust-authoritative parser rather than accepting mutable JavaScript IR. This
 keeps the source spans and error codes predictable and prevents JavaScript from
 becoming a second syntax implementation.
 
-Configuration ownership is deliberately split: Rust owns MDI parsing and
-semantic HTML; publication profiles own EPUB/DOCX metadata and typesetting;
-the host owns Chromium/Electron, paper-printer integration, and application UI
-preferences. This keeps platform-specific pagination controls out of the
-parser and lets Electron supply its own PDF adapter.
+Configuration ownership is deliberately clear: Rust validates publication
+profiles and applies EPUB/DOCX metadata, typography, page geometry, and
+numbering. For PDF, Rust also prepares the print HTML and resolved page data;
+the host owns only Chromium/Electron process control, printer integration, and
+application UI preferences. This keeps layout behavior consistent without
+putting application concerns into the parser.
 
 ### Configured EPUB and DOCX
 
 For publication output, pass an export profile to the overloads (or use the
-explicit `WithProfile` functions). These Node.js-only async paths map the
-Rust-owned IR through the publication adapters and retain configuration for
-metadata, chapter splitting, vertical writing, font selection, paper size,
-margins, and page numbers. EPUB also accepts in-memory PNG or JPEG cover art.
+explicit `WithProfile` functions). The Promise-shaped API is retained for
+compatibility, while profile validation and archive generation both run in
+Rust. It supports metadata, chapter splitting, vertical writing, font
+selection, paper size, margins, and page numbers. EPUB also accepts in-memory
+PNG or JPEG cover art.
 
 ```ts
 import { renderDocxWithProfile, renderEpubWithProfile } from "@illusions-lab/mdi";
 
 const epub = await renderEpubWithProfile(source, {
   profile: {
+    layout: { system: "japanese-publisher" },
     metadata: { title: "Book", author: "Author" },
     typesetting: { writingMode: "vertical", fontFamily: "Noto Serif JP" },
     epub: { chapterSplitLevel: "h1" },
@@ -121,6 +184,7 @@ const epub = await renderEpubWithProfile(source, {
 });
 
 const docx = await renderDocxWithProfile(source, {
+  layout: { system: "word" },
   pagination: { pageSize: "A5", margins: { top: 12, bottom: 12, left: 14, right: 14 } },
 });
 ```
@@ -153,3 +217,32 @@ executable syntax authority is `mdi-core`.
 - [Document IR and diagnostics](https://mdi.illusions.app/core/document-ir/)
 - [Rendering model](https://mdi.illusions.app/core/rendering/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+
+### Automatic two-line notes
+
+`layoutMdiWarichu(children, capacity)` remains available. To account for the
+space before a note, pass `{ firstCapacity, continuationCapacity }` instead.
+Both capacities use half-em units at the note's 50% font size. Rust returns
+`lines`, `widths`, `overflow`, `hardBreakAfter`, `html`, and `sources`. Source
+paths address the original inline children; byte offsets are UTF-8 leaf
+boundaries, and `group` identifies indivisible units. Repeated text must be
+mapped by these positions, never by searching its value.
+
+For read-only rendered HTML, initialize MDI and call
+`attachMdiWarichuLayout(container)`. The controller exposes `configure()`,
+`settled({ timeoutMs, signal })`, and `dispose()`. Resize, font, and ancestor
+style changes trigger presentation updates. Editors should use the layout
+result with their own selection-preserving presentation layer.
+
+`settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` works with a host's
+existing hidden print document. Pass the resolved `page` from `prepareChromiumPrintProfile` so layout uses the paper's printable dimensions instead of the host window's viewport. Supply `code => page.evaluate(code)` for
+Playwright or `code => webContents.executeJavaScript(code)` for Electron.
+The helper waits for fonts and a stable Rust layout; timeout, cancellation,
+and nonconvergence reject the promise and must prevent printing.
+
+The adapter does not change canonical MDI or insert generated `[[br]]`.
+No-script HTML/EPUB retain precomputed two-line spans. Their reading system
+may reflow differently; proportional-font balance is an estimate, and this
+API does not imply testing in Word or every EPUB reader.
+
+Browser measurement accounts for actual rendered advances and inherited text insets; Rust still owns every split. This retains configured tracking while avoiding clipped notes and Chromium shrink-to-fit.

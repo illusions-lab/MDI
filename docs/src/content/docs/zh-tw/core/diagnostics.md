@@ -15,7 +15,7 @@ interface MdiDiagnostic { severity: "warning" | "error"; code: string; message: 
 
 ## 今天所有 diagnostic code
 
-`mdi-core` 目前只有**一個** diagnostic code：
+`mdi-core` 目前有**兩個** diagnostic code：
 
 ### `mdi.version.unsupported`
 
@@ -37,6 +37,17 @@ mdi: "2.1"
 ```
 
 依 `SYNTAX.md`，遇到高於支援版本時是**SHOULD 警告並繼續**，絕非 **MUST 拒絕**；parser 以已知規則盡力處理，仍產出正常 tree 與此 diagnostic。
+
+### `mdi.parser.recovered`
+
+- **Severity：**`warning`
+- **觸發時機：**畸形的 frontmatter 樣式序列可能使上游 Markdown parser failure。
+  MDI 會把完整 source 保留為一個 literal text block，而非失敗或讓 WebAssembly trap。
+- **Span：**整份 document。
+- **Message：**`"The parser recovered by projecting the source as literal text"`。
+
+這是防禦性的 recovery path，不是一般構文 diagnostic。一般格式不正確的 MDI
+inline 仍依各 construct 的 literal fallback 處理，不會額外加入 diagnostic。
 
 :::caution[目前實作狀態]
 `mdi-core` 現在使用一般**字串**比較（`declared > MDI_SPEC_VERSION`），不是 semantic-version 比較。當 MDI 維持單位數 `major.minor` 時實際案例都正確，但一般而言不具 semver awareness，例如 `"2.10"` 在字典序會小於 `"2.9"`。這是目前實作限制，並非規範的 version-comparison rule。

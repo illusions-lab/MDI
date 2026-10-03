@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-to-html",
-  "version": "2.0.18",
+  "version": "2.1.0",
   "description": "Render MDI (.mdi) documents to HTML",
   "license": "MIT",
   "repository": {
@@ -28,8 +28,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@illusions-lab/mdi-to-hast": "workspace:*",
-    "hast-util-to-html": "^9.0.0",
+    "@illusions-lab/mdi-core": "workspace:*",
+    "mdast-util-mdi": "workspace:*",
     "@types/mdast": "^4.0.0"
   },
   "devDependencies": {

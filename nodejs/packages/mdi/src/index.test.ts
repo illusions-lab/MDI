@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { MDI_IR_VERSION, MDI_SPEC_VERSION, parse, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, serializeMdi, toPublicationMdast } from "./index.js";
+import { MDI_IR_VERSION, MDI_SPEC_VERSION, formatMdiTextPosition, formatMdiTextRange, getMdiTextBlocks, initializeMdi, parse, parseMdiTextPosition, prepareRender, renderDocx, renderDocxWithDiagnostics, renderDocxWithProfile, renderEpub, renderEpubWithDiagnostics, renderEpubWithProfile, renderHtml, renderHtmlWithDiagnostics, renderText, renderTextFormat, renderTextFormatWithDiagnostics, renderTextWithDiagnostics, resolveMdiSourceSpan, resolveMdiSourceSpans, serializeMdi, sourceSpansForTextRange, toPublicationMdast } from "./index.js";
 
 function assertValidSpans(node: { span?: { startByte: number; endByte: number }; children?: unknown[] }, source: string): void {
 	if (node.span) {
@@ -14,6 +14,11 @@ function assertValidSpans(node: { span?: { startByte: number; endByte: number };
 }
 
 describe("Rust MDI JavaScript binding", () => {
+	it("keeps portable initialization harmless in Node.js", async () => {
+		await initializeMdi();
+		expect(parse("Node remains synchronous").irVersion).toBe(MDI_IR_VERSION);
+	});
+
 	it("returns the complete Rust-owned document contract", () => {
 		const result = parse("第^12^話");
 
@@ -30,6 +35,106 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(result.document.children[0]).toMatchObject({ type: "paragraph", span: { startByte: 0, endByte: 10 } });
 	});
 
+	it("returns Rust-owned grapheme text blocks, ruby annotations, and source maps", () => {
+		const source = "# 序章\n\n我喜歡{東京|とうきょう}。\n\né 👩🏽‍💻";
+		const result = getMdiTextBlocks(source);
+
+		expect(result).toMatchObject({
+			projectionVersion: "1.0",
+			positionEncoding: "unicode-grapheme-cluster-1-based",
+			irVersion: MDI_IR_VERSION,
+			syntaxVersion: MDI_SPEC_VERSION,
+		});
+		expect(result.blocks.map(({ kind, text, range }) => ({ kind, text, range }))).toEqual([
+			{ kind: "heading", text: "序章", range: { start: "1:1", end: "1:3" } },
+			{ kind: "paragraph", text: "我喜歡東京。", range: { start: "2:1", end: "2:7" } },
+			{ kind: "paragraph", text: "é 👩🏽‍💻", range: { start: "3:1", end: "3:4" } },
+		]);
+		expect(result.blocks[1]!.annotations[0]).toMatchObject({
+			kind: "rubyReading",
+			text: "とうきょう",
+			anchor: { start: "2:4", end: "2:6" },
+		});
+		expect(sourceSpansForTextRange(result.blocks[1]!, { start: "2:4", end: "2:6" })).toEqual([
+			{
+				startByte: Buffer.byteLength("# 序章\n\n我喜歡{"),
+				endByte: Buffer.byteLength("# 序章\n\n我喜歡{東京"),
+			},
+		]);
+	});
+
+	it("formats positions and omits synthetic separators from source span lookup", () => {
+		expect(parseMdiTextPosition("3:18")).toEqual({ block: 3, character: 18 });
+		expect(formatMdiTextPosition({ block: 3, character: 18 })).toBe("3:18");
+		expect(formatMdiTextRange({ start: "3:18", end: "3:24" })).toBe("3:18-3:24");
+		expect(() => parseMdiTextPosition("3:0")).toThrow("Invalid MDI text position");
+
+		const table = getMdiTextBlocks("| a | b |\n| - | - |\n| c | d |").blocks[0]!;
+		expect(table.text).toBe("a\tb\nc\td");
+		expect(sourceSpansForTextRange(table, { start: "1:2", end: "1:3" })).toEqual([]);
+	});
+
+	it("resolves UTF-8 source spans to ordered block and annotation ranges", () => {
+		const source = "前{東京|とうきょう}後";
+		const startByte = Buffer.byteLength("前");
+		const endByte = Buffer.byteLength("前{東京|とうきょう}");
+		expect(resolveMdiSourceSpan(source, { startByte, endByte })).toEqual({
+			projectionVersion: "1.0",
+			sourceSpan: { startByte, endByte },
+			coverage: "partial",
+			matches: [
+				{
+					kind: "blockText",
+					blockIndex: 1,
+					range: { start: "1:2", end: "1:4" },
+					relation: "overlap",
+				},
+				{
+					kind: "annotation",
+					blockIndex: 1,
+					annotationIndex: 0,
+					range: { start: "1:1", end: "1:6" },
+					relation: "overlap",
+				},
+			],
+		});
+		expect(resolveMdiSourceSpan(source, { startByte: 0, endByte: 0 })).toMatchObject({
+			coverage: "none",
+			matches: [],
+		});
+	});
+
+	it("validates source-span types, uint32 values, bounds, order, and UTF-8 boundaries", () => {
+		expect(() => resolveMdiSourceSpan(null as never, { startByte: 0, endByte: 0 })).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpan("x", null as never)).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpan("x", { startByte: "0" as never, endByte: 0 })).toThrow(TypeError);
+		for (const invalid of [-1, 0.5, Number.NaN, 0x1_0000_0000]) {
+			expect(() => resolveMdiSourceSpan("x", { startByte: invalid, endByte: 0 })).toThrow(RangeError);
+		}
+		expect(() => resolveMdiSourceSpan("x", { startByte: 1, endByte: 0 })).toThrow(RangeError);
+		expect(() => resolveMdiSourceSpan("x", { startByte: 0, endByte: 2 })).toThrow(RangeError);
+		expect(() => resolveMdiSourceSpan("東京", { startByte: 1, endByte: 3 })).toThrow(RangeError);
+	});
+
+	it("resolves batches in input order through one Rust boundary", () => {
+		const source = "same same same";
+		const spans = [
+			{ startByte: 10, endByte: 14 },
+			{ startByte: 0, endByte: 4 },
+			{ startByte: 5, endByte: 9 },
+		];
+		const batch = resolveMdiSourceSpans(source, spans);
+		expect(batch.map((resolution) => resolution.sourceSpan)).toEqual(spans);
+		expect(batch.map((resolution) => resolution.matches[0]?.range)).toEqual([
+			{ start: "1:11", end: "1:15" },
+			{ start: "1:1", end: "1:5" },
+			{ start: "1:6", end: "1:10" },
+		]);
+		expect(resolveMdiSourceSpans(source, [])).toEqual([]);
+		expect(() => resolveMdiSourceSpans(source, null as never)).toThrow(TypeError);
+		expect(() => resolveMdiSourceSpans(source, [spans[0]!, { startByte: 2, endByte: 1 }])).toThrow(RangeError);
+	});
+
 	it("exposes nested syntax decisions made by Rust", () => {
 		const result = parse("**第^12^話**\n\n| a | b |\n| - | - |\n| 1 | 2 |");
 		expect(result.document.children.map((node) => node.type)).toEqual(["paragraph", "table"]);
@@ -42,6 +147,7 @@ describe("Rust MDI JavaScript binding", () => {
 
 	it("rejects non-string input at the host boundary", () => {
 		expect(() => parse(null as never)).toThrow("source must be a string");
+		expect(() => getMdiTextBlocks(null as never)).toThrow("source must be a string");
 		expect(() => renderHtml({} as never)).toThrow("source must be a string");
 		expect(() => renderEpub(null as never)).toThrow("source must be a string");
 		expect(() => renderDocx(null as never)).toThrow("source must be a string");
@@ -67,6 +173,20 @@ describe("Rust MDI JavaScript binding", () => {
 			expect(renderHtml(source)).toContain("<!DOCTYPE html>");
 			expect(parse(serializeMdi(source)).irVersion).toBe(MDI_IR_VERSION);
 		}
+	});
+
+	it("preserves footnotes and reference definitions in canonical serialization", () => {
+		const source = "本文[^1]と名前付き[^注]。\n\n[^1]: First.\n\n    Second paragraph with 👩🏽‍💻.\n\n    - nested one\n    - nested two\n\n[^注]: 日本語の注。\n\n参照 [link][id]。\n\n[id]: https://example.com \"Example\"";
+		const canonical = serializeMdi(source);
+
+		expect(canonical).toContain("[^1]: First.");
+		expect(canonical).toContain("    Second paragraph with 👩🏽‍💻.");
+		expect(canonical).toContain("    - nested one");
+		expect(canonical).toContain("[^注]: 日本語の注。");
+		expect(canonical).toContain("[id]: https://example.com \"Example\"");
+		expect(serializeMdi(canonical)).toBe(canonical);
+		expect(parse(canonical).document.children.filter(({ type }) => type === "footnoteDefinition")).toHaveLength(2);
+		expect(parse(canonical).document.children.some(({ type }) => type === "definition")).toBe(true);
 	});
 
 	it("renders source through Rust without a host Markdown parser", () => {
@@ -131,6 +251,9 @@ describe("Rust MDI JavaScript binding", () => {
 	it("renders platform text formats through Rust", () => {
 		expect(renderTextFormat("{東京|とうきょう}", "txt-ruby")).toBe("{東京|とうきょう}");
 		expect(renderTextFormat("{東京|とうきょう}", "narou")).toBe("｜東京《とうきょう》");
+		expect(renderTextFormat("# 題\n\n{東京|とうきょう} **強調**", "note")).toBe(
+			"## 題\n\n｜東京《とうきょう》 **強調** ",
+		);
 	});
 
 	it("packages a baseline EPUB through Rust", () => {
@@ -224,7 +347,7 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(document).toContain('w:w="8391"');
 		expect(document).toContain('w:h="11906"');
 		expect(document).toContain('w:top="567" w:right="737" w:bottom="624" w:left="680"');
-		expect(document).toContain("<w:ruby ");
+  expect(document).toContain("<w:ruby>");
 		expect(document).toContain("<w:eastAsianLayout");
 		expect(header).toContain("PAGE");
 		expect(header).toContain("NUMPAGES");
@@ -292,7 +415,7 @@ describe("Rust MDI JavaScript binding", () => {
 				{ type: "paragraph", indent: 2, bottom: 1 }, { type: "unknown" },
 			],
 		} as never);
-		expect(tree.data?.frontmatter).toMatchObject({ mdi: "2.0", lang: "ja", writingMode: "horizontal" });
+		expect(tree.data?.frontmatter).toMatchObject({ mdi: "2.1", lang: "ja", writingMode: "horizontal" });
 		expect(tree.children.map((node) => node.type)).toEqual([
 			"yaml", "mdiRuby", "mdiTcy", "mdiBreak", "mdiEm", "mdiNoBreak", "mdiWarichu", "mdiKern", "mdiBlank", "mdiPagebreak", "paragraph", "unknown",
 		]);
@@ -313,7 +436,7 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(tree.data?.frontmatter).toMatchObject({ pageProgression: "ltr" });
 	});
 
-	it("rejects malformed cover shorthands before loading publication adapters", () => {
+	it("rejects malformed cover shorthands before calling Rust", () => {
 		expect(() => renderEpub("text", { cover: { data: new Uint8Array(), mediaType: "image/gif" as never } })).toThrow("options.cover.mediaType");
 		expect(() => renderEpub("text", { coverImage: "not-bytes" as never })).toThrow("options.coverImage");
 		expect(() => renderEpub("text", { coverMediaType: "image/gif" as never })).toThrow("options.coverMediaType");

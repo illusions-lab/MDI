@@ -29,15 +29,30 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 
 - `render_html(source: &str) -> String` / `render_html_document(document: &Document) -> String` — standalone HTML。
 - `render_text(source: &str) -> String` / `render_text_document(document: &Document) -> String` — deterministic plain text（硬編碼 `txt` flavor）。
-- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — 五種 TXT flavor。`TextFormat` 為 `Plain | Ruby | Narou | Kakuyomu | Aozora`，透過 `TextFormat::parse` 解析 binding-facing 字串 `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`。
+- `render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String` — 六種 TXT flavor。`TextFormat` 為 `Plain | Ruby | Narou | Kakuyomu | Aozora | Note`，透過 `TextFormat::parse` 解析 `txt`/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`。
 - `render_epub(source: &str) -> Result<Vec<u8>, String>` / `render_epub_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 EPUB 3 archive。
+- `render_epub_with_profile(source: &str, profile_json: &str, cover: Option<&EpubCover>) -> Result<Vec<u8>, String>` / `render_epub_document_with_profile(...)` — 支援 metadata、typography、chapter split 與 optional PNG/JPEG cover 的設定型 EPUB。
 - `render_docx(source: &str) -> Result<Vec<u8>, String>` / `render_docx_document(document: &Document) -> Result<Vec<u8>, String>` — 完整 DOCX archive。
+- `render_docx_with_profile(source: &str, profile_json: &str) -> Result<Vec<u8>, String>` / `render_docx_document_with_profile(...)` — 支援 OOXML page geometry、typography、grid、mirror margin 與頁碼的設定型 DOCX。
 - `render_pdf(source: &str, options: &PdfOptions) -> Result<Vec<u8>, String>` — Rust-rendered HTML 交給 local Chromium layout。見[轉譯模型](/zh-tw/core/rendering/#chromiumpdf-邊界)。
 - `find_chromium() -> Option<PathBuf>` — `PdfOptions.chromium_path` 為 `None` 時 best-effort 搜尋本機 Chromium-family executable。
 
+## Publication profile
+
+- `resolve_export_profile(...)` / `resolve_export_profile_json(...)` — 驗證 canonical profile 並補齊 default，也可繼承文件 writing mode。
+- `page_dimensions(page_size: &str) -> Option<(f64, f64)>` / `page_size_catalog_json() -> Result<String, String>` — binding 與 renderer 共用的 67 種 physical paper catalogue。
+- `prepare_chromium_print_profile(...)` 及 JSON/resolved variants — 為 Chromium host 產生 styled HTML、mm page geometry、margin 與 page-number template。
+- `apply_pdf_profile(...)` / `apply_pdf_profile_json(...)` — 不啟動 browser，直接套用 resolved print CSS。
+
 ## Public data types
 
-`ParseOutput`、`ParserCapabilities`、`Diagnostic`、`DiagnosticSeverity`、`SourceSpan`、`Document`、`Frontmatter`、`FrontmatterEntry`、`PdfOptions`（目前的 `Document`-based API）；`MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading`（較舊、只供 `parse_mdi_syntax` 的 shape；`Inline`/`RubyReading` 也在內部用來建立目前 `Document` 的 MDI nodes）。
+`ParseOutput`、`ParserCapabilities`、`Diagnostic`、`DiagnosticSeverity`、`SourceSpan`、`Document`、`Frontmatter`、`FrontmatterEntry`、`MdiTextBlocksResult`、`MdiSourceSpanTextResolution`、`MdiSourceSpanTextMatch`、`MdiSourceSpanCoverage`、`MdiSourceSpanRelation`、`MdiSourceSpanResolutionError`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` 與其 nested profile/Chromium print types（目前 API）；`MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading`（較舊、只供 `parse_mdi_syntax` 的 shape；`Inline`/`RubyReading` 也在內部用來建立目前 `Document` 的 MDI nodes）。
+
+`get_mdi_text_blocks(source)` 提供 grapheme canonical text projection；
+`resolve_mdi_source_span(source, span)` 把 half-open UTF-8 source span 反解為正文與
+ruby annotation ranges。Coverage、relation、boundary、delimiter、synthetic/unmapped
+及 round-trip 限制請參閱 [Rust 綁定](/zh-tw/bindings/rust/)。
+多個 span 可使用 `resolve_mdi_source_spans(source, spans)`，以單次 parse/projection 批量解析。
 
 ## 尚未實作
 
@@ -45,8 +60,10 @@ description: "`mdi-core/src/lib.rs` 現在實際公開的所有 symbol，包含 
 
 - 獨立於 `parse_output` 的 **standalone validation API**。今日 validation 就是 parsing 時 `parse_output` 回傳的 diagnostics，沒有 `validate(document, options)`。
 - 獨立於 `serialize_mdi` 的 **normalize API**。serialization round-trip 時已套用推薦形式 normalization，沒有只 normalize 不 serialize 的 function。
-- **Export-profile-aware EPUB/DOCX rendering**：cover image、可設定 chapter-split level、page geometry、font selection。`render_epub`/`render_docx` 現只讀 front-matter metadata（title/author/lang/writing-mode），不讀 [export profile](/zh-tw/ecosystem/export-profiles/)。
-- **完整 DOCX typography**：OOXML 的 ruby runs、boten character styles、page geometry。現在 `render_docx` 將 MDI typography flatten 為 plain text runs，和 `render_text` 一樣。
+
+DOCX 現在會以 native 或 portable OOXML 表示 ruby、tate-chu-yoko、
+emphasis、kern、page geometry 等支援項目。Word-compatible reader 的日文
+行組仍可能不同，因此這代表格式支援，而非承諾與 browser 像素完全一致。
 
 ## 下一步
 

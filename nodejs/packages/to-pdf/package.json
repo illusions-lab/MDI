@@ -1,6 +1,6 @@
 {
   "name": "@illusions-lab/mdi-to-pdf",
-  "version": "2.0.18",
+  "version": "2.1.0",
   "description": "Render MDI (.mdi) documents to PDF",
   "license": "MIT",
   "repository": {
@@ -32,13 +32,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@illusions-lab/mdi-core": "workspace:*",
     "@illusions-lab/mdi-export-profile": "workspace:*",
     "@illusions-lab/mdi-to-html": "workspace:*",
     "playwright": "^1.48.0",
-    "@types/mdast": "^4.0.0"
+    "@types/mdast": "^4.0.0",
+    "@illusions-lab/mdi": "workspace:*"
   },
   "devDependencies": {
-    "@illusions-lab/mdi": "workspace:*",
     "@illusions-lab/mdi-remark": "workspace:*",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.0",

@@ -17,7 +17,7 @@ Swift は小さな C ABI を通じて Rust の `mdi-core` に解析とレンダ�
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.2"),
+    .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.3"),
 ]
 
 // target の dependencies:
@@ -43,15 +43,21 @@ print(result.diagnostics)
 let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
 let mdi = try MDI.serialize("{東京|とうきょう} ^12^")
 let text = try MDI.renderText("# Title")
+let note = try MDI.renderTextFormat(
+    "# Title\n\n{東京|とうきょう}",
+    format: .note
+)
 let epub: Data = try MDI.renderEPUB("# Chapter")
 let docx: Data = try MDI.renderDOCX("# Chapter")
 ```
 
+`MDITextFormat` は他の binding と同じ6種類（`plain`、`ruby`、`narou`、
+`kakuyomu`、`aozora`、`note`）を Rust core から提供します。
 EPUB と DOCX は ZIP ベースの `Data` を返すため、対応する拡張子でファイルへ書き出してください。
 
 ## エラー
 
-すべての API は `MDIError` を throw します。`core` は Rust core の失敗、`invalidWireFormat` は無効または未対応の native response を表します。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 90% の line coverage を要求し、Codecov へ送信します。PAT や別リポジトリは必要ありません。
+すべての API は `MDIError` を throw します。`core` は Rust core の失敗、`invalidWireFormat` は無効または未対応の native response を表します。
 
 ```swift
 do {
@@ -64,4 +70,31 @@ do {
 
 ## 開発とリリース
 
-リポジトリの `swift/Package.swift` はローカル開発用パッケージです。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 90% の line-coverage gate を適用し、レポートを Codecov に送信します。release workflow は manifest 用の pull request を作成し、その PR がマージされた後に承認済み artifact を公開します。GitHub Actions 組み込みの token を使うため、PAT や別リポジトリは不要です。
+リポジトリの `swift/Package.swift` はローカル開発用パッケージです。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 95% の line-coverage gate を適用し、レポートを Codecov に送信します。release workflow は manifest 用の pull request を作成し、その PR がマージされた後に承認済み artifact を公開します。GitHub Actions 組み込みの token を使うため、PAT や別リポジトリは不要です。
+
+## 割注の自動組版
+
+分割規則は Rust が一元管理します。本文の50%の字級、固定2行、行間なしで表示します。先頭の断片には本文行の残り幅、後続には行全体の幅を指定できます。幅の単位は割注字級の半角emです。文字幅の推定であり、比例フォントの厳密な均衡は保証しません。
+
+```swift
+let fragments = try MDI.layoutWarichu(
+    [.object(["type": .string("text"), "value": .string("一二三四五六")])],
+    capacity: 4, firstCapacity: 2)
+```
+
+戻り値は `lines`、`html`、`widths`、`overflow`、`hardBreakAfter`、`sources` を含みます。`path` は入力配列からの子インデックス列、`startUtf8` / `endUtf8` は可視文字列内の半開UTF-8バイト範囲です。同一の `group` は書式境界をまたぐ書記素も分割しません。ルビ、縦中横、改行禁止は一体として扱います。明示改行を保ち、自動分割は正規MDIや平文に書き戻しません。静的HTML/EPUBは閲覧ソフトにより再配置が異なります。DOCXはネイティブの双行グループを使います。XMLやインポーターの検証をWordの描画実測とは記載しません。
+
+
+## Editorial comments in MDI 2.1
+
+```swift
+try MDI.parse(source, includeComments: true)
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

@@ -1,7 +1,8 @@
 # @illusions-lab/mdi-to-docx
 
-Creates a DOCX file from an MDI-flavoured mdast tree. It is a profile-aware
-compatibility adapter for unified applications and does not parse MDI source.
+Creates a DOCX file from an MDI-flavoured mdast tree. It is a compatibility
+entry point for unified applications: the tree is serialized to MDI, then the
+same Rust OOXML renderer used by every binding creates the document.
 
 ## Install
 
@@ -44,12 +45,13 @@ remaining fallbacks:
 | blank paragraph / pagebreak | Empty paragraph / native page break |
 
 The source mdast remains available to the host application, so a UI can retain
-source spans and render diagnostics before choosing to export. This converter
-does not invent diagnostics or silently claim pixel-equivalent Japanese layout.
+source spans and render diagnostics before choosing to export. JavaScript does
+not contain a second DOCX generator, and the package does not claim
+pixel-equivalent Japanese layout across Word-compatible readers.
 
 ## Documentation
 
 - [Output model](https://mdi.illusions.app/ecosystem/outputs/)
-- [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
+- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-docx/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

@@ -2,6 +2,7 @@ import {
 	parse,
 	renderHtml,
 	type MdiDocument,
+	type MdiParseOptions,
 	type MdiHeading,
 	type MdiNode,
 	type MdiRenderResult,
@@ -63,10 +64,11 @@ export function preparePdfExport(
 export function preparePdfExportWithDiagnostics(
 	source: string,
 	profile?: ExportProfile,
+	options: MdiParseOptions = {},
 ): MdiRenderResult<MdiPdfExportRequest> {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
 	if (profile !== undefined) requireLayoutSystem(profile);
-	const parsed = parse(source);
+	const parsed = parse(source, options);
 	const writingMode = parsed.document.frontmatter?.entries.find(
 		(entry) => entry.key === "writing-mode" || entry.key === "writingMode",
 	)?.value;
@@ -108,8 +110,9 @@ export async function renderPdfWithChromiumWithDiagnostics(
 	source: string,
 	profile?: ExportProfile,
 	adapter?: MdiPdfChromiumAdapter,
+	options: MdiParseOptions = {},
 ): Promise<MdiRenderResult<Uint8Array>> {
-	const prepared = preparePdfExportWithDiagnostics(source, profile);
+	const prepared = preparePdfExportWithDiagnostics(source, profile, options);
 	const chromiumAdapter = adapter ?? (await loadPlaywrightPdfAdapter());
 	return {
 		...prepared,
@@ -140,6 +143,7 @@ function isHeadingDepth(value: unknown): value is 1 | 2 | 3 | 4 | 5 | 6 {
 }
 
 function plainText(node: MdiNode): string {
+	if (node.type === "comment") return "";
 	if (node.type === "ruby" && typeof node.base === "string") return node.base;
 	return (typeof node.value === "string" ? node.value : "") + (node.children?.map(plainText).join("") ?? "");
 }

@@ -46,7 +46,7 @@ import mdi
 
 mdi.MDI_SPEC_VERSION      # "2.0"
 mdi.MDI_IR_VERSION        # "1.0"
-mdi.TextFormat            # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora"]
+mdi.TextFormat            # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 mdi.MdiRenderError        # Exception subclass — see "Diagnostics and error handling"
 
 mdi.parse(source: str) -> dict                                    # versioned IR + diagnostics
@@ -69,7 +69,7 @@ There is currently **no `render_pdf`** in this binding — see "What this bindin
 
 ## Diagnostics and error handling
 
-Ordinary malformed MDI syntax never raises — it's handled by each construct's literal-fallback rule, exactly like every other binding, and `diagnostics` in the returned dict reports the one currently-implemented case (`mdi.version.unsupported`; see [Diagnostics](/core/diagnostics/)):
+Ordinary malformed MDI syntax never raises — it's handled by each construct's literal-fallback rule, exactly like every other binding. See [Diagnostics](/core/diagnostics/) for the complete warning list:
 
 ```python
 result = mdi.parse("---\nmdi: '3.0'\n---\n\n本文")
@@ -106,16 +106,42 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## Current implementation status
 
-Everything listed above is real, published, and tested — the package's own test suite (`python/tests/test_mdi.py`) asserts the exact IR shape, diagnostic format, byte-span validity, all five text-format outputs, EPUB/DOCX archive structure, and every error path shown on this page, with a minimum 95% branch-coverage requirement. This is not a thin or speculative binding.
+Everything listed above is real, published, and tested — the package's own test suite (`python/tests/test_mdi.py`) asserts the exact IR shape, diagnostic format, byte-span validity, all six text-format outputs, EPUB/DOCX archive structure, and every error path shown on this page, with a minimum 95% branch-coverage requirement. This is not a thin or speculative binding.
 
 ## What this binding doesn't do
 
 - **No PDF function yet.** Unlike the [JavaScript/WASM binding](/bindings/javascript/), Python *can* spawn a subprocess — there's no fundamental barrier like WASM's — but `mdi.render_pdf` simply isn't exposed in this package today. Use the [CLI](/bindings/cli/) for PDF output from a Python-adjacent workflow in the meantime.
 - **No grammar of its own.** Every function calls straight into the same `mdi-core` crate every other binding uses; a discrepancy between this binding and the CLI or Rust directly would be a bug in the ~60-line wrapper, not an independent parser to fix.
-- **No export-profile application.** `render_epub`/`render_docx` take only `source`, matching Rust's own current "baseline" renderers (see [Rust Core API status](/core/rust-api/#not-yet-implemented)) — profile-driven cover images, chapter splitting, and page geometry aren't wired through this binding either.
+- **No export-profile arguments yet.** `render_epub`/`render_docx` currently take only `source`. Rust already provides the configured EPUB/DOCX implementation; the Python wrapper has not exposed those profile and cover parameters yet.
 
 ## Next steps
 
 - [Rust Core API status](/core/rust-api/) — the exact Rust functions this package wraps.
 - [Document IR](/core/document-ir/) — the node catalogue for the dictionaries `mdi.parse()` returns.
 - [Bindings: CLI](/bindings/cli/) — the same functions, from the command line, including PDF.
+
+## Automatic warichu layout
+
+Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+
+```python
+from mdi import layout_warichu
+fragments = layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
+```
+
+Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+
+
+## Editorial comments in MDI 2.1
+
+```python
+mdi.parse(source, include_comments=True)
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

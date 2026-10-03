@@ -50,6 +50,16 @@ match render_pdf(source, &PdfOptions::default()) {
 
 `MDI_IR_VERSION` 與 `MDI_SPEC_VERSION` 為 exported `&'static str` constants；儲存 `ParseOutput` 後再載入時應檢查。`SourceSpan { start_byte: u32, end_byte: u32 }` 是 half-open UTF-8 byte range，詳見[診斷](/zh-tw/core/diagnostics/)。
 
+搜尋用 canonical text 可用 `get_mdi_text_blocks(source)`；反向查詢使用
+`resolve_mdi_source_span(source, span)`。它會驗證順序、範圍與 UTF-8 boundaries，
+回傳正文及 annotation 的最大 grapheme ranges、`Complete | Partial | None`
+coverage 和 `Exact | Overlap` relation。空 span、純結構 delimiter、synthetic 與
+unmapped source 都不會產生 range。Ruby 雙 channel 與多對一／不連續 mapping
+代表 round trip 通常不是雙射。
+
+diagnostics 或 decorations 的批次處理請使用 `resolve_mdi_source_spans(source,
+spans)`；它先驗證整個 slice，只做一次 parse/projection，再依輸入順序回傳結果。
+
 ## 目前實作狀態
 
 Parsing、`serialize_mdi` 及所有 renderer（`render_html`、`render_text_format`、`render_epub`、`render_docx`、`render_pdf`）皆已實作，限制見 [Rust Core API 尚未實作項目](/zh-tw/core/rust-api/#尚未實作)。沒有獨立 `validate`/`normalize` API，分別由 `parse_output`/`serialize_mdi` 擔任。
@@ -63,3 +73,30 @@ Parsing、`serialize_mdi` 及所有 renderer（`render_html`、`render_text_form
 - [Rust Core API](/zh-tw/core/rust-api/)
 - [docs.rs API reference](https://docs.rs/mdi-core/)
 - [轉譯模型](/zh-tw/core/rendering/)
+
+## 自動割注排版
+
+分割規則由 Rust 統一實作。固定兩行、正文50%字級、零小行間距。首個片段可使用正文行剩餘容量，後續片段使用完整行容量。容量與回傳寬度以割注字級的半個em為單位；這是字寬估算，不保證比例字型的精確均衡。
+
+```rust
+let children = serde_json::json!([{"type":"text", "value":"一二三四五六"}]);
+let fragments = mdi_core::layout_warichu_with_options(children.as_array().unwrap(),
+    &mdi_core::WarichuOptions { first_capacity: 2, continuation_capacity: 4 });
+```
+
+結果包含 `lines`、`html`、`widths`、`overflow`、`hardBreakAfter` 與 `sources`。`path` 是從輸入陣列起算的子節點索引路徑；`startUtf8` / `endUtf8` 是可見文字中的半開UTF-8位元組範圍。相同 `group` 保留跨格式邊界的書寫素。Ruby、縱中橫及no-break保持不可拆。作者硬換行保留，自動分割不寫回canonical MDI或純文字。靜態HTML/EPUB的閱讀器重排結果可能不同。DOCX使用原生雙行群組；XML與匯入器檢查不代表Word實測。
+
+
+## Editorial comments in MDI 2.1
+
+```rust
+parse_output_with_options(source, ParseOptions { include_comments: true })
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

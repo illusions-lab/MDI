@@ -9,24 +9,30 @@ const require = createRequire(
 );
 const { parse } = require("yaml");
 
-const [yamlSource, typescriptSource] = await Promise.all([
+const [yamlSource, rustSource, typescriptSource] = await Promise.all([
   readFile(new URL("../config/publication-layouts.yaml", import.meta.url), "utf8"),
+  readFile(new URL("../mdi-core/src/publication_profile.rs", import.meta.url), "utf8"),
   readFile(new URL("../nodejs/packages/export-profile/src/index.ts", import.meta.url), "utf8"),
 ]);
 const config = parse(yamlSource);
 if (config?.version !== 1 || config?.units !== "mm" || !config.paperSizes || !config.paperSizeLabels?.ja)
   throw new Error("publication-layouts.yaml must declare version 1, mm units, paperSizes, and Japanese labels");
 
-const staticSizes = new Map(
-  [...typescriptSource.matchAll(/^\s*(?:"([^"]+)"|(\w+)):\s*\{ width: (\d+), height: (\d+) \},$/gm)]
-    .map((match) => [match[1] ?? match[2], { widthMm: Number(match[3]), heightMm: Number(match[4]) }]),
+// Rust owns the canonical dimensions; JavaScript only retains localized labels.
+const canonicalSizes = new Map(
+  [...rustSource.matchAll(
+    /PageSizeDimensions\s*\{\s*key:\s*"([^"]+)",\s*width_mm:\s*(\d+(?:\.\d+)?),\s*height_mm:\s*(\d+(?:\.\d+)?),\s*\}/g,
+  )].map((match) => [
+    match[1],
+    { widthMm: Number(match[2]), heightMm: Number(match[3]) },
+  ]),
 );
 for (const [name, size] of Object.entries(config.paperSizes)) {
-  const expected = staticSizes.get(name);
+  const expected = canonicalSizes.get(name);
   if (!expected || expected.widthMm !== size.widthMm || expected.heightMm !== size.heightMm)
     throw new Error(`Paper size mismatch for ${name}`);
 }
-if (staticSizes.size !== Object.keys(config.paperSizes).length)
+if (canonicalSizes.size !== Object.keys(config.paperSizes).length)
   throw new Error("publication-layouts.yaml must list every PAGE_DIMENSIONS entry");
 
 const labelBlock = typescriptSource.match(
@@ -56,4 +62,4 @@ if (
   horizontal?.gridMode !== "typographic"
 ) throw new Error("publication layout defaults are incomplete or inconsistent");
 
-console.log(`Verified ${staticSizes.size} shared paper sizes and CLI layout defaults.`);
+console.log(`Verified ${canonicalSizes.size} shared paper sizes and CLI layout defaults.`);

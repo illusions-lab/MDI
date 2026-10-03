@@ -26,9 +26,70 @@ console.log(result.output);   // <body> の semantic contents
 console.log(result.headings); // depth、text、span を持つ source-order headings
 ```
 
-`parse` は Rust-owned `document`、`diagnostics`、UTF-8 byte span を返します。現時点で実装済み diagnostic code は `mdi.version.unsupported` だけです。構文の誤りの多くは throw ではなく literal fallback になります。`prepareRender(source)` も parse-first 用です。`*WithDiagnostics` は output と同じ parser result を返しますが、warning を error に変えるものではありません。
+`parse` は Rust-owned `document`、`diagnostics`、UTF-8 byte span を返します。構文の誤りの多くは throw ではなく literal fallback になります。warning の全一覧は [Diagnostics](/ja/core/diagnostics/) を参照してください。`prepareRender(source)` も parse-first 用です。`*WithDiagnostics` は output と同じ parser result を返しますが、warning を error に変えるものではありません。
 
 `renderHtml(source)` は MDI stylesheet 付き standalone HTML を返します。app が外側の page を持つなら `{ bodyOnly: true }` を使います。semantic HTML は stable な `mdi-ruby`、`mdi-tcy`、`mdi-em`、`mdi-pagebreak` 等の class を付けます。
+
+## Browser の初期化
+
+browser では synchronous API を呼ぶ前に、WebAssembly runtime を一度だけ
+`await` してください。`initializeMdi()` は single-flight かつ idempotent です。
+同時呼び出しは一つの初期化を共有します。Node.js は eager load のため直ちに
+resolve します。
+
+```ts
+import { initializeMdi, parse, serializeMdi } from "@illusions-lab/mdi";
+
+await initializeMdi();
+const parsed = parse("{東京|とうきょう} ^12^");
+const canonical = serializeMdi("{東京|とうきょう} ^12^");
+```
+
+`browser` export condition を使う Vite などの bundler は web facade を選び、
+private な WASM asset を自動で emit します。generated wasm-pack loader を直接
+import しないでください。browser の初期化が失敗しても、`initializeMdi()` を
+再度呼べば安全に retry できます。
+
+## プレーンテキスト検索 index
+
+`getMdiTextBlocks(source)` は Rust で一度だけ parse し、source order の text
+block、完全な document IR、diagnostics を返します。`3:18` は三つ目の block の
+十八番目の Unicode grapheme を表します。ruby の reading は別 channel の
+annotation として検索でき、`anchor` は base text の range を指します。
+
+```ts
+import { getMdiTextBlocks, resolveMdiSourceSpan, resolveMdiSourceSpans, sourceSpansForTextRange } from "@illusions-lab/mdi";
+
+const result = getMdiTextBlocks("# 題\n\n{東京|とうきょう}");
+const paragraph = result.blocks[1];
+const match = { start: "2:1", end: "2:3" } as const;
+
+console.log(paragraph.text); // 東京
+console.log(paragraph.annotations[0].text); // とうきょう
+console.log(sourceSpansForTextRange(paragraph, match)); // UTF-8 source span
+console.log(resolveMdiSourceSpan("# 題\n\n{東京|とうきょう}", { startByte: 8, endByte: 14 }));
+console.log(resolveMdiSourceSpans("same same", [{ startByte: 0, endByte: 4 }, { startByte: 5, endByte: 9 }]));
+```
+
+`sourceMap.synthetic` は table の tab や row newline など projection が追加した
+separator を示し、source span は作りません。`parseMdiTextPosition`、
+`formatMdiTextPosition`、`formatMdiTextRange` は canonical な座標表記用の
+stateless helper です。
+
+`resolveMdiSourceSpan(source, span)` は Rust で逆引きします。入力は half-open
+UTF-8 byte の uint32 で、source 内・昇順・code-point boundary でなければ
+なりません。結果は block 順、本文優先、zero-based annotation 順の canonical
+range と `complete | partial | none` coverage です。forward coverage 全体が入力と
+一致する match だけが `exact`、それ以外は `overlap` です。ruby base と reading
+は別 channel です。空 span は caret と解釈せず match を返しません。純粋な構造
+delimiter、synthetic、unmapped byte に range は作られないため、annotation、
+multi-to-one token、partial grapheme、discontinuous mapping を含む round trip は
+一般には bijection ではありません。
+
+同じ文書に対する diagnostics や decoration の一括処理には
+`resolveMdiSourceSpans(source, spans)` を使います。全 span を検証した後、Rust
+で parse/projection を一度だけ行い、入力順に結果を返します。単数 API を個別に
+呼ぶ場合は、呼び出しごとに parse されます。
 
 ## baseline と設定付き EPUB/DOCX
 
@@ -40,7 +101,7 @@ await writeFile("book.epub", renderEpub(source));
 await writeFile("book.docx", renderDocx(source));
 ```
 
-publication 設定が必要なら二引数 overload（または `WithProfile`）を `await` します。これは Rust IR を EPUB/DOCX adapter に構造変換するため asynchronous ですが、JavaScript で MDI source を再 parse しません。
+publication 設定が必要なら二引数 overload（または `WithProfile`）を `await` します。Promise 形式は互換性のために残していますが、profile の検証と EPUB/DOCX の生成は Rust で行います。JavaScript は MDI を再 parse せず、別の document generator も持ちません。
 
 ```ts
 const epub = await renderEpub(source, {
@@ -66,9 +127,9 @@ EPUB は metadata、縦書き、font、indent、`h1`/`h2`/`h3`/`none` chapter sp
 
 設定付き export は必ず `layout.system` を指定します。`"japanese-publisher"` は mirrored の和文 book 用で、横書きは 10 pt 明朝体の `Shirokuban`・左綴じ 27 字 × 26 行 strict grid、縦書きは A4 landscape の小説原稿・右綴じ 40 字 × 30 行 strict grid が default です。`"word"` は Word 形式の flowing page 用で、default は A4、四辺 25.4 mm、mirror なし、`gridMode: "typographic"` です。`"word"` は `"strict"` を reject します。
 
-## 設定の所有者と DOCX の限界
+## 各層の担当と DOCX の限界
 
-Rust が grammar、diagnostic、span、semantic HTML/baseline export を所有します。EPUB/DOCX の profile は publication adapter の責務であり、紙面、Chromium、application UI の選択は host の責務です。DOCX は page break、縦書き、paragraph/run を OOXML に落としますが、ruby、tate-chu-yoko、禁則/改行禁止、kern、強制 blank paragraph を browser HTML と pixel-identical に再現する約束ではありません。重要な組版は対象 Word-compatible reader で確認してください。
+Rust が grammar、diagnostic、span、profile validation、canonical な紙面 catalogue、設定付き EPUB/DOCX generation を担当します。PDF でも styled HTML、page geometry、page-number template は Rust が準備し、host は Chromium と application UI だけを扱います。DOCX は page break、縦書き、paragraph/run を OOXML に落としますが、ruby、tate-chu-yoko、禁則/改行禁止、kern、強制 blank paragraph を browser HTML と pixel-identical に再現する約束ではありません。重要な組版は利用者が使う Word-compatible reader で確認してください。
 
 ## HTML/PDF host
 
@@ -79,6 +140,26 @@ const request = preparePdfExport(source, profile); // Electron の print API に
 const pdf = await renderPdfWithChromium(source, profile);
 ```
 
-Node の default PDF adapter には別途 `npm install @illusions-lab/mdi-to-pdf` が必要です。Electron は `{ renderHtmlToPdf(html, profile, sourceWritingMode) }` adapter を渡せます。PDF profile は paper、landscape、margin、縦横、font、font size/line spacing、文字数/行数、indent、page number を扱います。browser/WASM は main entry point の baseline renderer を使えますが、設定付き publication adapter と PDF は Node/Electron host workflow です。`preparePdfExport()` を Node/Electron/Tauri/CLI host に送ります。
+Node の default PDF host には別途 `npm install @illusions-lab/mdi-to-pdf` が必要です。Electron は `{ renderHtmlToPdf(html, profile, sourceWritingMode) }` を渡せます。PDF の paper、landscape、margin、縦横、font、font size/line spacing、文字数/行数、indent、page number は Rust が解決します。browser/WASM でも設定付き EPUB/DOCX は生成できます。Chromium を起動する PDF だけは `preparePdfExport()` を Node/Electron/Tauri/CLI host に送ります。
 
 非 string source と不正 option は `TypeError` です。diagnostic は document feedback として扱い、I/O/archive/host renderer の failure だけを `try`/`catch` してください。span は JavaScript index ではなく UTF-8 **byte** offset です。
+
+
+### Automatic warichu layout
+
+自動割注は本文の50%の文字サイズで2行に配置します。`layoutMdiWarichu(children, { firstCapacity, continuationCapacity })` がRustの分割処理を呼び出します。閲覧用HTMLには `attachMdiWarichuLayout(container)`、印刷前には `settleMdiPrintLayout(evaluate, { timeoutMs, signal, page: prepared.page })` を使用します。自動分割は表示のみで、保存するMDIは変わりません。スクリプトなしのHTML・EPUBも2行構造を保持しますが、リーダーによる再配置は異なる場合があります。
+
+
+## Editorial comments in MDI 2.1
+
+```javascript
+parse(source, { includeComments: true })
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

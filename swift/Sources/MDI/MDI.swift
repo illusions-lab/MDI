@@ -2,10 +2,11 @@ import Foundation
 import MDICore
 
 /// MDI's supported language-specification version.
-public let mdiSpecVersion = "2.0"
+public let mdiSpecVersion = "2.1"
 
 /// The version of the Rust-owned JSON document contract.
 public let mdiIRVersion = "1.0"
+public let mdiCommentIRVersion = "1.1"
 
 public enum MDIError: Error, Equatable, LocalizedError, Sendable {
     case core(String)
@@ -81,17 +82,50 @@ public struct MDIParseResult: Codable, Equatable, Sendable {
     public let diagnostics: [MDIDiagnostic]
 }
 
+/// Publication text conventions implemented by the Rust core.
+public enum MDITextFormat: String, CaseIterable, Codable, Sendable {
+    case plain = "txt"
+    case ruby = "txt-ruby"
+    case narou
+    case kakuyomu
+    case aozora
+    case note
+}
+
 /// Swift interface to the Rust-owned MDI parser and renderers.
 public enum MDI {
+    /// Rust presentation layout; capacity is in half-em units at the note font size.
+    public static func layoutWarichu(_ children: [MDIJSONValue], capacity: UInt = 40, firstCapacity: UInt? = nil) throws -> MDIJSONValue {
+        let nodes = Array(try JSONEncoder().encode(children))
+        let options = Array(try JSONEncoder().encode(["firstCapacity": firstCapacity ?? capacity, "continuationCapacity": capacity]))
+        let result = nodes.withUnsafeBufferPointer { nodes in
+            options.withUnsafeBufferPointer { options in
+                mdi_layout_warichu_json(nodes.baseAddress, nodes.count, options.baseAddress, options.count)
+            }
+        }
+        return try JSONDecoder().decode(MDIJSONValue.self, from: data(from: result))
+    }
+
     public static func parse(_ source: String) throws -> MDIParseResult {
         try parseResult(from: call(source, operation: mdi_parse_json))
+    }
+
+    public static func parse(_ source: String, includeComments: Bool) throws -> MDIParseResult {
+        let bytes = Array(source.utf8)
+        let options = Array(try JSONEncoder().encode(["includeComments": includeComments]))
+        let result = bytes.withUnsafeBufferPointer { bytes in
+            options.withUnsafeBufferPointer { options in
+                mdi_parse_json_with_options(bytes.baseAddress, bytes.count, options.baseAddress, options.count)
+            }
+        }
+        return try parseResult(from: data(from: result))
     }
 
     static func parseResult(from data: Data) throws -> MDIParseResult {
         let result: MDIParseResult
         do { result = try JSONDecoder().decode(MDIParseResult.self, from: data) }
         catch { throw MDIError.invalidWireFormat("MDI core returned invalid parse JSON: \(error.localizedDescription)") }
-        guard result.irVersion == mdiIRVersion else {
+        guard result.irVersion == mdiIRVersion || result.irVersion == mdiCommentIRVersion else {
             throw MDIError.invalidWireFormat("Unsupported MDI IR version: \(result.irVersion)")
         }
         return result
@@ -100,6 +134,30 @@ public enum MDI {
     public static func renderHTML(_ source: String) throws -> String { try stringCall(source, operation: mdi_render_html) }
     public static func serialize(_ source: String) throws -> String { try stringCall(source, operation: mdi_serialize_mdi) }
     public static func renderText(_ source: String) throws -> String { try stringCall(source, operation: mdi_render_text) }
+    public static func renderTextFormat(
+        _ source: String,
+        format: MDITextFormat,
+        indentPrefix: String = ""
+    ) throws -> String {
+        let sourceBytes = Array(source.utf8)
+        let formatBytes = Array(format.rawValue.utf8)
+        let indentBytes = Array(indentPrefix.utf8)
+        let result = sourceBytes.withUnsafeBufferPointer { sourceBuffer in
+            formatBytes.withUnsafeBufferPointer { formatBuffer in
+                indentBytes.withUnsafeBufferPointer { indentBuffer in
+                    mdi_render_text_format(
+                        sourceBuffer.baseAddress,
+                        sourceBuffer.count,
+                        formatBuffer.baseAddress,
+                        formatBuffer.count,
+                        indentBuffer.baseAddress,
+                        indentBuffer.count
+                    )
+                }
+            }
+        }
+        return try string(from: data(from: result))
+    }
     public static func renderEPUB(_ source: String) throws -> Data { try call(source, operation: mdi_render_epub) }
     public static func renderDOCX(_ source: String) throws -> Data { try call(source, operation: mdi_render_docx) }
 
@@ -108,6 +166,10 @@ public enum MDI {
             throw MDIError.invalidWireFormat("MDI core returned non-UTF-8 string data")
         }
         return value
+    }
+
+    static func coreErrorMessage(from data: Data) -> String {
+        String(data: data, encoding: .utf8) ?? "Unknown MDI core error"
     }
 
     private static func stringCall(_ source: String, operation: MDIFFIOperation) throws -> String {
@@ -126,7 +188,7 @@ public enum MDI {
     static func data(from result: mdi_ffi_result) throws -> Data {
         defer { mdi_free_buffer(result.value); mdi_free_buffer(result.error) }
         if result.error.len > 0 {
-            let message = String(data: Data(bytes: result.error.data!, count: result.error.len), encoding: .utf8) ?? "Unknown MDI core error"
+            let message = coreErrorMessage(from: Data(bytes: result.error.data!, count: result.error.len))
             throw MDIError.core(message)
         }
         guard result.value.len == 0 || result.value.data != nil else {

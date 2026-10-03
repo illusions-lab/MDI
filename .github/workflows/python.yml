@@ -7,11 +7,13 @@ on:
       - python/**
       - mdi-core/**
       - .github/workflows/python.yml
+      - .github/workflows/release-pypi.yml
   pull_request:
     paths:
       - python/**
       - mdi-core/**
       - .github/workflows/python.yml
+      - .github/workflows/release-pypi.yml
 
 jobs:
   test:
@@ -35,6 +37,22 @@ jobs:
           cache: pip
           cache-dependency-path: python/pyproject.toml
 
+      - uses: actions/setup-java@v4
+        if: matrix.python-version == '3.14'
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-dotnet@v4
+        if: matrix.python-version == '3.14'
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        if: matrix.python-version == '3.14'
+        with:
+          node-version: "22"
+
       - name: Build the native extension and install test dependencies
         run: python -m pip install -e '.[test]'
 
@@ -42,6 +60,61 @@ jobs:
       # makes the threshold a merge gate rather than a reporting-only metric.
       - name: Run public API tests with coverage gate
         run: python -m pytest --cov=mdi --cov-branch --cov-report=term-missing --cov-report=xml
+
+      - name: Install authoritative publication-format consumers
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libreoffice-writer
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          unzip -q "$RUNNER_TEMP/epubcheck.zip" -d "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/vnu" --no-save vnu-jar@25.12.31
+
+      - name: Generate every public Python format
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          python python/tests/test_package_smoke.py \
+            --output-dir "$RUNNER_TEMP/python-package-smoke"
+
+      - name: Validate HTML with the Nu Html Checker
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          java -jar \
+            "$RUNNER_TEMP/vnu/node_modules/vnu-jar/build/dist/vnu.jar" \
+            --errors-only "$RUNNER_TEMP/python-package-smoke/smoke.html"
+
+      - name: Validate EPUB with the official W3C EPUBCheck
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          java -jar "$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar" \
+            "$RUNNER_TEMP/python-package-smoke/smoke.epub"
+
+      - name: Validate DOCX with the Open XML SDK
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          dotnet run \
+            --project nodejs/format-contracts/openxml-validator/OpenXmlValidator.csproj \
+            -- "$RUNNER_TEMP/python-package-smoke/smoke.docx"
+
+      - name: Open DOCX with LibreOffice Writer
+        if: matrix.python-version == '3.14'
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/libreoffice-output"
+          soffice \
+            "-env:UserInstallation=file://$RUNNER_TEMP/libreoffice-profile" \
+            --headless \
+            --convert-to pdf \
+            --outdir "$RUNNER_TEMP/libreoffice-output" \
+            "$RUNNER_TEMP/python-package-smoke/smoke.docx"
+          test -s "$RUNNER_TEMP/libreoffice-output/smoke.pdf"
 
       - name: Upload Python coverage
         if: matrix.python-version == '3.14'

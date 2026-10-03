@@ -36,12 +36,13 @@ This is stricter than "Rust is the reference implementation." A reference implem
              ▼                     ▼                      ▼
       Rust renderers        language bindings      ecosystem adapters
       HTML/TXT/EPUB/DOCX/MDI  Node.js (real)         mdast/remark (real)
-                              Python / Swift / Kotlin (real)
+                              Python / Swift (real)
+                              Android / Kotlin (development)
              │
              └── HTML + print CSS ──▶ Chromium ──▶ PDF
 ```
 
-Every arrow above is a real, checkable relationship today. Rust, Node.js, Swift, Kotlin, and Python all use the same Rust-authoritative grammar and document IR — see [Bindings](/bindings/javascript/) for each platform.
+Every released binding above is a real, checkable relationship today. Rust, Node.js, Swift, and Python use the same Rust-authoritative grammar and document IR. Android / Kotlin is still in development and is not yet published as a stable public package on Maven Central — see [Bindings](/bindings/javascript/) for each platform.
 
 ## Why one pass, not one pass per layer
 
@@ -75,14 +76,14 @@ An implementation is part of MDI only if all of the following hold:
 | Layer | Status |
 | --- | --- |
 | `mdi-core`: full CommonMark + GFM + front matter + MDI in one Rust parse | **Implemented.** See [Rust Core API status](/core/rust-api/) for the exact function list. |
-| Rust-native `renderHtml`/`renderText`/`renderEpub`/`renderDocx` | **Implemented** (baseline). Cover media, detailed DOCX typography, and full export-profile/pagination parity are later extensions of these same APIs, not separate milestones. |
+| Rust-native `renderHtml`/`renderText`/`renderEpub`/`renderDocx` | **Implemented.** Baseline and profile-configured EPUB/DOCX use the same Rust renderers; cover media, chapter splitting, typography, page geometry, and numbering are available today. |
 | Rust-orchestrated PDF via Chromium | **Implemented.** See [Rendering model](/core/rendering/#the-chromiumpdf-boundary). |
 | `@illusions-lab/mdi` (JavaScript/WASM) | **Implemented** — calls Rust directly for every operation; see [Bindings: JavaScript](/bindings/javascript/). |
 | `@illusions-lab/mdi-remark` (mdast adapter) | **Implemented** as a one-way adapter (MDI → mdast); see [Ecosystem: Remark](/ecosystem/remark/) for exactly what "one-way" means today. |
 | `@illusions-lab/mdi-cli` | **Implemented**, calling Rust directly for every format except the final Chromium print step; see [Bindings: CLI](/bindings/cli/). |
 | Python binding (PyO3) | **Implemented.** Published on PyPI as [`illusion-markdown`](https://pypi.org/project/illusion-markdown/) (import name `mdi`); calls the same Rust core directly. See [Bindings: Python](/bindings/python/). |
 | Swift binding | **Implemented.** See [Bindings: Swift](/bindings/swift/). |
-| Android / Kotlin binding | **Implemented.** See [Bindings: Android / Kotlin](/bindings/android/). |
+| Android / Kotlin binding | **In development.** Source and local verification are available, but it is not yet published as a stable public package on Maven Central. See [Bindings: Android / Kotlin](/bindings/android/). |
 
 The repository's [`ARCHITECTURE.md`](https://github.com/illusions-lab/MDI/blob/main/ARCHITECTURE.md) is the normative version of this contract; this page explains and status-checks it.
 

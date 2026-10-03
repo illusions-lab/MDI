@@ -15,7 +15,7 @@ Diagnostic は parse 結果の `diagnostics` 配列に入るデータで、例�
 
 ## 現在の全コード
 
-実装されているコードは一つだけです。
+実装されている code は二つです。
 
 ### `mdi.version.unsupported`
 
@@ -36,6 +36,19 @@ mdi: "2.1"
 ```
 
 これは warn して継続する仕様で、文書は通常どおり木になります。現在の `mdi-core` は semver ではなく文字列比較を使用します。従って一般には `"2.10" < "2.9"` となり得る、実装上の既知の制限です。invalid kerning や split-ruby segment の不一致などに別 diagnostic はありません。各構文の literal fallback が意図して text として扱います。
+
+### `mdi.parser.recovered`
+
+- severity: `warning`
+- malformed な frontmatter 風の並びが upstream Markdown parser の failure を
+  起こし得るときに出ます。MDI は failure や WebAssembly の trap にせず、source
+  全体を一つの literal text block として保持します。
+- span は document 全体です。
+- message は `The parser recovered by projecting the source as literal text` です。
+
+これは防御的な recovery path であり、通常の構文 diagnostic ではありません。
+通常の不正な MDI inline は従来どおり construct ごとの literal fallback になり、
+diagnostic は追加されません。
 
 ## Span
 

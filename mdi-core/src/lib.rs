@@ -4,22 +4,68 @@
 //! parses CommonMark, GFM, YAML front matter, and MDI into one portable wire
 //! tree; language bindings only adapt that tree to their host APIs.
 
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use std::fs;
 use std::io::{Cursor, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(not(feature = "wasm"))]
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use unicode_segmentation::UnicodeSegmentation;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
+mod comments;
+mod docx;
+mod warichu;
+pub use warichu::{
+    WarichuFragment, WarichuOptions, WarichuSource, layout_warichu, layout_warichu_options_json,
+    layout_warichu_with_options,
+};
+#[cfg(test)]
+mod provenance_tests;
+mod publication_profile;
+mod text_projection;
+pub use publication_profile::{
+    ChromiumPrintPage, ChromiumPrintPageNumbers, ChromiumPrintProfile, Margins, PageNumbers,
+    PageSizeDimensions, ResolvedEpub, ResolvedExportProfile, ResolvedLayout, ResolvedPagination,
+    ResolvedText, ResolvedTypesetting, apply_pdf_profile, apply_pdf_profile_json, page_dimensions,
+    page_size_catalog_json, prepare_chromium_print_profile, prepare_chromium_print_profile_json,
+    prepare_chromium_print_profile_resolved, resolve_export_profile, resolve_export_profile_json,
+};
+pub use text_projection::{
+    MDI_TEXT_PROJECTION_VERSION, MdiAnnotationSourceMap, MdiSourceSpanCoverage,
+    MdiSourceSpanRelation, MdiSourceSpanResolutionError, MdiSourceSpanTextMatch,
+    MdiSourceSpanTextResolution, MdiTextAnnotation, MdiTextBlock, MdiTextBlockKind,
+    MdiTextBlocksResult, MdiTextPosition, MdiTextRange, MdiTextSourceMap, MdiTextSourceRun,
+    get_mdi_text_blocks, get_mdi_text_blocks_json, get_mdi_text_blocks_with_options,
+    resolve_mdi_source_span, resolve_mdi_source_span_json, resolve_mdi_source_spans,
+    resolve_mdi_source_spans_json,
+};
+
 /// MDI syntax version implemented by this crate.
-pub const MDI_SPEC_VERSION: &str = "2.0";
+pub const MDI_SPEC_VERSION: &str = "2.1";
 
 /// Version of the language-neutral wire format returned by the bindings.
 ///
 /// This version changes only for incompatible wire-schema changes.
 pub const MDI_IR_VERSION: &str = "1.0";
+/// Wire format used only when editorial comment nodes are explicitly requested.
+pub const MDI_COMMENT_IR_VERSION: &str = "1.1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ParseOptions {
+    #[serde(default)]
+    pub include_comments: bool,
+}
+
+/// Version of the transient Rust-owned mdast provenance contract.
+///
+/// The record is attached to IR nodes only so host adapters can carry it into
+/// their own transient metadata. It is never part of MDI serialization.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) const MDI_MDAST_PROVENANCE_VERSION: &str = "1.0";
 
 /// A binding-friendly parse envelope.
 ///
@@ -66,7 +112,7 @@ pub enum DiagnosticSeverity {
 }
 
 /// Half-open UTF-8 byte range in the original source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSpan {
     pub start_byte: u32,
@@ -264,20 +310,62 @@ pub fn parse_mdi_syntax(source: &str) -> MdiSyntaxDocument {
 /// parsed by `markdown-rs`; MDI is then lowered into the same tagged tree in
 /// Rust.  The host never tokenizes Markdown or MDI.
 pub fn parse_document(source: &str) -> Document {
+    parse_document_with_options(source, ParseOptions::default())
+}
+
+pub fn parse_document_with_options(source: &str, options: ParseOptions) -> Document {
+    let mut document = parse_document_without_provenance(source);
+    if !options.include_comments {
+        comments::filter_nodes(&mut document.children);
+    }
+    document
+}
+
+/// Parse a document for the Rust-to-mdast adapter boundary. The adapter-only
+/// provenance is deliberately absent from the normal language-binding IR.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_document_for_mdast(source: &str) -> Document {
+    let mut document = parse_document_without_provenance(source);
+    text_projection::attach_mdast_provenance(&mut document, source);
+    document
+}
+
+/// Parse a document without adapter-only provenance metadata.
+pub(crate) fn parse_document_without_provenance(source: &str) -> Document {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parse_document_unchecked(source)
+    }))
+    .unwrap_or_else(|_| literal_fallback_document(source))
+}
+
+fn parse_document_unchecked(source: &str) -> Document {
+    let comments = comments::Comments::scan(source);
+    let original_source = source;
+    let masked_source = comments.mask(source);
+    let source = masked_source.as_ref();
+    // Check the Markdown input after editorial payloads have been shielded.
+    if has_late_frontmatter_like_block(source) {
+        return comments.literal_document(source, original_source);
+    }
     let prepared = prepare_block_markers(source);
     let mut constructs = markdown::Constructs::gfm();
-    constructs.frontmatter = true;
+    // `markdown-rs`' frontmatter state machine is only relevant when a YAML
+    // fence starts the document. Enabling it for arbitrary later `---` lines
+    // can panic on malformed combinations instead of returning an error.
+    constructs.frontmatter = source.starts_with("---\n") || source.starts_with("---\r\n");
     let options = markdown::ParseOptions {
         constructs,
         ..markdown::ParseOptions::default()
     };
-    let tree = markdown::to_mdast(&prepared.markdown, &options)
-        .expect("MDI does not enable MDX, so Markdown parsing cannot fail");
+    let Ok(tree) = markdown::to_mdast(&prepared.markdown, &options) else {
+        return comments.literal_document(source, original_source);
+    };
     let mut root = serde_json::to_value(tree).expect("markdown AST is serializable");
     let frontmatter = extract_frontmatter(&root, source);
     annotate_and_lower(&mut root, source, false);
     lower_markdown_inside_mdi(&mut root, source);
     inject_block_markers(&mut root, &prepared.markers);
+    comments.restore(&mut root, original_source);
     let children = root
         .get_mut("children")
         .and_then(serde_json::Value::as_array_mut)
@@ -296,6 +384,122 @@ pub fn parse_document(source: &str) -> Document {
             end_byte: source.len() as u32,
         },
         frontmatter,
+        children,
+    }
+}
+
+fn has_late_frontmatter_like_block(source: &str) -> bool {
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    for line in source.split_inclusive('\n') {
+        let without_lf = line.strip_suffix('\n').unwrap_or(line);
+        let content = without_lf.strip_suffix('\r').unwrap_or(without_lf);
+        lines.push((offset, content));
+        offset += line.len();
+    }
+    if offset < source.len() {
+        lines.push((offset, &source[offset..]));
+    }
+
+    let mut index = 0;
+    let mut frontmatter_blocks = 0;
+    let mut code_fence: Option<(char, usize)> = None;
+    while index < lines.len() {
+        let line = lines[index].1;
+        if let Some((character, length)) = code_fence {
+            if closes_code_fence(line, character, length) {
+                code_fence = None;
+            }
+            index += 1;
+            continue;
+        }
+        if let Some(fence) = opens_code_fence(line) {
+            code_fence = Some(fence);
+            index += 1;
+            continue;
+        }
+        if line != "---" {
+            index += 1;
+            continue;
+        }
+        let Some(close) = (index + 1..lines.len()).find(|candidate| lines[*candidate].1 == "---")
+        else {
+            break;
+        };
+        let yaml_like = lines[index + 1..close].iter().any(|(_, line)| {
+            line.split_once(':').is_some_and(|(key, _)| {
+                !key.is_empty()
+                    && key.chars().all(|character| {
+                        character.is_ascii_alphanumeric() || "_-".contains(character)
+                    })
+            })
+        });
+        if yaml_like {
+            frontmatter_blocks += 1;
+            if lines[index].0 != 0 || frontmatter_blocks > 1 {
+                return true;
+            }
+            index = close + 1;
+        } else {
+            index += 1;
+        }
+    }
+    false
+}
+
+fn opens_code_fence(line: &str) -> Option<(char, usize)> {
+    let content = code_fence_content(line)?;
+    let character = content.chars().next()?;
+    if character != '`' && character != '~' {
+        return None;
+    }
+    let length = content
+        .chars()
+        .take_while(|current| *current == character)
+        .count();
+    if length < 3 || (character == '`' && content[length..].contains('`')) {
+        return None;
+    }
+    Some((character, length))
+}
+
+fn closes_code_fence(line: &str, character: char, minimum_length: usize) -> bool {
+    let Some(content) = code_fence_content(line) else {
+        return false;
+    };
+    let length = content
+        .chars()
+        .take_while(|current| *current == character)
+        .count();
+    length >= minimum_length
+        && content[length..]
+            .chars()
+            .all(|current| current == ' ' || current == '\t')
+}
+
+fn code_fence_content(line: &str) -> Option<&str> {
+    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+    (indent <= 3).then(|| &line[indent..])
+}
+
+fn literal_fallback_document(source: &str) -> Document {
+    let span = SourceSpan {
+        start_byte: 0,
+        end_byte: source.len() as u32,
+    };
+    let children = if source.is_empty() {
+        Vec::new()
+    } else {
+        vec![serde_json::json!({
+            "type": "paragraph",
+            "children": [{ "type": "text", "value": source, "span": span }],
+            "span": span,
+            "_mdiParserRecovery": true,
+        })]
+    };
+    Document {
+        span,
+        frontmatter: None,
         children,
     }
 }
@@ -573,6 +777,7 @@ fn markdown_macro_children(raw: &str, start_byte: usize) -> Option<Vec<serde_jso
     let tree = markdown::to_mdast(content, &options).ok()?;
     let mut value = serde_json::to_value(tree).ok()?;
     annotate_and_lower(&mut value, content, false);
+    lower_markdown_inside_mdi(&mut value, content);
     shift_spans(&mut value, start_byte + content_offset);
     let children = value
         .get_mut("children")?
@@ -809,15 +1014,54 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
     // still recognize the decoded spelling (notably `\|` inside a GFM table
     // cell), but its spans must refer to the original bytes.  Keep a mapping
     // from decoded byte boundaries back to the source range for that case.
-    let source_offsets = span
+    let raw_source_start = span.as_ref().map(|span| {
+        let mut start = span.start_byte as usize;
+        while start > 0 && source.as_bytes()[start - 1] == b'\\' {
+            start -= 1;
+        }
+        start
+    });
+    let raw_source = span
         .as_ref()
-        .and_then(|span| source.get(span.start_byte as usize..span.end_byte as usize))
-        .and_then(|raw| decoded_byte_offsets(rendered_value, raw));
-    if !looks_like_mdi(rendered_value) {
+        .and_then(|span| source.get(raw_source_start?..span.end_byte as usize));
+    let source_offsets = raw_source.and_then(|raw| decoded_byte_offsets(rendered_value, raw));
+    let raw_parts = raw_source
+        .filter(|raw| *raw != rendered_value && source_offsets.is_some() && looks_like_mdi(raw))
+        .map(parse_document_inline_parts);
+    if let (Some(raw), Some(parts)) = (raw_source, raw_parts.as_ref())
+        && parts
+            .iter()
+            .all(|(inline, _, _)| matches!(inline, Inline::Text(_)))
+        && has_escaped_construct_starter(raw)
+    {
+        // The Markdown layer consumed escapes around an otherwise literal
+        // spelling. Parsing the decoded value here would resurrect the MDI
+        // or Markdown construct that those escapes intentionally disabled.
+        let literal = parts
+            .iter()
+            .filter_map(|(inline, _, _)| match inline {
+                Inline::Text(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        object.insert("value".to_owned(), serde_json::json!(literal));
+        object.insert("mdiLiteral".to_owned(), serde_json::json!(true));
+        if let (Some(start_byte), Some(span)) = (raw_source_start, object.get_mut("span")) {
+            span["startByte"] = serde_json::json!(start_byte);
+        }
+        return;
+    }
+    let raw_parts = raw_parts.filter(|parts| {
+        parts
+            .iter()
+            .any(|(inline, _, _)| !matches!(inline, Inline::Text(_)))
+    });
+    if !looks_like_mdi(rendered_value) && raw_parts.is_none() {
         return;
     }
     let span = object.get("span").cloned();
-    let parsed = parse_inline_parts(rendered_value);
+    let parsing_raw = raw_parts.is_some();
+    let parsed = raw_parts.unwrap_or_else(|| parse_inline_parts(rendered_value));
     if let Some((Inline::Text(value), _, _)) = parsed.first()
         && parsed.len() == 1
         && value == rendered_value
@@ -833,19 +1077,32 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
                     .get("startByte")
                     .and_then(serde_json::Value::as_u64);
                 if let Some(start_byte) = start_byte {
-                    let start = source_offsets
-                        .as_ref()
-                        .and_then(|offsets| source_offset(offsets, start))
-                        .unwrap_or(start);
-                    let end = source_offsets
-                        .as_ref()
-                        .and_then(|offsets| source_offset(offsets, end))
-                        .unwrap_or(end);
+                    let start = if parsing_raw {
+                        start
+                    } else {
+                        source_offsets
+                            .as_ref()
+                            .and_then(|offsets| source_offset(offsets, start))
+                            .unwrap_or(start)
+                    };
+                    let end = if parsing_raw {
+                        end
+                    } else {
+                        source_offsets
+                            .as_ref()
+                            .and_then(|offsets| source_offset(offsets, end))
+                            .unwrap_or(end)
+                    };
+                    let source_start = if parsing_raw {
+                        raw_source_start.unwrap_or(start_byte as usize)
+                    } else {
+                        start_byte as usize
+                    };
                     object.insert(
                         "span".to_owned(),
                         serde_json::json!(SourceSpan {
-                            start_byte: (start_byte as usize + start) as u32,
-                            end_byte: (start_byte as usize + end) as u32,
+                            start_byte: (source_start + start) as u32,
+                            end_byte: (source_start + end) as u32,
                         }),
                     );
                 }
@@ -858,6 +1115,24 @@ fn annotate_and_lower(node: &mut serde_json::Value, source: &str, protected: boo
 
 fn looks_like_mdi(value: &str) -> bool {
     value.contains(['{', '^', '《', '[', '\\'])
+}
+
+fn has_escaped_construct_starter(value: &str) -> bool {
+    let mut escaped = false;
+    for character in value.chars() {
+        if escaped {
+            if matches!(
+                character,
+                '{' | '^' | '[' | '《' | '*' | '_' | '~' | '`' | '<' | '#' | '-' | '+' | '>'
+            ) {
+                return true;
+            }
+            escaped = character == '\\';
+        } else {
+            escaped = character == '\\';
+        }
+    }
+    false
 }
 
 fn span_from_position(value: &serde_json::Value, source: &str) -> Option<SourceSpan> {
@@ -898,6 +1173,19 @@ fn extract_frontmatter(root: &serde_json::Value, source: &str) -> Option<Frontma
 }
 
 fn diagnostics(document: &Document) -> Vec<Diagnostic> {
+    if document.children.iter().any(|child| {
+        child
+            .get("_mdiParserRecovery")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+    }) {
+        return vec![Diagnostic {
+            severity: DiagnosticSeverity::Warning,
+            code: "mdi.parser.recovered".to_owned(),
+            message: "The parser recovered by projecting the source as literal text".to_owned(),
+            span: Some(document.span),
+        }];
+    }
     let Some(frontmatter) = document.frontmatter.as_ref() else {
         return Vec::new();
     };
@@ -920,9 +1208,19 @@ fn diagnostics(document: &Document) -> Vec<Diagnostic> {
 /// Parse the complete CommonMark, GFM, front-matter, and MDI document and
 /// return the versioned wire envelope used by language bindings.
 pub fn parse_output(source: &str) -> ParseOutput {
-    let document = parse_document(source);
+    parse_output_with_options(source, ParseOptions::default())
+}
+
+pub fn parse_output_with_options(source: &str, options: ParseOptions) -> ParseOutput {
+    let document = parse_document_with_options(source, options);
+    let mut diagnostics = diagnostics(&document);
+    diagnostics.extend(comments::Comments::scan(source).diagnostics);
     ParseOutput {
-        ir_version: MDI_IR_VERSION,
+        ir_version: if options.include_comments {
+            MDI_COMMENT_IR_VERSION
+        } else {
+            MDI_IR_VERSION
+        },
         syntax_version: MDI_SPEC_VERSION,
         capabilities: ParserCapabilities {
             mdi: true,
@@ -931,7 +1229,7 @@ pub fn parse_output(source: &str) -> ParseOutput {
             front_matter: true,
             source_spans: true,
         },
-        diagnostics: diagnostics(&document),
+        diagnostics,
         document,
     }
 }
@@ -946,6 +1244,63 @@ pub fn parse_json(source: &str) -> String {
         .expect("serializing the MDI parse output cannot fail")
 }
 
+pub fn parse_json_with_options(source: &str, options: ParseOptions) -> String {
+    serde_json::to_string(&parse_output_with_options(source, options))
+        .expect("serializing the MDI parse output cannot fail")
+}
+
+/// Serialize the Rust-owned IR plus transient mdast provenance. This narrow
+/// boundary exists solely for `@illusions-lab/mdi-remark`.
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_mdast_json(source: &str) -> String {
+    parse_mdast_json_with_options(source, ParseOptions::default())
+}
+
+#[cfg(any(test, feature = "wasm"))]
+pub(crate) fn parse_mdast_json_with_options(source: &str, options: ParseOptions) -> String {
+    let mut document = parse_document_for_mdast(source);
+    if !options.include_comments {
+        comments::filter_nodes(&mut document.children);
+    }
+    let frontmatter_span = document
+        .frontmatter
+        .as_ref()
+        .map(|frontmatter| frontmatter.span);
+    let output = ParseOutput {
+        ir_version: if options.include_comments {
+            MDI_COMMENT_IR_VERSION
+        } else {
+            MDI_IR_VERSION
+        },
+        syntax_version: MDI_SPEC_VERSION,
+        capabilities: ParserCapabilities {
+            mdi: true,
+            common_mark: true,
+            gfm: true,
+            front_matter: true,
+            source_spans: true,
+        },
+        diagnostics: {
+            let mut diagnostics = diagnostics(&document);
+            diagnostics.extend(comments::Comments::scan(source).diagnostics);
+            diagnostics
+        },
+        document,
+    };
+    let mut output = serde_json::to_value(output).expect("mdast parse output is serializable");
+    if let Some(span) = frontmatter_span {
+        output["document"]["frontmatter"]["mdiProvenance"] = serde_json::json!({
+            "version": MDI_MDAST_PROVENANCE_VERSION,
+            "construct": { "path": "frontmatter", "type": "yaml" },
+            "span": span,
+            "role": "container",
+            "status": "sourceBacked",
+            "targets": [],
+        });
+    }
+    serde_json::to_string(&output).expect("serializing mdast provenance cannot fail")
+}
+
 /// Stable C ABI used by native language bindings.
 ///
 /// Every operation accepts UTF-8 bytes and returns owned bytes. Callers must
@@ -954,7 +1309,10 @@ pub fn parse_json(source: &str) -> String {
 /// by the JavaScript and future Python bindings.
 #[allow(unsafe_code)]
 pub mod ffi {
-    use super::{parse_json, render_docx, render_epub, render_html, render_text, serialize_mdi};
+    use super::{
+        TextFormat, parse_json, render_docx, render_epub, render_html, render_text,
+        render_text_format, serialize_mdi,
+    };
     use std::slice;
 
     #[repr(C)]
@@ -1005,16 +1363,20 @@ pub mod ffi {
         }
     }
 
-    fn source<'a>(data: *const u8, len: usize) -> Result<&'a str, String> {
+    fn utf8_argument<'a>(data: *const u8, len: usize, name: &str) -> Result<&'a str, String> {
         if data.is_null() && len != 0 {
-            return Err("MDI source pointer is null".to_owned());
+            return Err(format!("{name} pointer is null"));
         }
         let bytes = if len == 0 {
             &[]
         } else {
             unsafe { slice::from_raw_parts(data, len) }
         };
-        std::str::from_utf8(bytes).map_err(|_| "MDI source must be valid UTF-8".to_owned())
+        std::str::from_utf8(bytes).map_err(|_| format!("{name} must be valid UTF-8"))
+    }
+
+    fn source<'a>(data: *const u8, len: usize) -> Result<&'a str, String> {
+        utf8_argument(data, len, "MDI source")
     }
 
     fn string_result(
@@ -1029,8 +1391,43 @@ pub mod ffi {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_layout_warichu_json(
+        data: *const u8,
+        len: usize,
+        options_data: *const u8,
+        options_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|nodes| {
+            let options = utf8_argument(options_data, options_len, "warichu options")?;
+            super::layout_warichu_options_json(nodes, options)
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
+            Err(error) => failure(error),
+        }
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn mdi_parse_json(data: *const u8, len: usize) -> MdiFfiResult {
         string_result(data, len, parse_json)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_parse_json_with_options(
+        data: *const u8,
+        len: usize,
+        options_data: *const u8,
+        options_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|source| {
+            let options = utf8_argument(options_data, options_len, "parse options")?;
+            let options = serde_json::from_str::<super::ParseOptions>(options)
+                .map_err(|error| error.to_string())?;
+            Ok(super::parse_json_with_options(source, options))
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
+            Err(error) => failure(error),
+        }
     }
     #[unsafe(no_mangle)]
     pub extern "C" fn mdi_render_html(data: *const u8, len: usize) -> MdiFfiResult {
@@ -1043,6 +1440,27 @@ pub mod ffi {
     #[unsafe(no_mangle)]
     pub extern "C" fn mdi_render_text(data: *const u8, len: usize) -> MdiFfiResult {
         string_result(data, len, render_text)
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn mdi_render_text_format(
+        data: *const u8,
+        len: usize,
+        format_data: *const u8,
+        format_len: usize,
+        indent_data: *const u8,
+        indent_len: usize,
+    ) -> MdiFfiResult {
+        let result = source(data, len).and_then(|source| {
+            let format = utf8_argument(format_data, format_len, "MDI text format")?;
+            let indent_prefix = utf8_argument(indent_data, indent_len, "MDI text indent prefix")?;
+            let format = TextFormat::parse(format)
+                .ok_or_else(|| format!("Unsupported text format: {format}"))?;
+            Ok(render_text_format(source, format, indent_prefix))
+        });
+        match result {
+            Ok(value) => success(value.into_bytes()),
+            Err(error) => failure(error),
+        }
     }
 
     fn binary_result(
@@ -1107,6 +1525,15 @@ pub fn render_html_document(document: &Document) -> String {
     } else {
         ""
     };
+    // Browsers keep wheel input on the physical vertical axis, while a
+    // vertical-rl document overflows horizontally. Translate ordinary wheel
+    // movement into the reading axis so a standalone exported document is
+    // comfortable to read without a horizontal scrollbar drag.
+    let wheel_scroll = if vertical {
+        VERTICAL_WHEEL_SCROLL_SCRIPT
+    } else {
+        ""
+    };
     let mut body = String::new();
     let mut footnotes = Vec::new();
     for child in &document.children {
@@ -1117,23 +1544,26 @@ pub fn render_html_document(document: &Document) -> String {
         }
     }
     if !footnotes.is_empty() {
-        body.push_str("<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\">Footnotes</h2><ol>");
+        body.push_str("<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\" id=\"footnote-label\">Footnotes</h2><ol>");
         for (index, footnote) in footnotes.into_iter().enumerate() {
+            let identifier = footnote
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("{}", index + 1));
             body.push_str("<li id=\"user-content-fn-");
-            body.push_str(&escape_html(
-                footnote
-                    .get("identifier")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or(&format!("{}", index + 1)),
-            ));
+            body.push_str(&escape_html(&identifier));
             body.push_str("\">");
             render_html_children(footnote, &mut body);
+            body.push_str(" <a href=\"#user-content-fnref-");
+            body.push_str(&escape_html(&identifier));
+            body.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a>");
             body.push_str("</li>");
         }
         body.push_str("</ol></section>");
     }
     format!(
-        "<!DOCTYPE html><html lang=\"{}\"{}><head><meta charset=\"utf-8\">{}<style>{}</style></head><body>{}</body></html>",
+        "<!DOCTYPE html><html lang=\"{}\"{}><head><meta charset=\"utf-8\">{}<style>{}</style>{wheel_scroll}</head><body>{}</body></html>",
         escape_html(lang),
         writing_mode,
         title,
@@ -1144,7 +1574,7 @@ pub fn render_html_document(document: &Document) -> String {
 
 /// Parse and serialize source to canonical MDI/Markdown spelling in Rust.
 pub fn serialize_mdi(source: &str) -> String {
-    serialize_mdi_document(&parse_document(source))
+    serialize_mdi_document(&parse_document_without_provenance(source))
 }
 
 /// Serialize a parsed document without invoking a host Markdown serializer.
@@ -1175,6 +1605,9 @@ pub fn render_text(source: &str) -> String {
 pub fn render_text_document(document: &Document) -> String {
     let mut output = String::new();
     for node in &document.children {
+        if node["type"] == "comment" {
+            continue;
+        }
         render_text_node(node, &mut output);
         if !output.ends_with('\n') {
             output.push('\n');
@@ -1191,6 +1624,7 @@ pub enum TextFormat {
     Narou,
     Kakuyomu,
     Aozora,
+    Note,
 }
 
 impl TextFormat {
@@ -1202,6 +1636,7 @@ impl TextFormat {
             "narou" => Some(Self::Narou),
             "kakuyomu" => Some(Self::Kakuyomu),
             "aozora" => Some(Self::Aozora),
+            "note" => Some(Self::Note),
             _ => None,
         }
     }
@@ -1211,6 +1646,9 @@ impl TextFormat {
 /// is supplied by the host's already-resolved export profile.
 pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str) -> String {
     let document = parse_document(source);
+    if matches!(format, TextFormat::Note) {
+        return render_note_document(&document, indent_prefix);
+    }
     let mut heading_depths = document
         .children
         .iter()
@@ -1262,6 +1700,397 @@ pub fn render_text_format(source: &str, format: TextFormat, indent_prefix: &str)
     } else {
         output
     }
+}
+
+fn render_note_document(document: &Document, indent_prefix: &str) -> String {
+    let definitions: Vec<&serde_json::Value> = document
+        .children
+        .iter()
+        .filter(|node| {
+            node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteDefinition")
+        })
+        .collect();
+    let mut blocks = document
+        .children
+        .iter()
+        .filter_map(|node| {
+            note_format_block(node, indent_prefix, &definitions, NoteInlineContext::Body)
+        })
+        .collect::<Vec<_>>();
+    if !definitions.is_empty() {
+        let mut footnotes = vec!["注".to_owned()];
+        for (index, definition) in definitions.iter().enumerate() {
+            let value = children(definition)
+                .iter()
+                .filter_map(|child| {
+                    note_format_block(child, "", &definitions, NoteInlineContext::Body)
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            footnotes.push(format!("{}. {value}", index + 1));
+        }
+        blocks.push("---".to_owned());
+        blocks.push(footnotes.join("\n"));
+    }
+    blocks.join("\n\n")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoteInlineContext {
+    Body,
+    Heading,
+    Quote,
+}
+
+fn note_format_block(
+    node: &serde_json::Value,
+    indent_prefix: &str,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> Option<String> {
+    let kind = node
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    match kind {
+        "footnoteDefinition" | "definition" => None,
+        "paragraph" => {
+            let indent = node
+                .get("indent")
+                .and_then(serde_json::Value::as_u64)
+                .map(|amount| "　".repeat(amount as usize))
+                .unwrap_or_default();
+            Some(format!(
+                "{indent_prefix}{indent}{}",
+                note_inline_children(node, definitions, context)
+            ))
+        }
+        "heading" => {
+            let marker = if node
+                .get("depth")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(1)
+                == 1
+            {
+                "##"
+            } else {
+                "###"
+            };
+            Some(format!(
+                "{marker} {}",
+                note_inline_children(node, definitions, NoteInlineContext::Heading)
+            ))
+        }
+        "list" => Some(note_format_list(node, 0, definitions, context)),
+        "blockquote" => {
+            let value = children(node)
+                .iter()
+                .filter_map(|child| {
+                    note_format_block(child, "", definitions, NoteInlineContext::Quote)
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            Some(
+                value
+                    .lines()
+                    .map(|line| format!("> {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        }
+        "code" => Some(note_code_block(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            node.get("lang").and_then(serde_json::Value::as_str),
+        )),
+        "math" => Some(format!(
+            "$$\n{}\n$$",
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+        )),
+        "table" => Some(
+            children(node)
+                .iter()
+                .map(|row| {
+                    children(row)
+                        .iter()
+                        .map(|cell| note_inline_children(cell, definitions, context))
+                        .collect::<Vec<_>>()
+                        .join("\t")
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        "thematicBreak" => Some("---".to_owned()),
+        // note has no pagination paste syntax.  A visual divider preserves the
+        // source boundary but does not claim to retain pagination semantics.
+        "pagebreak" => Some("---".to_owned()),
+        "blank" => Some(String::new()),
+        "html" => Some(note_code_block(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+            Some("html"),
+        )),
+        _ if !children(node).is_empty() => Some(note_inline_children(node, definitions, context)),
+        _ => None,
+    }
+}
+
+fn note_format_list(
+    node: &serde_json::Value,
+    depth: usize,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    // note's editor supports five list levels, but its documented hierarchy
+    // controls are Tab/Shift+Tab (or their shortcuts), not space indentation.
+    // Indentation here is therefore a readable visual fallback, clamped at
+    // five levels rather than a claim that paste will create nested list nodes.
+    let indentation = "  ".repeat(depth.min(4));
+    let continuation = "  ".repeat((depth + 1).min(5));
+    let ordered = node
+        .get("ordered")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let start = node
+        .get("start")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(1);
+    let mut lines = Vec::new();
+    for (index, item) in children(node).iter().enumerate() {
+        let marker = if ordered {
+            format!("{}.", start + index as u64)
+        } else {
+            "-".to_owned()
+        };
+        let checked = match item.get("checked").and_then(serde_json::Value::as_bool) {
+            Some(true) => "[x] ",
+            Some(false) => "[ ] ",
+            None => "",
+        };
+        let mut item_started = false;
+        for child in children(item) {
+            if child.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                && !item_started
+            {
+                lines.push(format!(
+                    "{indentation}{marker} {checked}{}",
+                    note_inline_children(child, definitions, context)
+                ));
+                item_started = true;
+                continue;
+            }
+            if child.get("type").and_then(serde_json::Value::as_str) == Some("list") {
+                if !item_started {
+                    lines.push(format!("{indentation}{marker} {checked}"));
+                    item_started = true;
+                }
+                lines.push(note_format_list(child, depth + 1, definitions, context));
+                continue;
+            }
+            if let Some(value) = note_format_block(child, "", definitions, context) {
+                if !item_started {
+                    lines.push(format!("{indentation}{marker} {checked}"));
+                    item_started = true;
+                }
+                lines.extend(value.lines().map(|line| format!("{continuation}{line}")));
+            }
+        }
+        if !item_started {
+            lines.push(format!("{indentation}{marker} {checked}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn note_inline_children(
+    node: &serde_json::Value,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    children(node)
+        .iter()
+        .map(|child| note_inline(child, definitions, context))
+        .collect()
+}
+
+fn note_inline(
+    node: &serde_json::Value,
+    definitions: &[&serde_json::Value],
+    context: NoteInlineContext,
+) -> String {
+    let kind = node
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    match kind {
+        "text" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        // note documents fenced code blocks, not inline-code Markdown.  Keep
+        // the code readable without emitting a marker the editor may not own.
+        "inlineCode" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "inlineMath" => {
+            let value = node
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if matches!(context, NoteInlineContext::Body) {
+                format!("$${{{value}}}$$")
+            } else {
+                note_text_literal(value)
+            }
+        }
+        "tcy" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "break" => "\n".to_owned(),
+        "ruby" => {
+            let base = node
+                .get("base")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let reading = node
+                .pointer("/ruby/value")
+                .map(|value| match value {
+                    serde_json::Value::Array(parts) => parts
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .collect::<String>(),
+                    serde_json::Value::String(value) => value.to_owned(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+            text_format_platform_ruby(base, &reading, TextFormat::Note)
+        }
+        "strong" => {
+            let value = note_inline_children(node, definitions, context);
+            if matches!(context, NoteInlineContext::Heading) {
+                value
+            } else {
+                // note activates this input shortcut after a following
+                // half-width space is entered.
+                format!("**{value}** ")
+            }
+        }
+        "delete" => {
+            let value = note_inline_children(node, definitions, context);
+            if matches!(context, NoteInlineContext::Heading) {
+                value
+            } else {
+                // note activates this input shortcut after a following
+                // half-width space is entered.
+                format!("~~{value}~~ ")
+            }
+        }
+        "link" => {
+            let label = note_inline_children(node, definitions, context);
+            let url = node
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let title_value = node
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .filter(|title| !title.is_empty() && !title.contains(['\r', '\n']));
+            if title_value.is_none() && label == note_text_literal(url) {
+                return note_text_literal(url);
+            }
+            let title = title_value
+                .map(|title| format!(" — {title}"))
+                .unwrap_or_default();
+            if url.is_empty() {
+                format!("{label}{title}")
+            } else {
+                format!("{label} ({}){title}", note_text_literal(url))
+            }
+        }
+        "image" => {
+            let alt = note_text_literal(
+                node.get("alt")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            let url = node
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if url.is_empty() {
+                format!("画像: {alt}")
+            } else {
+                format!("画像: {alt} ({})", note_text_literal(url))
+            }
+        }
+        "html" => note_text_literal(
+            node.get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ),
+        "footnoteReference" => {
+            let identifier = node
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let index = definitions
+                .iter()
+                .position(|definition| {
+                    definition
+                        .get("identifier")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(identifier)
+                })
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            format!("［注{index}］")
+        }
+        // note has no paste syntax for these MDI presentation annotations or
+        // Markdown emphasis, so retain their readable content.
+        "emphasis" | "em" | "warichu" | "kern" | "noBreak" => {
+            note_inline_children(node, definitions, context)
+        }
+        _ => note_inline_children(node, definitions, context),
+    }
+}
+
+fn note_code_block(value: &str, language: Option<&str>) -> String {
+    let longest_run = longest_backtick_run(value);
+    let fence = "`".repeat(longest_run.saturating_add(1).max(3));
+    let language = language
+        .filter(|language| !language.is_empty() && !language.contains(['`', '\r', '\n', ' ', '\t']))
+        // note documents Mermaid only with an exact triple-backtick fence.
+        // If the body forces a longer fence, keep the code readable without
+        // falsely labelling it as a Mermaid contract.
+        .filter(|language| *language != "mermaid" || longest_run < 3)
+        .unwrap_or_default();
+    let trailing_newline = if value.ends_with('\n') { "" } else { "\n" };
+    format!("{fence}{language}\n{value}{trailing_newline}{fence}")
+}
+
+fn longest_backtick_run(value: &str) -> usize {
+    value
+        .split(|character| character != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or(0)
+}
+
+fn note_text_literal(value: &str) -> String {
+    // note does not document a backslash escape for editor shortcuts or ruby.
+    // Inventing one would visibly corrupt ordinary punctuation.  Preserve
+    // literal text and document that delimiter collisions cannot be represented
+    // losslessly by this plain-text profile.
+    value.to_owned()
 }
 
 fn text_format_block(
@@ -1592,10 +2421,18 @@ fn text_format_platform_ruby(base: &str, reading: &str, format: TextFormat) -> S
                 && !base.chars().any(aozora_reserved_character)
                 && !reading.chars().any(aozora_reserved_character)
         }
+        TextFormat::Note => {
+            !base.is_empty()
+                && !reading.is_empty()
+                && !base.contains(['\r', '\n', '《', '》', '|', '｜'])
+                && !reading.contains(['\r', '\n', '《', '》'])
+        }
         TextFormat::Plain | TextFormat::Ruby => false,
     };
     if valid {
         format!("｜{base}《{reading}》")
+    } else if matches!(format, TextFormat::Note) {
+        note_text_literal(base)
     } else {
         text_format_literal(base, format)
     }
@@ -1691,7 +2528,7 @@ fn text_format_literal(value: &str, format: TextFormat) -> String {
                 _ => character.to_string(),
             })
             .collect(),
-        TextFormat::Plain | TextFormat::Ruby => value.to_owned(),
+        TextFormat::Plain | TextFormat::Ruby | TextFormat::Note => value.to_owned(),
     }
 }
 
@@ -1701,22 +2538,6 @@ fn render_text_node(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
     {
-        "text" | "inlineCode" | "code" | "html" | "tcy" => out.push_str(
-            node.get("value")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "ruby" => out.push_str(
-            node.get("base")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "image" => out.push_str(
-            node.get("alt")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ),
-        "break" => out.push('\n'),
         "blank" => out.push('\n'),
         "pagebreak" => out.push_str("\n\x0C\n"),
         "heading" | "paragraph" | "blockquote" | "listItem" | "tableRow" => {
@@ -1727,7 +2548,12 @@ fn render_text_node(node: &serde_json::Value, out: &mut String) {
             render_text_children(node, out);
             out.push('\t');
         }
-        _ => render_text_children(node, out),
+        _ => match text_projection::plain_inline(node) {
+            text_projection::PlainInline::Value(value) => out.push_str(value),
+            text_projection::PlainInline::Break => out.push('\n'),
+            text_projection::PlainInline::Skip => {}
+            text_projection::PlainInline::Children => render_text_children(node, out),
+        },
     }
 }
 
@@ -1778,11 +2604,25 @@ fn serialize_block(node: &serde_json::Value, out: &mut String, prefix: &str) {
             for child in children(node) {
                 serialize_block(child, &mut content, "");
             }
-            for line in content.trim_end_matches('\n').lines() {
-                out.push_str(prefix);
-                out.push_str("> ");
+            let comments = comments::Comments::scan(&content);
+            let mut offset = 0;
+            for line in content.trim_end_matches('\n').split_inclusive('\n') {
+                let comment_index = comments
+                    .spans
+                    .partition_point(|span| span.end_byte as usize <= offset);
+                let inside_comment = comments
+                    .spans
+                    .get(comment_index)
+                    .is_some_and(|span| (span.start_byte as usize) < offset);
+                if !inside_comment {
+                    out.push_str(prefix);
+                    out.push_str("> ");
+                }
                 out.push_str(line);
-                out.push('\n');
+                if !line.ends_with('\n') {
+                    out.push('\n');
+                }
+                offset += line.len();
             }
         }
         "list" => {
@@ -1835,6 +2675,73 @@ fn serialize_block(node: &serde_json::Value, out: &mut String, prefix: &str) {
             out.push_str("]]\n");
         }
         "table" => serialize_table(node, out),
+        "footnoteDefinition" => {
+            out.push_str(prefix);
+            out.push_str("[^");
+            out.push_str(
+                node.get("identifier")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("]: ");
+            let definition_children = children(node);
+            if definition_children.is_empty() {
+                out.push('\n');
+                return;
+            }
+            for (index, child) in definition_children.iter().enumerate() {
+                let mut nested = String::new();
+                serialize_block(child, &mut nested, "");
+                let nested = nested.trim_end_matches('\n');
+                if index == 0
+                    && child.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                {
+                    for (line_index, line) in nested.lines().enumerate() {
+                        if line_index > 0 {
+                            out.push_str(prefix);
+                            out.push_str("    ");
+                        }
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                } else {
+                    if index == 0 {
+                        out.push('\n');
+                    } else {
+                        out.push_str(prefix);
+                        out.push('\n');
+                    }
+                    for line in nested.lines() {
+                        out.push_str(prefix);
+                        out.push_str("    ");
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                }
+            }
+        }
+        "definition" => {
+            out.push_str(prefix);
+            out.push('[');
+            out.push_str(
+                node.get("label")
+                    .or_else(|| node.get("identifier"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("]: ");
+            out.push_str(
+                node.get("url")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            if let Some(title) = node.get("title").and_then(serde_json::Value::as_str) {
+                out.push_str(" \"");
+                out.push_str(title);
+                out.push('"');
+            }
+            out.push('\n');
+        }
         "html" => {
             out.push_str(
                 node.get("value")
@@ -1881,7 +2788,23 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
     match kind {
-        "text" | "html" => out.push_str(
+        "comment" => {
+            out.push_str("<!--");
+            out.push_str(
+                node.get("value")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            out.push_str("-->");
+        }
+        "text" => out.push_str(
+            &node
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .replace("<!--", "\\<!--"),
+        ),
+        "html" => out.push_str(
             node.get("value")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default(),
@@ -2027,37 +2950,128 @@ fn serialize_inline(node: &serde_json::Value, out: &mut String) {
     }
 }
 
-fn children(node: &serde_json::Value) -> &[serde_json::Value] {
+pub(crate) fn children(node: &serde_json::Value) -> &[serde_json::Value] {
     node.get("children")
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
 
+fn document_frontmatter_field<'a>(document: &'a Document, key: &str) -> Option<&'a str> {
+    document
+        .frontmatter
+        .as_ref()
+        .and_then(|frontmatter| frontmatter.entries.iter().find(|entry| entry.key == key))
+        .and_then(|entry| entry.value.as_str())
+}
+
+fn default_profile_for_document(document: &Document) -> Result<ResolvedExportProfile, String> {
+    resolve_export_profile(
+        &serde_json::Map::new(),
+        document_frontmatter_field(document, "writing-mode"),
+    )
+}
+
+fn resolved_profile_for_document(
+    document: &Document,
+    profile_json: &str,
+    require_layout: bool,
+) -> Result<ResolvedExportProfile, String> {
+    let value: serde_json::Value = serde_json::from_str(profile_json)
+        .map_err(|_| "Export profile must be valid JSON".to_owned())?;
+    let profile = value
+        .as_object()
+        .ok_or_else(|| "Export profile must be a JSON object".to_owned())?;
+    if require_layout
+        && profile
+            .get("layout")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|layout| layout.get("system"))
+            .is_none()
+    {
+        return Err(
+            "Configured exports require layout.system: japanese-publisher or word".to_owned(),
+        );
+    }
+    resolve_export_profile(
+        profile,
+        document_frontmatter_field(document, "writing-mode"),
+    )
+}
+
+fn css_value(value: &str) -> String {
+    let safe = value
+        .chars()
+        .filter(|character| !matches!(character, '{' | '}' | '<' | '>' | ';'))
+        .collect::<String>();
+    if safe.trim().is_empty() {
+        "serif".to_owned()
+    } else {
+        safe
+    }
+}
+
 /// The base stylesheet is intentionally shipped by the core alongside the
 /// semantic HTML. Hosts may add presentation CSS, but not reinterpret nodes.
-pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.6em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
+pub const MDI_STYLESHEET: &str = ".mdi-tcy{text-combine-upright:all}.mdi-nobr{white-space:nowrap}.mdi-warichu{font-size:.5em;line-height:1}.mdi-warichu-fragment{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start}.mdi-warichu-line{display:block;white-space:nowrap;min-block-size:1em}.mdi-em{text-emphasis:var(--mdi-em,filled sesame)}.mdi-kern{letter-spacing:var(--mdi-kern)}.mdi-blank{min-block-size:1lh}.mdi-indent{margin-inline-start:calc(var(--mdi-indent)*1em)}.mdi-bottom{text-align:end}.mdi-pagebreak{break-after:page}";
+
+const VERTICAL_WHEEL_SCROLL_SCRIPT: &str = "<script>(function(){document.addEventListener('wheel',function(event){if(event.defaultPrevented||event.ctrlKey||event.shiftKey)return;var delta=event.deltaY;if(event.deltaMode===1)delta*=16;else if(event.deltaMode===2)delta*=window.innerWidth;if(!delta)return;var root=document.scrollingElement;var before=root.scrollLeft;window.scrollBy({left:-delta,behavior:'auto'});if(root.scrollLeft!==before)event.preventDefault()},{passive:false})})()</script>";
+
+#[derive(Debug, Clone)]
+pub struct EpubCover {
+    pub data: Vec<u8>,
+    pub media_type: String,
+}
 
 /// Build a reflowable EPUB 3 archive entirely from Rust's document IR.
-/// Metadata comes from front matter; richer cover and print-profile options
-/// are intentionally layered on this deterministic core API later.
 pub fn render_epub(source: &str) -> Result<Vec<u8>, String> {
     render_epub_document(&parse_document(source))
 }
 
+/// Build an EPUB with the canonical configured-export profile.
+pub fn render_epub_with_profile(
+    source: &str,
+    profile_json: &str,
+    cover: Option<&EpubCover>,
+) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    let profile = resolved_profile_for_document(&document, profile_json, false)?;
+    render_epub_document_with_profile(&document, &profile, cover)
+}
+
 /// Build a reflowable EPUB 3 archive from a parsed document.
 pub fn render_epub_document(document: &Document) -> Result<Vec<u8>, String> {
+    let profile = default_profile_for_document(document)?;
+    render_epub_document_with_profile(document, &profile, None)
+}
+
+pub fn render_epub_document_with_profile(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+    cover: Option<&EpubCover>,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    write_epub_document(document, &mut zip)?;
+    write_epub_document_with_profile(document, &mut zip, profile, cover)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn write_epub_document<W: Write + Seek>(
     document: &Document,
     zip: &mut ZipWriter<W>,
+) -> Result<(), String> {
+    let profile = default_profile_for_document(document)?;
+    write_epub_document_with_profile(document, zip, &profile, None)
+}
+
+fn write_epub_document_with_profile<W: Write + Seek>(
+    document: &Document,
+    zip: &mut ZipWriter<W>,
+    profile: &ResolvedExportProfile,
+    cover: Option<&EpubCover>,
 ) -> Result<(), String> {
     let field = |key: &str| {
         document
@@ -2066,12 +3080,27 @@ fn write_epub_document<W: Write + Seek>(
             .and_then(|frontmatter| frontmatter.entries.iter().find(|entry| entry.key == key))
             .and_then(|entry| entry.value.as_str())
     };
-    let title = field("title").unwrap_or("Untitled");
-    let author = field("author");
-    let language = field("lang").unwrap_or("ja");
-    let identifier = field("identifier").unwrap_or("urn:mdi:document");
-    let vertical = matches!(field("writing-mode"), Some("vertical"));
-    let chapters = epub_chapters(document);
+    let metadata = |key: &str| {
+        profile
+            .metadata
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+    };
+    let title = metadata("title")
+        .or_else(|| field("title"))
+        .unwrap_or("Untitled");
+    let author = metadata("author").or_else(|| field("author"));
+    let publisher = metadata("publisher").or_else(|| field("publisher"));
+    let date = metadata("date").or_else(|| field("date"));
+    let language = metadata("language")
+        .or_else(|| field("lang"))
+        .unwrap_or("ja");
+    let identifier = metadata("identifier")
+        .or_else(|| field("identifier"))
+        .unwrap_or("urn:mdi:document");
+    let vertical = profile.typesetting.writing_mode == "vertical";
+    let modified = epub_modified_timestamp()?;
+    let chapters = epub_chapters(document, &profile.epub.chapter_split_level);
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     epub_file(zip, "mimetype", "application/epub+zip", stored)?;
     let compressed = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -2086,11 +3115,20 @@ fn write_epub_document<W: Write + Seek>(
     } else {
         ""
     };
+    let line_spacing = profile.typesetting.line_spacing.unwrap_or(1.8);
+    let fullwidth_indent = if profile.typesetting.fullwidth_space_indent {
+        "--mdi-fullwidth-space-indent:1;"
+    } else {
+        ""
+    };
     epub_file(
         zip,
         "OEBPS/style.css",
         &format!(
-            "body{{font-family:serif;{writing}line-height:1.8;margin:1em}}p{{text-indent:1em;margin:.3em 0}}{MDI_STYLESHEET}"
+            "body{{font-family:{};font-size:{}pt;{writing}line-height:{line_spacing};margin:1em}}p{{{fullwidth_indent}text-indent:{}em;margin:.3em 0}}{MDI_STYLESHEET}",
+            css_value(&profile.typesetting.font_family),
+            profile.typesetting.font_size,
+            profile.typesetting.text_indent_em,
         ),
         compressed,
     )?;
@@ -2098,10 +3136,15 @@ fn write_epub_document<W: Write + Seek>(
         .iter()
         .enumerate()
         .map(|(index, chapter)| {
+            let chapter_title = if chapter.title.trim().is_empty() {
+                format!("Chapter {}", index + 1)
+            } else {
+                chapter.title.clone()
+            };
             format!(
                 "<li><a href=\"chapter-{}.xhtml\">{}</a></li>",
                 index + 1,
-                escape_html(&chapter.title)
+                escape_html(&chapter_title)
             )
         })
         .collect::<String>();
@@ -2115,11 +3158,37 @@ fn write_epub_document<W: Write + Seek>(
         ),
         compressed,
     )?;
+    let cover_extension = cover
+        .map(|cover| match cover.media_type.as_str() {
+            "image/png" => Ok("png"),
+            "image/jpeg" => Ok("jpg"),
+            _ => Err("EPUB cover must be image/png or image/jpeg".to_owned()),
+        })
+        .transpose()?;
+    if let (Some(cover), Some(extension)) = (cover, cover_extension) {
+        zip.start_file(format!("OEBPS/cover.{extension}"), compressed)
+            .map_err(|error| error.to_string())?;
+        zip.write_all(&cover.data)
+            .map_err(|error| error.to_string())?;
+        epub_file(
+            zip,
+            "OEBPS/cover.xhtml",
+            &epub_xhtml(
+                title,
+                language,
+                &format!(
+                    "<img src=\"cover.{extension}\" alt=\"{}\"/>",
+                    escape_html(title)
+                ),
+            ),
+            compressed,
+        )?;
+    }
     for (index, chapter) in chapters.iter().enumerate() {
         epub_file(
             zip,
             &format!("OEBPS/chapter-{}.xhtml", index + 1),
-            &epub_xhtml(
+            &epub_chapter_xhtml(
                 if chapter.title.is_empty() {
                     title
                 } else {
@@ -2131,14 +3200,48 @@ fn write_epub_document<W: Write + Seek>(
             compressed,
         )?;
     }
-    let manifest = format!("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{}", chapters.iter().enumerate().map(|(index, _)| format!("<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>", index + 1, index + 1)).collect::<String>());
-    let spine = chapters
+    let cover_manifest = match (cover, cover_extension) {
+        (Some(cover), Some(extension)) => format!(
+            "<item id=\"cover-image\" href=\"cover.{extension}\" media-type=\"{}\" properties=\"cover-image\"/><item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>",
+            cover.media_type
+        ),
+        _ => String::new(),
+    };
+    let chapter_manifest = chapters
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            format!(
+                "<item id=\"chapter-{}\" href=\"chapter-{}.xhtml\" media-type=\"application/xhtml+xml\"/>",
+                index + 1,
+                index + 1
+            )
+        })
+        .collect::<String>();
+    let manifest = format!(
+        "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{cover_manifest}{chapter_manifest}"
+    );
+    let chapter_spine = chapters
         .iter()
         .enumerate()
         .map(|(index, _)| format!("<itemref idref=\"chapter-{}\"/>", index + 1))
         .collect::<String>();
+    let spine = format!(
+        "{}{chapter_spine}",
+        if cover.is_some() {
+            "<itemref idref=\"cover\"/>"
+        } else {
+            ""
+        }
+    );
     let creator = author
         .map(|author| format!("<dc:creator>{}</dc:creator>", escape_html(author)))
+        .unwrap_or_default();
+    let publisher = publisher
+        .map(|publisher| format!("<dc:publisher>{}</dc:publisher>", escape_html(publisher)))
+        .unwrap_or_default();
+    let date = date
+        .map(|date| format!("<dc:date>{}</dc:date>", escape_html(date)))
         .unwrap_or_default();
     let progression = if vertical {
         " page-progression-direction=\"rtl\""
@@ -2149,7 +3252,7 @@ fn write_epub_document<W: Write + Seek>(
         zip,
         "OEBPS/package.opf",
         &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"book-id\">{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language>{creator}</metadata><manifest>{manifest}</manifest><spine{progression}>{spine}</spine></package>",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"book-id\">{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language>{creator}{publisher}{date}<meta property=\"dcterms:modified\">{modified}</meta></metadata><manifest>{manifest}</manifest><spine{progression}>{spine}</spine></package>",
             escape_html(identifier),
             escape_html(title),
             escape_html(language)
@@ -2166,87 +3269,38 @@ pub fn render_docx(source: &str) -> Result<Vec<u8>, String> {
     render_docx_document(&parse_document(source))
 }
 
+/// Build a configured DOCX through the canonical Rust OOXML writer.
+pub fn render_docx_with_profile(source: &str, profile_json: &str) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    let profile = resolved_profile_for_document(&document, profile_json, false)?;
+    render_docx_document_with_profile(&document, &profile)
+}
+
 /// Build a baseline DOCX archive from a parsed document.
 pub fn render_docx_document(document: &Document) -> Result<Vec<u8>, String> {
+    let profile = default_profile_for_document(document)?;
+    render_docx_document_with_profile(document, &profile)
+}
+
+pub fn render_docx_document_with_profile(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    write_docx_document(document, &mut zip)?;
+    docx::write(document, profile, &mut zip)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn write_docx_document<W: Write + Seek>(
     document: &Document,
     zip: &mut ZipWriter<W>,
 ) -> Result<(), String> {
-    let title = document
-        .frontmatter
-        .as_ref()
-        .and_then(|frontmatter| {
-            frontmatter
-                .entries
-                .iter()
-                .find(|entry| entry.key == "title")
-        })
-        .and_then(|entry| entry.value.as_str())
-        .unwrap_or("Untitled");
-    let mut content = String::new();
-    for node in &document.children {
-        if node.get("type").and_then(serde_json::Value::as_str) == Some("pagebreak") {
-            content.push('\x0C');
-            content.push('\n');
-        } else {
-            render_text_node(node, &mut content);
-            if !content.ends_with('\n') {
-                content.push('\n');
-            }
-        }
-    }
-    let paragraphs = content
-        .split('\n')
-        .map(|line| {
-            if line.contains('\x0C') {
-                "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>".to_owned()
-            } else {
-                format!(
-                    "<w:p><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>",
-                    escape_xml(line)
-                )
-            }
-        })
-        .collect::<String>();
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    docx_file(
-        zip,
-        "[Content_Types].xml",
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/></Types>",
-        options,
-    )?;
-    docx_file(
-        zip,
-        "_rels/.rels",
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/></Relationships>",
-        options,
-    )?;
-    docx_file(
-        zip,
-        "docProps/core.xml",
-        &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>{}</dc:title></cp:coreProperties>",
-            escape_xml(title)
-        ),
-        options,
-    )?;
-    docx_file(
-        zip,
-        "word/document.xml",
-        &format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>{paragraphs}<w:sectPr/></w:body></w:document>"
-        ),
-        options,
-    )?;
-    Ok(())
+    let profile = default_profile_for_document(document)?;
+    docx::write(document, &profile, zip)
 }
 
 /// Native configuration for Chromium PDF layout. WebAssembly deliberately
@@ -2316,18 +3370,7 @@ pub fn find_chromium() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn docx_file<W: Write + Seek>(
-    zip: &mut ZipWriter<W>,
-    path: &str,
-    content: &str,
-    options: SimpleFileOptions,
-) -> Result<(), String> {
-    zip.start_file(path, options)
-        .map_err(|error| error.to_string())?;
-    zip.write_all(content.as_bytes())
-        .map_err(|error| error.to_string())
-}
-fn escape_xml(value: &str) -> String {
+pub(crate) fn escape_xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -2339,27 +3382,53 @@ fn escape_xml(value: &str) -> String {
 struct EpubChapter {
     title: String,
     html: String,
+    footnote_ids: Vec<String>,
 }
-fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
+fn epub_chapters(document: &Document, split_level: &str) -> Vec<EpubChapter> {
+    let split_depth = match split_level {
+        "h1" => Some(1),
+        "h2" => Some(2),
+        "h3" => Some(3),
+        "none" => None,
+        _ => Some(1),
+    };
     let mut chapters = vec![EpubChapter {
         title: String::new(),
         html: String::new(),
+        footnote_ids: Vec::new(),
     }];
+    let footnote_definitions = document
+        .children
+        .iter()
+        .filter_map(|node| {
+            if node.get("type").and_then(serde_json::Value::as_str) != Some("footnoteDefinition") {
+                return None;
+            }
+            node.get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .map(|identifier| (identifier, node))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     for node in &document.children {
+        if node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteDefinition") {
+            continue;
+        }
         if node.get("type").and_then(serde_json::Value::as_str) == Some("pagebreak") {
-            if !chapters
-                .last()
-                .is_some_and(|chapter| chapter.html.is_empty())
+            if split_depth.is_some()
+                && !chapters
+                    .last()
+                    .is_some_and(|chapter| chapter.html.is_empty())
             {
                 chapters.push(EpubChapter {
                     title: String::new(),
                     html: String::new(),
+                    footnote_ids: Vec::new(),
                 });
             }
             continue;
         }
         if node.get("type").and_then(serde_json::Value::as_str) == Some("heading")
-            && node.get("depth").and_then(serde_json::Value::as_u64) == Some(1)
+            && node.get("depth").and_then(serde_json::Value::as_u64) == split_depth
             && !chapters
                 .last()
                 .is_some_and(|chapter| chapter.html.is_empty())
@@ -2367,6 +3436,7 @@ fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
             chapters.push(EpubChapter {
                 title: String::new(),
                 html: String::new(),
+                footnote_ids: Vec::new(),
             });
         }
         let chapter = chapters.last_mut().expect("one chapter exists");
@@ -2375,19 +3445,55 @@ fn epub_chapters(document: &Document) -> Vec<EpubChapter> {
         {
             chapter.title = plain_node_text(node);
         }
+        collect_footnote_references(node, &mut chapter.footnote_ids);
         render_html_node(node, &mut chapter.html);
     }
-    let chapters: Vec<_> = chapters
+    let mut chapters: Vec<_> = chapters
         .into_iter()
         .filter(|chapter| !chapter.html.is_empty())
         .collect();
+    for chapter in &mut chapters {
+        chapter.footnote_ids.sort();
+        chapter.footnote_ids.dedup();
+        if chapter.footnote_ids.is_empty() {
+            continue;
+        }
+        chapter.html.push_str(
+            "<section data-footnotes=\"\" class=\"footnotes\"><h2 class=\"sr-only\" id=\"footnote-label\">Footnotes</h2><ol>",
+        );
+        for identifier in &chapter.footnote_ids {
+            let Some(definition) = footnote_definitions.get(identifier.as_str()) else {
+                continue;
+            };
+            chapter.html.push_str("<li id=\"user-content-fn-");
+            chapter.html.push_str(&escape_html(identifier));
+            chapter.html.push_str("\">");
+            render_html_children(definition, &mut chapter.html);
+            chapter.html.push_str(" <a href=\"#user-content-fnref-");
+            chapter.html.push_str(&escape_html(identifier));
+            chapter.html.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a></li>");
+        }
+        chapter.html.push_str("</ol></section>");
+    }
     if chapters.is_empty() {
         vec![EpubChapter {
             title: String::new(),
             html: String::new(),
+            footnote_ids: Vec::new(),
         }]
     } else {
         chapters
+    }
+}
+
+fn collect_footnote_references(node: &serde_json::Value, identifiers: &mut Vec<String>) {
+    if node.get("type").and_then(serde_json::Value::as_str) == Some("footnoteReference")
+        && let Some(identifier) = node.get("identifier").and_then(serde_json::Value::as_str)
+    {
+        identifiers.push(identifier.to_owned());
+    }
+    for child in children(node) {
+        collect_footnote_references(child, identifiers);
     }
 }
 fn plain_node_text(node: &serde_json::Value) -> String {
@@ -2401,8 +3507,62 @@ fn epub_xhtml(title: &str, language: &str, body: &str) -> String {
         escape_html(language),
         escape_html(language),
         escape_html(title),
-        body.replace("<br>", "<br/>").replace("<hr>", "<hr/>")
+        body
     )
+}
+
+fn epub_chapter_xhtml(title: &str, language: &str, body: &str) -> String {
+    epub_xhtml(title, language, &epub_chapter_body(body))
+}
+
+fn epub_chapter_body(body: &str) -> String {
+    let mut output = body.replace("<br>", "<br/>").replace("<hr>", "<hr/>");
+    let mut search_from = 0;
+    while let Some(relative_start) = output[search_from..].find("<img src=\"") {
+        let start = search_from + relative_start;
+        let Some(relative_end) = output[start..].find('>') else {
+            break;
+        };
+        let end = start + relative_end;
+        let image = &output[start..=end];
+        let Some(attributes) = image.strip_prefix("<img src=\"") else {
+            search_from = end + 1;
+            continue;
+        };
+        let Some((source, alt)) = attributes.split_once("\" alt=\"") else {
+            search_from = end + 1;
+            continue;
+        };
+        let Some(alt) = alt.strip_suffix("\">") else {
+            search_from = end + 1;
+            continue;
+        };
+        let replacement =
+            format!("<span class=\"mdi-image-fallback\">Image: {alt} ({source})</span>");
+        output.replace_range(start..=end, &replacement);
+        search_from = start + replacement.len();
+    }
+    output
+}
+
+#[cfg(not(feature = "wasm"))]
+fn epub_modified_timestamp() -> Result<String, String> {
+    OffsetDateTime::now_utc()
+        .replace_nanosecond(0)
+        .map_err(|error| error.to_string())?
+        .format(&Rfc3339)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(feature = "wasm")]
+fn epub_modified_timestamp() -> Result<String, String> {
+    let value = js_sys::Date::new_0()
+        .to_iso_string()
+        .as_string()
+        .ok_or_else(|| "JavaScript Date did not return an ISO timestamp".to_owned())?;
+    Ok(value
+        .find('.')
+        .map_or(value.clone(), |fraction| format!("{}Z", &value[..fraction])))
 }
 fn epub_file<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
@@ -2488,7 +3648,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
         }
         "listItem" => wrapped(out, "li", children),
         "thematicBreak" => out.push_str("<hr>"),
-        "break" => out.push_str("<br>"),
+        "break" => out.push_str("<br class=\"mdi-break\"/>"),
         "inlineCode" => {
             out.push_str("<code>");
             out.push_str(&escape_html(
@@ -2545,17 +3705,55 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             ));
             out.push_str("\">");
         }
-        "table" => wrapped(out, "table", children),
+        "table" => {
+            out.push_str("<table>");
+            for (row_index, row) in crate::children(node).iter().enumerate() {
+                if row_index == 0 {
+                    out.push_str("<thead>");
+                }
+                if row_index == 1 {
+                    out.push_str("<tbody>");
+                }
+                out.push_str("<tr>");
+                for cell in crate::children(row) {
+                    out.push_str(if row_index == 0 {
+                        "<th scope=\"col\">"
+                    } else {
+                        "<td>"
+                    });
+                    for child in crate::children(cell) {
+                        render_html_node(child, out);
+                    }
+                    out.push_str(if row_index == 0 { "</th>" } else { "</td>" });
+                }
+                out.push_str("</tr>");
+                if row_index == 0 {
+                    out.push_str("</thead>");
+                }
+            }
+            if crate::children(node).len() > 1 {
+                out.push_str("</tbody>");
+            }
+            out.push_str("</table>");
+        }
         "tableRow" => wrapped(out, "tr", children),
         "tableCell" => wrapped(out, "td", children),
         "footnoteReference" => {
+            let identifier = node
+                .get("identifier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
             let label = node
                 .get("label")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default();
-            out.push_str("<sup class=\"footnote-ref\">");
+            out.push_str("<sup class=\"footnote-ref\"><a href=\"#user-content-fn-");
+            out.push_str(&escape_html(identifier));
+            out.push_str("\" id=\"user-content-fnref-");
+            out.push_str(&escape_html(identifier));
+            out.push_str("\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">");
             out.push_str(&escape_html(label));
-            out.push_str("</sup>");
+            out.push_str("</a></sup>");
         }
         "footnoteDefinition" | "definition" => {}
         "html" => out.push_str(&escape_html(
@@ -2589,11 +3787,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             children(out);
             out.push_str("</span>");
         }
-        "warichu" => {
-            out.push_str("<span class=\"mdi-warichu\">");
-            children(out);
-            out.push_str("</span>");
-        }
+        "warichu" => warichu::render(crate::children(node), out),
         "kern" => {
             out.push_str("<span class=\"mdi-kern\" style=\"--mdi-kern:");
             out.push_str(&escape_html(
@@ -2685,10 +3879,21 @@ pub fn parse_inlines(source: &str) -> Vec<Inline> {
         .collect()
 }
 
+fn parse_document_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
+    parse_inline_parts_with(source, true)
+}
+
 /// Parse MDI inline syntax and retain each node's raw byte range relative to
 /// `source`.  Escaped text deliberately retains the range of its spelling in
 /// the source even when its rendered value is shorter.
 fn parse_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
+    parse_inline_parts_with(source, false)
+}
+
+fn parse_inline_parts_with(
+    source: &str,
+    decode_commonmark_escapes: bool,
+) -> Vec<(Inline, usize, usize)> {
     let mut out = Vec::new();
     let mut text = String::new();
     let mut text_start = 0;
@@ -2704,7 +3909,7 @@ fn parse_inline_parts(source: &str) -> Vec<(Inline, usize, usize)> {
                 index += slash.len_utf8();
                 continue;
             };
-            if is_escapable(next) {
+            if is_escapable(next) || (decode_commonmark_escapes && next.is_ascii_punctuation()) {
                 text.push(next);
             } else {
                 text.push(slash);
@@ -3162,11 +4367,28 @@ fn classify_block_macro(source: &str) -> BlockMacroClass {
 #[cfg(feature = "wasm")]
 mod wasm {
     use super::{
-        BlockMacroClass, PagebreakVariant, RubyReading, TextFormat, classify_block_macro,
-        parse_json, render_docx, render_epub, render_html, render_text, render_text_format,
-        serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
+        BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, SourceSpan, TextFormat,
+        apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
+        page_size_catalog_json, parse_json, parse_mdast_json, prepare_chromium_print_profile_json,
+        render_docx, render_docx_with_profile, render_epub, render_epub_with_profile, render_html,
+        render_text, render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
+        resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
+
+    /// Presentation-only layout of already parsed inline IR. No syntax parsing.
+    #[wasm_bindgen(js_name = layoutWarichuOptionsJson)]
+    pub fn wasm_layout_warichu_options_json(nodes: &str, options: &str) -> Result<String, JsValue> {
+        super::layout_warichu_options_json(nodes, options).map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen(js_name = layoutWarichuJson)]
+    pub fn wasm_layout_warichu_json(nodes_json: &str, capacity: u32) -> Result<String, JsValue> {
+        let nodes: Vec<serde_json::Value> = serde_json::from_str(nodes_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        serde_json::to_string(&super::layout_warichu(&nodes, capacity as usize))
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
 
     /// Parse with Rust and return the versioned MDI IR as JSON.
     ///
@@ -3176,10 +4398,117 @@ mod wasm {
         parse_json(source)
     }
 
+    #[wasm_bindgen(js_name = parseMdiSyntaxWithOptionsJson)]
+    pub fn wasm_parse_mdi_syntax_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(super::parse_json_with_options(source, options))
+    }
+
+    #[wasm_bindgen(js_name = parseMdiMdastWithOptionsJson)]
+    pub fn wasm_parse_mdi_mdast_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(super::parse_mdast_json_with_options(source, options))
+    }
+
+    /// Parse through Rust with transient metadata for the mdast adapter only.
+    #[wasm_bindgen(js_name = parseMdiMdastJson)]
+    pub fn wasm_parse_mdi_mdast_json(source: &str) -> String {
+        parse_mdast_json(source)
+    }
+
+    #[wasm_bindgen(js_name = getMdiTextBlocksWithOptionsJson)]
+    pub fn wasm_get_mdi_text_blocks_with_options_json(
+        source: &str,
+        options: &str,
+    ) -> Result<String, JsValue> {
+        let options = serde_json::from_str::<super::ParseOptions>(options)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(
+            serde_json::to_string(&super::get_mdi_text_blocks_with_options(source, options))
+                .expect("serializable text projection"),
+        )
+    }
+
+    /// Project source-order searchable text and exact UTF-8 source maps in Rust.
+    #[wasm_bindgen(js_name = getMdiTextBlocksJson)]
+    pub fn wasm_get_mdi_text_blocks_json(source: &str) -> String {
+        get_mdi_text_blocks_json(source)
+    }
+
+    /// Resolve a half-open UTF-8 source span to canonical text ranges in Rust.
+    #[wasm_bindgen(js_name = resolveMdiSourceSpanJson)]
+    pub fn wasm_resolve_mdi_source_span_json(
+        source: &str,
+        start_byte: u32,
+        end_byte: u32,
+    ) -> Result<String, JsValue> {
+        resolve_mdi_source_span_json(
+            source,
+            SourceSpan {
+                start_byte,
+                end_byte,
+            },
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    /// Resolve many half-open UTF-8 source spans after one Rust parse.
+    #[wasm_bindgen(js_name = resolveMdiSourceSpansJson)]
+    pub fn wasm_resolve_mdi_source_spans_json(
+        source: &str,
+        spans_json: &str,
+    ) -> Result<String, JsValue> {
+        let spans: Vec<SourceSpan> = serde_json::from_str(spans_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid source spans JSON: {error}")))?;
+        resolve_mdi_source_spans_json(source, &spans)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
     /// Render source through the Rust parser and Rust HTML renderer.
     #[wasm_bindgen(js_name = renderHtml)]
     pub fn wasm_render_html(source: &str) -> String {
         render_html(source)
+    }
+
+    /// Validate and resolve the language-neutral configured-export profile.
+    #[wasm_bindgen(js_name = resolveExportProfileJson)]
+    pub fn wasm_resolve_export_profile_json(
+        profile_json: &str,
+        source_writing_mode: Option<String>,
+        require_layout: bool,
+    ) -> Result<String, JsValue> {
+        resolve_export_profile_json(profile_json, source_writing_mode.as_deref(), require_layout)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
+    #[wasm_bindgen(js_name = pageSizeCatalogJson)]
+    pub fn wasm_page_size_catalog_json() -> Result<String, JsValue> {
+        page_size_catalog_json().map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Apply canonical Rust-owned print CSS to HTML using a resolved profile.
+    #[wasm_bindgen(js_name = applyPdfProfileJson)]
+    pub fn wasm_apply_pdf_profile_json(html: &str, profile_json: &str) -> Result<String, JsValue> {
+        apply_pdf_profile_json(html, profile_json).map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Resolve and prepare all browser-independent Chromium print data.
+    #[wasm_bindgen(js_name = prepareChromiumPrintProfileJson)]
+    pub fn wasm_prepare_chromium_print_profile_json(
+        html: &str,
+        profile_json: &str,
+        source_writing_mode: Option<String>,
+    ) -> Result<String, JsValue> {
+        prepare_chromium_print_profile_json(html, profile_json, source_writing_mode.as_deref())
+            .map_err(|message| JsValue::from_str(&message))
     }
 
     /// Normalize source through the Rust parser and canonical serializer.
@@ -3214,10 +4543,38 @@ mod wasm {
             .map_err(|message| JsValue::from_str(&message))
     }
 
+    /// Build a configured EPUB through the same Rust path used by native bindings.
+    #[wasm_bindgen(js_name = renderEpubWithProfile)]
+    pub fn wasm_render_epub_with_profile(
+        source: &str,
+        profile_json: &str,
+        cover_data: &[u8],
+        cover_media_type: Option<String>,
+    ) -> Result<Box<[u8]>, JsValue> {
+        let cover = cover_media_type.map(|media_type| EpubCover {
+            data: cover_data.to_vec(),
+            media_type,
+        });
+        render_epub_with_profile(source, profile_json, cover.as_ref())
+            .map(Vec::into_boxed_slice)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
     /// Build a baseline DOCX archive entirely in Rust.
     #[wasm_bindgen(js_name = renderDocx)]
     pub fn wasm_render_docx(source: &str) -> Result<Box<[u8]>, JsValue> {
         render_docx(source)
+            .map(Vec::into_boxed_slice)
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Build a configured DOCX through the canonical Rust OOXML writer.
+    #[wasm_bindgen(js_name = renderDocxWithProfile)]
+    pub fn wasm_render_docx_with_profile(
+        source: &str,
+        profile_json: &str,
+    ) -> Result<Box<[u8]>, JsValue> {
+        render_docx_with_profile(source, profile_json)
             .map(Vec::into_boxed_slice)
             .map_err(|message| JsValue::from_str(&message))
     }
@@ -3282,7 +4639,7 @@ mod wasm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Error, ErrorKind, Read, SeekFrom};
+    use std::io::{Error, Read, SeekFrom};
     use zip::ZipArchive;
 
     struct FailAfterWrites {
@@ -3293,10 +4650,7 @@ mod tests {
     impl Write for FailAfterWrites {
         fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
             if self.remaining == 0 {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "injected archive write failure",
-                ));
+                return Err(Error::other("injected archive write failure"));
             }
             self.remaining -= 1;
             self.inner.write(buffer)
@@ -3625,7 +4979,7 @@ mod tests {
                 .expect("parse output is valid JSON");
 
         assert_eq!(value["irVersion"], "1.0");
-        assert_eq!(value["syntaxVersion"], "2.0");
+        assert_eq!(value["syntaxVersion"], "2.1");
         assert_eq!(value["capabilities"]["mdi"], true);
         assert_eq!(value["capabilities"]["commonMark"], true);
         assert_eq!(value["capabilities"]["gfm"], true);
@@ -3660,6 +5014,123 @@ mod tests {
         let document = parse_document("> \\n\n`^12^`\n\n```mdi\n{東京|とうきょう}\n```\n");
         assert_eq!(document.children[0]["type"], "blockquote");
         assert!(document.children.iter().any(|node| node["type"] == "code"));
+    }
+
+    #[test]
+    fn parses_docs_frontmatter_examples_inside_backtick_fences() {
+        let source = "---\ntitle: Test\n---\n\n# Heading\n\n```mdi\n---\nmdi: \"2.0\"\ntitle: 雪女\nauthor: 小泉八雲\n---\n```\n\n**Prerequisites:** [What is MDI?](/learn/what-is-mdi/)";
+        assert!(!has_late_frontmatter_like_block(source));
+
+        let document = parse_document(source);
+        assert!(document.frontmatter.is_some());
+        assert_eq!(document.children[0]["type"], "heading");
+        assert_eq!(document.children[1]["type"], "code");
+        assert_eq!(document.children[2]["type"], "paragraph");
+        assert_eq!(document.children[2]["children"][0]["type"], "strong");
+        assert_eq!(document.children[2]["children"][2]["type"], "link");
+    }
+
+    #[test]
+    fn ignores_frontmatter_examples_inside_tilde_and_indented_fences() {
+        for source in [
+            "Text\n\n~~~mdi\n---\ntitle: example\n---\n~~~\n",
+            "Text\n\n   `````mdi\n---\ntitle: example\n---\n   ``````\n",
+        ] {
+            assert!(!has_late_frontmatter_like_block(source));
+            let document = parse_document(source);
+            assert!(document.children.iter().any(|node| node["type"] == "code"));
+        }
+    }
+
+    #[test]
+    fn still_detects_late_frontmatter_outside_fenced_code_blocks() {
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n---\ntitle: not frontmatter\n---\n"
+        ));
+    }
+
+    #[test]
+    fn code_fences_only_close_with_a_matching_character_and_sufficient_length() {
+        let source = "Text\n\n````mdi\n~~~\n```\n---\ntitle: fenced example\n---\n````\n\n---\ntitle: real late block\n---\n";
+        assert!(has_late_frontmatter_like_block(source));
+
+        let only_fenced_block =
+            "Text\n\n````mdi\n~~~\n```\n---\ntitle: fenced example\n---\n````\n";
+        assert!(!has_late_frontmatter_like_block(only_fenced_block));
+    }
+
+    #[test]
+    fn rejects_non_commonmark_fence_openers_and_closers() {
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n    ```mdi\n---\ntitle: late block\n---\n"
+        ));
+        assert!(has_late_frontmatter_like_block(
+            "Text\n\n```mdi`invalid\n---\ntitle: late block\n---\n"
+        ));
+
+        let trailing_text_does_not_close =
+            "Text\n\n```mdi\n``` trailing\n---\ntitle: fenced example\n---\n```\n";
+        assert!(!has_late_frontmatter_like_block(
+            trailing_text_does_not_close
+        ));
+    }
+
+    #[test]
+    fn assigns_versioned_rust_owned_mdast_provenance_without_text_matching() {
+        let document = parse_document_for_mdast("same {東京|とうきょう}\n\nsame");
+        let first = &document.children[0];
+        let second = &document.children[1];
+        assert_eq!(
+            first["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(first["mdiProvenance"]["construct"]["path"], "0");
+        assert_eq!(second["mdiProvenance"]["construct"]["path"], "1");
+        let ruby = first["children"]
+            .as_array()
+            .expect("paragraph children")
+            .iter()
+            .find(|child| child["type"] == "ruby")
+            .expect("ruby child");
+        assert_eq!(ruby["mdiProvenance"]["role"], "textBearing");
+        assert!(
+            ruby["mdiProvenance"]["targets"]
+                .as_array()
+                .expect("ruby targets")
+                .iter()
+                .any(|target| target["channel"] == "annotation")
+        );
+    }
+
+    #[test]
+    fn keeps_mdast_provenance_out_of_the_standard_binding_contract() {
+        fn contains_provenance(value: &serde_json::Value) -> bool {
+            match value {
+                serde_json::Value::Object(object) => {
+                    object.contains_key("mdiProvenance") || object.values().any(contains_provenance)
+                }
+                serde_json::Value::Array(values) => values.iter().any(contains_provenance),
+                _ => false,
+            }
+        }
+
+        let source = "---\ntitle: boundary\n---\n\n> - nested {東京|とうきょう}";
+        let standard: serde_json::Value = serde_json::from_str(&parse_json(source)).unwrap();
+        assert!(!contains_provenance(&standard));
+        let projection: serde_json::Value =
+            serde_json::from_str(&get_mdi_text_blocks_json(source)).unwrap();
+        assert!(!contains_provenance(&projection));
+
+        let mdast: serde_json::Value = serde_json::from_str(&parse_mdast_json(source))
+            .expect("mdast parse output is valid JSON");
+        assert_eq!(
+            mdast["document"]["children"][0]["mdiProvenance"]["version"],
+            MDI_MDAST_PROVENANCE_VERSION
+        );
+        assert_eq!(
+            mdast["document"]["frontmatter"]["mdiProvenance"]["construct"],
+            serde_json::json!({ "path": "frontmatter", "type": "yaml" })
+        );
     }
 
     #[test]
@@ -3742,6 +5213,11 @@ mod tests {
         assert!(html.contains("<h1>題</h1>"));
         assert!(html.contains("<ruby class=\"mdi-ruby\">東京<rp>（</rp><rt>とうきょう</rt>"));
         assert!(html.contains("<span class=\"mdi-tcy\">12</span>"));
+        assert!(html.contains("document.addEventListener('wheel'"));
+        assert!(html.contains("window.scrollBy({left:-delta,behavior:'auto'})"));
+
+        let horizontal = render_html("本文");
+        assert!(!horizontal.contains("document.addEventListener('wheel'"));
     }
 
     #[test]
@@ -3767,7 +5243,11 @@ mod tests {
             ("default boten", "[[em:傍点]]", "class=\"mdi-em\""),
             ("custom boten", "[[em:※:任意]]", "--mdi-em:&quot;※&quot;"),
             ("no-break", "[[no-break:改行禁止]]", "class=\"mdi-nobr\""),
-            ("explicit line break", "前[[br]]次", "<br>"),
+            (
+                "explicit line break",
+                "前[[br]]次",
+                "<br class=\"mdi-break\"/>",
+            ),
             ("blank backslash", "\\", "<p class=\"mdi-blank\"></p>"),
             ("blank br", "<br>", "<p class=\"mdi-blank\"></p>"),
             ("blank br slash", "<br />", "<p class=\"mdi-blank\"></p>"),
@@ -3837,6 +5317,34 @@ mod tests {
     }
 
     #[test]
+    fn canonical_serialization_preserves_footnotes_and_reference_definitions() {
+        let source = "本文[^1]と名前付き[^注]。\n\n[^1]: First.\n\n    Second paragraph with 👩🏽‍💻.\n\n    - nested one\n    - nested two\n\n[^注]: 日本語の注。\n\n参照 [link][id]。\n\n[id]: https://example.com \"Example\"";
+        let canonical = serialize_mdi(source);
+
+        assert!(canonical.contains("[^1]: First."));
+        assert!(canonical.contains("    Second paragraph with 👩🏽‍💻."));
+        assert!(canonical.contains("    - nested one"));
+        assert!(canonical.contains("[^注]: 日本語の注。"));
+        assert!(canonical.contains("[id]: https://example.com \"Example\""));
+        assert_eq!(serialize_mdi(&canonical), canonical);
+
+        let document = parse_document(&canonical);
+        let kinds = document
+            .children
+            .iter()
+            .filter_map(|node| node.get("type").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|kind| **kind == "footnoteDefinition")
+                .count(),
+            2
+        );
+        assert!(kinds.contains(&"definition"));
+    }
+
+    #[test]
     fn renders_plain_text_from_rust_ir() {
         assert_eq!(
             render_text("# 題\n\n{東京|とうきょう} ^12^"),
@@ -3865,6 +5373,67 @@ mod tests {
     }
 
     #[test]
+    fn note_renderer_defensively_degrades_partial_and_future_ir() {
+        let document = Document {
+            span: SourceSpan::default(),
+            frontmatter: None,
+            children: vec![
+                serde_json::json!({"type":"math", "value":"x < y"}),
+                serde_json::json!({
+                    "type":"paragraph",
+                    "children":[
+                        {"type":"inlineMath", "value":"x < y"},
+                        {"type":"text", "value":" "},
+                        {"type":"html", "value":"<i>raw</i>"},
+                        {"type":"text", "value":" "},
+                        {"type":"link", "url":"https://example.test/a>b", "children":[{"type":"text", "value":"link"}]},
+                        {"type":"text", "value":" "},
+                        {"type":"image", "url":"", "alt":"alt"},
+                        {"type":"footnoteReference", "identifier":"missing"}
+                    ]
+                }),
+                serde_json::json!({
+                    "type":"heading",
+                    "depth":1,
+                    "children":[
+                        {"type":"strong", "children":[{"type":"text", "value":"heading"}]},
+                        {"type":"text", "value":" "},
+                        {"type":"inlineMath", "value":"x < y"}
+                    ]
+                }),
+                serde_json::json!({
+                    "type":"blockquote",
+                    "children":[{
+                        "type":"paragraph",
+                        "children":[{"type":"inlineMath", "value":"quoted"}]
+                    }]
+                }),
+                serde_json::json!({
+                    "type":"list",
+                    "ordered":false,
+                    "children":[{"type":"listItem", "checked":true, "children":[]}]
+                }),
+                serde_json::json!({
+                    "type":"unknown",
+                    "children":[{"type":"text", "value":"readable"}]
+                }),
+                serde_json::json!({"type":"unknown"}),
+                serde_json::json!({"type":"blank"}),
+            ],
+        };
+        let rendered = render_note_document(&document, "");
+        assert!(rendered.contains("$$\nx < y\n$$"));
+        assert!(rendered.contains("$${x < y}$$"));
+        assert!(rendered.contains("<i>raw</i>"));
+        assert!(rendered.contains("link (https://example.test/a>b)"));
+        assert!(rendered.contains("画像: alt［注0］"));
+        assert!(rendered.contains("## heading x < y"));
+        assert!(rendered.contains("> quoted"));
+        assert!(rendered.contains("- [x] "));
+        assert!(rendered.contains("readable"));
+    }
+
+    #[test]
     fn renders_and_serializes_every_public_inline_and_block_variant() {
         let source = "---\ntitle: Variants\n---\n\n[[bottom]]\n本文\n\n## 中見出し\n\n### 小見出し\n\n> 引用\n\n1. 一\n2. 二\n\n- 箇条\n  - 巢狀\n\n```rust\nlet x = 1;\n```\n\n---\n\n| 見出し | 値 |\n| --- | --- |\n| [リンク](https://example.test \"題\") | ![画像](image.png) |\n\n~~削除~~ `code` [[br]][[warichu:割書]][[kern:1em:字]][[em:●:傍点]]\n";
 
@@ -3882,7 +5451,7 @@ mod tests {
             "<img src=\"image.png\" alt=\"画像\">",
             "<del>削除</del>",
             "<code>code</code>",
-            "<br>",
+            "<br class=\"mdi-break\"/>",
             "mdi-warichu",
             "mdi-kern",
             "--mdi-em:&quot;●&quot;",
@@ -3924,6 +5493,7 @@ mod tests {
             ("narou", TextFormat::Narou),
             ("kakuyomu", TextFormat::Kakuyomu),
             ("aozora", TextFormat::Aozora),
+            ("note", TextFormat::Note),
         ] {
             assert_eq!(TextFormat::parse(name), Some(format));
             assert!(!render_text_format(source, format, "　").is_empty());
@@ -3947,8 +5517,97 @@ mod tests {
             .read_to_string(&mut opf)
             .unwrap();
         assert!(opf.contains("<dc:title>Test</dc:title>"));
+        assert!(opf.contains("<meta property=\"dcterms:modified\">"));
         assert!(opf.contains("page-progression-direction=\"rtl\""));
         assert!(opf.contains("chapter-2.xhtml"));
+    }
+
+    #[test]
+    fn packages_epub_xhtml_with_nonempty_navigation_and_readable_image_fallbacks() {
+        let bytes = render_epub(
+            "---\ntitle: Test\n---\n\nopening\n\n[[pagebreak]]\n\n![remote](https://example.com/image.png)",
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+
+        let mut navigation = String::new();
+        zip.by_name("OEBPS/nav.xhtml")
+            .unwrap()
+            .read_to_string(&mut navigation)
+            .unwrap();
+        assert!(navigation.contains(">Chapter 1</a>"));
+        assert!(navigation.contains(">Chapter 2</a>"));
+        assert!(!navigation.contains("></a>"));
+
+        let mut opf = String::new();
+        zip.by_name("OEBPS/package.opf")
+            .unwrap()
+            .read_to_string(&mut opf)
+            .unwrap();
+        assert!(opf.contains(
+            "id=\"chapter-2\" href=\"chapter-2.xhtml\" media-type=\"application/xhtml+xml\"/"
+        ));
+        assert!(!opf.contains("remote-resources"));
+
+        let mut chapter = String::new();
+        zip.by_name("OEBPS/chapter-2.xhtml")
+            .unwrap()
+            .read_to_string(&mut chapter)
+            .unwrap();
+        assert!(chapter.contains(
+            "<span class=\"mdi-image-fallback\">Image: remote (https://example.com/image.png)</span>"
+        ));
+        assert!(!chapter.contains("<img"));
+    }
+
+    #[test]
+    fn packages_configured_epub_metadata_cover_chapters_and_local_footnotes() {
+        let cover = EpubCover {
+            data: vec![0x89, 0x50, 0x4e, 0x47],
+            media_type: "image/png".to_owned(),
+        };
+        let bytes = render_epub_with_profile(
+            "# One\n\nnote[^n]\n\n[[pagebreak]]\n\n## Two\n\nmore\n\n[^n]: text",
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "metadata":{"title":"Book","author":"Writer","publisher":"Press","identifier":"urn:test","language":"en","date":"2026-07-23"},
+                "typesetting":{"writingMode":"vertical","fontFamily":"Noto Serif JP","fontSize":11,"lineSpacing":1.5,"textIndentEm":2,"fullwidthSpaceIndent":true},
+                "pagination":{"gridMode":"typographic"},
+                "epub":{"chapterSplitLevel":"h2"}
+            }"#,
+            Some(&cover),
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut opf = String::new();
+        zip.by_name("OEBPS/package.opf")
+            .unwrap()
+            .read_to_string(&mut opf)
+            .unwrap();
+        assert!(opf.contains("<dc:title>Book</dc:title>"));
+        assert!(opf.contains("<dc:creator>Writer</dc:creator>"));
+        assert!(opf.contains("<dc:publisher>Press</dc:publisher>"));
+        assert!(opf.contains("<dc:date>2026-07-23</dc:date>"));
+        assert!(opf.contains("cover-image"));
+        assert!(opf.contains("page-progression-direction=\"rtl\""));
+        let mut css = String::new();
+        zip.by_name("OEBPS/style.css")
+            .unwrap()
+            .read_to_string(&mut css)
+            .unwrap();
+        assert!(css.contains("font-family:Noto Serif JP"));
+        assert!(css.contains("font-size:11pt"));
+        assert!(css.contains("line-height:1.5"));
+        let mut chapter = String::new();
+        zip.by_name("OEBPS/chapter-1.xhtml")
+            .unwrap()
+            .read_to_string(&mut chapter)
+            .unwrap();
+        assert!(chapter.contains("href=\"#user-content-fn-n\""));
+        assert!(chapter.contains("id=\"user-content-fn-n\""));
+        assert!(chapter.contains("href=\"#user-content-fnref-n\""));
+        assert!(zip.by_name("OEBPS/chapter-2.xhtml").is_ok());
+        assert!(zip.by_name("OEBPS/cover.png").is_ok());
     }
 
     #[test]
@@ -3968,6 +5627,193 @@ mod tests {
             .read_to_string(&mut core)
             .unwrap();
         assert!(core.contains("<dc:title>Test</dc:title>"));
+    }
+
+    #[test]
+    fn packages_configured_docx_geometry_typography_content_and_book_settings() {
+        let bytes = render_docx_with_profile(
+            "# {第一章|だいいっしょう}\n\n本文[^n]\n\n- 一\n- 二\n\n|項目|値|\n|-|-|\n|契約|有効|\n\n[link](https://example.com) ^12^ [[em:圏点]]\n\n[^n]: 脚注",
+            r#"{
+                "layout":{"system":"japanese-publisher","marginMode":"mirror","bindingSide":"right","gutter":3},
+                "metadata":{"title":"契約","author":"MDI"},
+                "typesetting":{"writingMode":"vertical","fontFamily":"Yu Mincho","fontSize":10.5,"fullwidthSpaceIndent":true},
+                "pagination":{"pageSize":"A4","landscape":true,"charactersPerLine":40,"linesPerPage":30,"gridMode":"strict","pageNumbers":{"enabled":true,"format":"fraction","position":"top-right"}}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(document.contains("<w:ruby>"));
+        assert!(document.contains("<w:lid w:val=\"ja-JP\"/>"));
+        assert!(document.contains("<w:eastAsianLayout"));
+        assert!(document.contains("<w:em w:val=\"dot\"/>"));
+        assert!(document.contains("<w:tbl>"));
+        assert!(document.contains("<w:footnoteReference w:id=\"1\"/>"));
+        assert!(document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:docGrid w:type=\"linesAndChars\""));
+        assert!(document.contains("<w:pgSz w:w=\"16838\" w:h=\"11906\"/>"));
+        assert!(document.contains("<w:hyperlink r:id=\"rId1\">"));
+
+        let mut settings = String::new();
+        zip.by_name("word/settings.xml")
+            .unwrap()
+            .read_to_string(&mut settings)
+            .unwrap();
+        assert!(settings.contains("<w:mirrorMargins/>"));
+        assert!(!settings.contains("rtlGutter"));
+
+        let mut header = String::new();
+        zip.by_name("word/header1.xml")
+            .unwrap()
+            .read_to_string(&mut header)
+            .unwrap();
+        assert!(header.contains("NUMPAGES"));
+        assert!(header.contains("<w:jc w:val=\"right\"/>"));
+        assert!(zip.by_name("word/footnotes.xml").is_ok());
+    }
+
+    #[test]
+    fn configured_docx_applies_table_direction_rules() {
+        let vertical_table = render_docx_with_profile(
+            "| 項目 | 値 |\n| --- | --- |\n| セル | 縦書き |",
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "typesetting":{"writingMode":"vertical","fontSize":10.5},
+                "pagination":{"pageSize":"A5","charactersPerLine":10,"linesPerPage":10,"gridMode":"typographic"}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(vertical_table)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(document.contains("<w:tblPr><w:bidiVisual/>"));
+        assert!(document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:tblBorders>"));
+        assert!(document.contains("<w:top w:val=\"single\""));
+        assert!(document.contains("<w:insideV w:val=\"single\""));
+
+        let horizontal_table = render_docx_with_profile(
+            "| Item | Value |\n| --- | --- |\n| Cell | Horizontal |",
+            r#"{
+                "layout":{"system":"word"},
+                "typesetting":{"writingMode":"horizontal","fontSize":11},
+                "pagination":{"pageSize":"A4","charactersPerLine":20,"linesPerPage":20,"gridMode":"typographic"}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(horizontal_table)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(!document.contains("<w:bidiVisual/>"));
+        assert!(!document.contains("<w:textDirection w:val=\"tbRl\"/>"));
+        assert!(document.contains("<w:tblBorders>"));
+        assert!(document.contains("<w:top w:val=\"single\""));
+    }
+
+    #[test]
+    fn configured_docx_rejects_word_limits_and_uses_typographic_spacing() {
+        let oversized = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"pagination":{"pageSize":"A0"}}"#,
+        )
+        .unwrap_err();
+        assert!(oversized.contains("22-inch maximum"));
+        let long_font = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"typesetting":{"fontFamily":"12345678901234567890123456789012"}}"#,
+        )
+        .unwrap_err();
+        assert!(long_font.contains("at most 31 characters"));
+
+        let bytes = render_docx_with_profile(
+            "text",
+            r#"{"layout":{"system":"word"},"typesetting":{"lineSpacing":1.5},"pagination":{"gridMode":"typographic","pageNumbers":{"enabled":false}}}"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert!(!document.contains("<w:docGrid"));
+        assert!(!document.contains("headerReference"));
+        assert!(!document.contains("footerReference"));
+    }
+
+    #[test]
+    fn configured_docx_renders_every_supported_block_and_inline_style() {
+        let source = r#"# Heading
+
+> Quote with *italic*, **bold**, and `inline code`.
+>
+> ```text
+> quoted code
+> ```
+
+```rust
+let first = 1;
+let second = 2;
+```
+
+---
+
+First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.png), ![](empty.png),
+[[warichu:small print]], [[kern:0.1em:spaced]], and {東京|とう.きょう}.
+
+[same link](https://example.com) and [same target](https://example.com)
+"#;
+        let bytes = render_docx_with_profile(
+            source,
+            r#"{
+                "layout":{"system":"japanese-publisher"},
+                "typesetting":{"writingMode":"horizontal","fontSize":12},
+                "pagination":{"charactersPerLine":10,"linesPerPage":10,"gridMode":"strict","pageNumbers":{"enabled":true,"format":"simple","position":"bottom-left"}}
+            }"#,
+        )
+        .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut document = String::new();
+        zip.by_name("word/document.xml")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        for marker in [
+            "MdiQuote",
+            "MdiCode",
+            "MdiThematicBreak",
+            "<w:i/>",
+            "<w:b/>",
+            "<w:strike/>",
+            "Courier New",
+            "<w:br/>",
+            "[Image: cover]",
+            "[Image]",
+            "<w:spacing w:val=\"24\"/>",
+            "<w:ruby>",
+            "w:charSpace=",
+        ] {
+            assert!(document.contains(marker), "missing DOCX marker: {marker}");
+        }
+        assert_eq!(document.matches("<w:hyperlink r:id=\"rId1\">").count(), 2);
+
+        let mut footer = String::new();
+        zip.by_name("word/footer1.xml")
+            .unwrap()
+            .read_to_string(&mut footer)
+            .unwrap();
+        assert!(footer.contains("<w:jc w:val=\"left\"/>"));
+        assert!(footer.contains("> PAGE <"));
     }
 
     #[test]
@@ -4048,6 +5894,41 @@ mod tests {
     }
 
     #[test]
+    fn parsing_marks_escaped_markdown_and_mdi_as_literal_text() {
+        for (source, visible) in [
+            (
+                r"\{東京\|とうきょう\} \[\[em\:強調\]\] \^12\^ \*\*太字\*\*",
+                "{東京|とうきょう} [[em:強調]] ^12^ **太字**",
+            ),
+            (r"\# 見出し", "# 見出し"),
+            (r"\- 箇条書き", "- 箇条書き"),
+            (r"\> 引用", "> 引用"),
+            (
+                r"\[リンク\]\(https\:\/\/example\.test\)",
+                "[リンク](https://example.test)",
+            ),
+        ] {
+            assert_eq!(
+                render_text(source).trim_end(),
+                visible,
+                "source: {source:?}"
+            );
+            let parsed = parse_document(source);
+            assert!(
+                parsed.children.iter().all(|node| {
+                    node.get("type").and_then(serde_json::Value::as_str) == Some("paragraph")
+                        && children(node).iter().all(|child| {
+                            child.get("type").and_then(serde_json::Value::as_str) == Some("text")
+                                && child.get("mdiLiteral").and_then(serde_json::Value::as_bool)
+                                    == Some(true)
+                        })
+                }),
+                "escaped source must be marked as literal text: {source:?}"
+            );
+        }
+    }
+
+    #[test]
     fn archive_exports_have_required_parts_and_escape_untrusted_metadata() {
         let source = "---\ntitle: 'A & < B \"quoted\"'\nauthor: 'O''Brien & Co.'\nlang: ja\n---\n\n# 題\n\n<unsafe>&\n\n[[pagebreak]]\n\n# 次\n";
 
@@ -4097,7 +5978,8 @@ mod tests {
             .unwrap()
             .read_to_string(&mut document)
             .unwrap();
-        assert!(document.contains("&lt;unsafe&gt;&amp;"));
+        assert!(document.contains("&lt;unsafe&gt;"));
+        assert!(document.contains("&amp;"));
     }
 
     #[test]
@@ -4454,6 +6336,23 @@ mod tests {
             .unwrap(),
             "東京 12\n"
         );
+        let format = b"note";
+        let indent = "　".as_bytes();
+        assert_eq!(
+            String::from_utf8(
+                ffi_bytes(ffi::mdi_render_text_format(
+                    source.as_ptr(),
+                    source.len(),
+                    format.as_ptr(),
+                    format.len(),
+                    indent.as_ptr(),
+                    indent.len(),
+                ))
+                .unwrap()
+            )
+            .unwrap(),
+            "　｜東京《とうきょう》 12"
+        );
         assert!(
             ffi_bytes(ffi::mdi_render_epub(source.as_ptr(), source.len()))
                 .unwrap()
@@ -4487,6 +6386,44 @@ mod tests {
         assert_eq!(
             ffi_bytes(ffi::mdi_render_epub(std::ptr::null(), 1)).unwrap_err(),
             "MDI source pointer is null"
+        );
+
+        let invalid_format = b"invalid";
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                invalid_format.as_ptr(),
+                invalid_format.len(),
+                std::ptr::null(),
+                0,
+            ))
+            .unwrap_err(),
+            "Unsupported text format: invalid"
+        );
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                std::ptr::null(),
+                1,
+                std::ptr::null(),
+                0,
+            ))
+            .unwrap_err(),
+            "MDI text format pointer is null"
+        );
+        assert_eq!(
+            ffi_bytes(ffi::mdi_render_text_format(
+                source.as_ptr(),
+                source.len(),
+                format.as_ptr(),
+                format.len(),
+                invalid_utf8.as_ptr(),
+                invalid_utf8.len(),
+            ))
+            .unwrap_err(),
+            "MDI text indent prefix must be valid UTF-8"
         );
     }
 }

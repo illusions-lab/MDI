@@ -6,7 +6,9 @@ internal object MdiNative {
         System.loadLibrary("mdi_android")
     }
 
+    external fun layoutWarichuJson(nodes: String, options: String): String
     external fun parseJson(source: String): String
+    external fun parseJsonWithOptions(source: String, includeComments: Boolean): String
     external fun renderHtml(source: String): String
     external fun serializeMdi(source: String): String
     external fun renderText(source: String): String

@@ -41,7 +41,7 @@ open("book.html", "w", encoding="utf-8").write(html)
 ```python
 mdi.MDI_SPEC_VERSION  # "2.0"
 mdi.MDI_IR_VERSION    # "1.0"
-mdi.TextFormat        # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora"]
+mdi.TextFormat        # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
 mdi.MdiRenderError
 mdi.parse(source: str) -> dict
 mdi.render_html(source: str) -> str
@@ -61,7 +61,7 @@ mdi.parse_mdi_syntax  # deprecated alias
 
 ## 診斷與錯誤處理
 
-一般格式不正確的 MDI 不會 raise，而以 literal fallback 處理；回傳 dict 的 `diagnostics` 唯一已實作 code 是 `mdi.version.unsupported`（見[診斷](/zh-tw/core/diagnostics/)）：
+一般格式不正確的 MDI 不會 raise，而以 literal fallback 處理；回傳 dict 的 `diagnostics` warning 完整清單見[診斷](/zh-tw/core/diagnostics/)：
 
 ```python
 result = mdi.parse("---\nmdi: '3.0'\n---\n\n本文")
@@ -84,16 +84,42 @@ def byte_span_to_str_index(source: str, byte_offset: int) -> int:
 
 ## 目前實作狀態
 
-以上功能都已發布並受測，並非 speculative binding。套件自己的測試會驗證 IR shape、diagnostic 格式、byte span、五種文字格式、EPUB/DOCX archive 結構與上述錯誤路徑，並強制至少 95% branch coverage。
+以上功能都已發布並受測，並非 speculative binding。套件自己的測試會驗證 IR shape、diagnostic 格式、byte span、六種文字格式、EPUB/DOCX archive 結構與上述錯誤路徑，並強制至少 95% branch coverage。
 
 ## 此綁定不做什麼
 
 - **尚無 PDF function。**Python 可以 spawn subprocess，沒有 WASM 那類根本限制，但 package 今天未 expose `mdi.render_pdf`；Python workflow 的 PDF 暫用 [CLI](/zh-tw/bindings/cli/)。
 - **沒有自己的 grammar。**每個 function 都直接呼叫同一個 `mdi-core`；若與 CLI 或 Rust 不一致，是這個約 60 行 wrapper 的 bug，而不是另一套 parser。
-- **不套用 export profile。**`render_epub`／`render_docx` 只收 `source`，仍是 Rust baseline renderer；cover、分章與頁面幾何尚未接入，見[Rust Core API](/zh-tw/core/rust-api/#尚未實作)。
+- **尚未提供 export profile 參數。**`render_epub`／`render_docx` 目前只收 `source`。設定型 EPUB/DOCX 已在 Rust 實作，只是 Python wrapper 尚未公開 profile 與 cover 參數。
 
 ## 下一步
 
 - [Rust Core API](/zh-tw/core/rust-api/)
 - [Document IR](/zh-tw/core/document-ir/)
 - [CLI](/zh-tw/bindings/cli/)
+
+## 自動割注排版
+
+分割規則由 Rust 統一實作。固定兩行、正文50%字級、零小行間距。首個片段可使用正文行剩餘容量，後續片段使用完整行容量。容量與回傳寬度以割注字級的半個em為單位；這是字寬估算，不保證比例字型的精確均衡。
+
+```python
+from mdi import layout_warichu
+fragments = layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
+```
+
+結果包含 `lines`、`html`、`widths`、`overflow`、`hardBreakAfter` 與 `sources`。`path` 是從輸入陣列起算的子節點索引路徑；`startUtf8` / `endUtf8` 是可見文字中的半開UTF-8位元組範圍。相同 `group` 保留跨格式邊界的書寫素。Ruby、縱中橫及no-break保持不可拆。作者硬換行保留，自動分割不寫回canonical MDI或純文字。靜態HTML/EPUB的閱讀器重排結果可能不同。DOCX使用原生雙行群組；XML與匯入器檢查不代表Word實測。
+
+
+## Editorial comments in MDI 2.1
+
+```python
+mdi.parse(source, include_comments=True)
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

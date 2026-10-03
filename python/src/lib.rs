@@ -6,8 +6,13 @@ use pyo3::types::PyBytes;
 create_exception!(mdi._native, MdiRenderError, pyo3::exceptions::PyException);
 
 #[pyfunction]
-fn parse_json(source: &str) -> String {
-    mdi_core::parse_json(source)
+fn layout_warichu_json(nodes: &str, options: &str) -> PyResult<String> {
+    mdi_core::layout_warichu_options_json(nodes, options).map_err(PyValueError::new_err)
+}
+
+#[pyfunction(signature = (source, *, include_comments=false))]
+fn parse_json(source: &str, include_comments: bool) -> String {
+    mdi_core::parse_json_with_options(source, mdi_core::ParseOptions { include_comments })
 }
 #[pyfunction]
 fn render_html(source: &str) -> String {
@@ -47,7 +52,9 @@ fn render_docx<'py>(py: Python<'py>, source: &str) -> PyResult<Bound<'py, PyByte
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("MDI_SPEC_VERSION", mdi_core::MDI_SPEC_VERSION)?;
     module.add("MDI_IR_VERSION", mdi_core::MDI_IR_VERSION)?;
+    module.add("MDI_COMMENT_IR_VERSION", mdi_core::MDI_COMMENT_IR_VERSION)?;
     module.add("MdiRenderError", module.py().get_type::<MdiRenderError>())?;
+    module.add_function(wrap_pyfunction!(layout_warichu_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_json, module)?)?;
     module.add_function(wrap_pyfunction!(render_html, module)?)?;
     module.add_function(wrap_pyfunction!(serialize_mdi, module)?)?;

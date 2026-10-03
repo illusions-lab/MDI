@@ -16,7 +16,7 @@
 
 **illusion Markdown（MDI）** は、日本語の出版・組版のための Markdown です。使い慣れた Markdown をそのまま保ちながら、ルビ、縦中横、傍点、割注、縦書き、ページを意識した出力といった日本語の文章表現に必要な機能を加えます。
 
-`.mdi` 文書を一度書けば、HTML、PDF、EPUB、DOCX、そしてカクヨム・小説家になろう・青空文庫向けのテキスト形式に出力できます。通常の CommonMark と GFM は有効な MDI でもあるため、必要な箇所だけで MDI の機能を使い始められます。
+`.mdi` 文書を一度書けば、HTML、PDF、EPUB、DOCX、そして note・カクヨム・小説家になろう・青空文庫向けのテキスト形式に出力できます。通常の CommonMark と GFM は有効な MDI でもあるため、必要な箇所だけで MDI の機能を使い始められます。
 
 ```mdi
 # 春は曙
@@ -38,8 +38,9 @@
 | JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/ja/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript / TypeScript ドキュメント" /></a> |
 | Python | [`python/`](./python) | <a href="https://mdi.illusions.app/ja/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python ドキュメント" /></a> |
 | Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/ja/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift ドキュメント" /></a> |
-| Android / Kotlin | [`android/`](./android) | <a href="https://mdi.illusions.app/ja/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android / Kotlin ドキュメント" /></a> |
+| Android / Kotlin *（開発中）* | [`android/`](./android) | <a href="https://mdi.illusions.app/ja/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android / Kotlin ドキュメント" /></a> |
 
+> **Android / Kotlin の状態:** バインディングは現在開発中で、Maven Central では安定版の公開パッケージとしてまだ配布していません。
 
 ## リポジトリ構成
 
@@ -86,7 +87,7 @@ cargo build
 cargo test
 ```
 
-WASM ブリッジのビルドには、`wasm32-unknown-unknown` Rust ターゲットと `wasm-pack` も必要です。Node ワークスペースのビルドが自動で実行します。CI は Rust core を Linux、macOS、Windows の x64 と ARM64 でテストし、Chromium PDF 出力を含む JavaScript 結合テストを Linux x64 で実行します。
+WASM ブリッジのビルドには、`wasm32-unknown-unknown` Rust ターゲットと `wasm-pack` も必要です。Node ワークスペースのビルドが自動で実行します。CI は最初に Node.js、Rust（Linux・macOS・Windows の x64 / ARM64）、Swift、Python、Android の unit test と coverage を実行します。すべて通過してから、.NET Open XML SDK、LibreOffice、Chromium、W3C EPUBCheck、HTML contract で publication output を検証します。
 
 ## リリース
 

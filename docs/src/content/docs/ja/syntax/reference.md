@@ -236,7 +236,7 @@ GFM/Pandoc の脚注記法をそのまま継承します。MDI 独自の記法�
 
 ## TXT 書き出しフレーバー
 
-`render_text_format`（Rust）と CLI の `--to <flavor>` は5種類のフレーバーを実装します。
+`render_text_format`（Rust）と CLI の `--to <flavor>` は6種類のフレーバーを実装します。
 
 | フレーバー | ルビ | 傍点 | 備考 |
 | --- | --- | --- | --- |
@@ -245,6 +245,7 @@ GFM/Pandoc の脚注記法をそのまま継承します。MDI 独自の記法�
 | `narou` | 公式の10字／10字上限内で `｜base《reading》` | 一字ずつの圏点ルビ | 小説家になろう投稿形式。公式の問題文字や上限超過は親文字へフラット化 |
 | `kakuyomu` | 公式の20字／50字上限内で `｜base《reading》` | ネイティブな `《《text》》` | リテラル `《` は `｜《`、ルビと傍点の重複時はルビを保持 |
 | `aozora` | `｜base《reading》` | `［＃傍点］text［＃傍点終わり］` | 青空文庫注記。CLI は Shift_JIS・CRLF で、範囲外文字をエラーにする |
+| `note` | `｜base《reading》` | readable text へ flatten | UTF-8 の note editor input。見出し、太字、取消線、list、引用、code/Mermaid、区切り線、ruby、TeX を保持。[note 書き出し](/ja/ecosystem/note/) |
 
 出力は各公式文書（[なろうのルビ](https://syosetu.com/helpcenter/helppage/helppageid/42/)、[カクヨム記法](https://kakuyomu.jp/help/entry/notation)、[青空文庫作業マニュアル](https://www.aozora.gr.jp/aozora-manual/index-input.html) と [注記一覧](https://www.aozora.gr.jp/annotation/)）に対する契約テストで検証します。合法な対応表現がない構成要素は、不正な記法を出さず親文字へフラット化します。青空文庫の見出しは公式の大・中・小階層に従い、4種類以上の階層がある場合は下位を無注記にして、指定された説明をファイル末へ追記します。完全な対応表は [CLI ページ](/ja/bindings/cli/) と `SYNTAX.md` の TXT Export Flavors 節を参照してください。
 
@@ -253,3 +254,8 @@ GFM/Pandoc の脚注記法をそのまま継承します。MDI 独自の記法�
 - [ライブ・ショーケース](/ja/syntax/showcase/) — 記法の表示例を確認する。
 - [ドキュメント IR](/ja/core/document-ir/) — 解析結果の構造を確認する。
 - [互換性と移行](/ja/ecosystem/compatibility/) — 仕様と実装の差異を確認する。
+
+
+## Editorial comments in MDI 2.1
+
+[Editorial comments in MDI 2.1](/ja/syntax/comments/)

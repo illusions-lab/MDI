@@ -1,0 +1,19 @@
+[
+  {"name":"empty", "source":"前<!---->後", "values":[""]},
+  {"name":"unicode", "source":"前<!-- 雪☃ -->後", "values":[" 雪☃ "]},
+  {"name":"multiline", "source":"前<!--\n注釈\n-->後", "values":["\n注釈\n"]},
+  {"name":"adjacent", "source":"前<!--a--><!--b-->後", "values":["a","b"]},
+  {"name":"nearest-close", "source":"前<!--a<!--b-->後", "values":["a<!--b"]},
+  {"name":"macro-boundaries", "source":"[[em:前<!-- ]] [[em:x]] -->後]]", "values":[" ]] [[em:x]] "]},
+  {"name":"literal-payload", "source":"前<!-- &amp; \\n **text** <html> -->後", "values":[" &amp; \\n **text** <html> "]},
+  {"name":"block", "source":"<!-- hidden -->\n\n本文", "values":[" hidden "]},
+  {"name":"list", "source":"- 前<!-- hidden -->後", "values":[" hidden "]},
+  {"name":"quote", "source":"> 前<!-- hidden -->後", "values":[" hidden "]},
+  {"name":"table", "source":"| 前<!-- hidden|cell -->後 |\n| --- |", "values":[" hidden|cell "]},
+  {"name":"code", "source":"`<!--literal-->`", "values":[]},
+  {"name":"escaped", "source":"\\<!--literal-->", "values":[]},
+  {"name":"ruby", "source":"{<!--literal-->|reading}", "values":[]},
+  {"name":"url", "source":"[label](a<!--literal-->)", "values":[]},
+  {"name":"version-20", "source":"---\nmdi: '2.0'\n---\n前<!-- hidden -->後", "values":[" hidden "]},
+  {"name":"version-21", "source":"---\nmdi: '2.1'\n---\n前<!-- hidden -->後", "values":[" hidden "]}
+]

@@ -32,11 +32,21 @@ def assert_valid_spans(node: dict[str, Any], source: str) -> None:
         assert_valid_spans(child, source)
 
 
+def assert_key_absent(value: Any, forbidden: str) -> None:
+    if isinstance(value, dict):
+        assert forbidden not in value
+        for child in value.values():
+            assert_key_absent(child, forbidden)
+    elif isinstance(value, list):
+        for child in value:
+            assert_key_absent(child, forbidden)
+
+
 def test_exposes_the_complete_versioned_rust_document_contract() -> None:
     result = mdi.parse(SOURCE)
 
     assert result["irVersion"] == mdi.MDI_IR_VERSION == "1.0"
-    assert result["syntaxVersion"] == mdi.MDI_SPEC_VERSION == "2.0"
+    assert result["syntaxVersion"] == mdi.MDI_SPEC_VERSION == "2.1"
     assert result["capabilities"] == {
         "mdi": True,
         "commonMark": True,
@@ -59,6 +69,18 @@ def test_exposes_the_complete_versioned_rust_document_contract() -> None:
     assert_valid_spans(result["document"], SOURCE)
 
 
+def test_general_parse_wire_json_never_exposes_mdast_provenance() -> None:
+    result = mdi.parse(
+        "---\ntitle: provenance isolation\n---\n\n"
+        "> - {東京|とうきょう} ^12^  \n"
+        ">   continuation\n\n"
+        "| image | empty |\n| - | - |\n| ![alt](cover.png) | ![](empty.png) |"
+    )
+
+    assert_key_absent(result, "mdiProvenance")
+    assert '"mdiProvenance"' not in json.dumps(result, ensure_ascii=False)
+
+
 def test_rust_owns_nested_syntax_decisions_and_literal_fallbacks() -> None:
     result = mdi.parse("**第^12^話**\n\n| a | b |\n| - | - |\n| 1 | 2 |")
     assert [node["type"] for node in result["document"]["children"]] == ["paragraph", "table"]
@@ -76,10 +98,33 @@ def test_returns_recoverable_diagnostics_with_utf8_byte_spans() -> None:
     assert result["diagnostics"] == [{
         "severity": "warning",
         "code": "mdi.version.unsupported",
-        "message": "MDI 3.0 is newer than the supported 2.0",
+        "message": "MDI 3.0 is newer than the supported 2.1",
         "span": {"startByte": 0, "endByte": 18},
     }]
     assert result["document"]["span"]["endByte"] == len(source.encode())
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "\\{}《《傍点》》\n\n\\[{東京|とう.きょう}",
+        "👨‍👩‍👧 [[em:**強調**]] [^n]\n\n[^n]: 注",
+        "[[indent:2]]\n{𠮟る|しか.る} [[no-break:^12^]]\n\n[[pagebreak:left]]",
+        "```mdi\n{東京|とうきょう}\n```\n\n| a | b |\n| - | - |\n| [[em:x]] | ^12^ |",
+    ],
+)
+def test_keeps_the_js_adversarial_corpus_inside_the_rust_wire_contract(
+    source: str,
+) -> None:
+    result = mdi.parse(source)
+
+    assert result["document"]["span"] == {
+        "startByte": 0,
+        "endByte": len(source.encode()),
+    }
+    assert_valid_spans(result["document"], source)
+    assert mdi.render_html(source).startswith("<!DOCTYPE html>")
+    assert mdi.parse(mdi.serialize_mdi(source))["irVersion"] == mdi.MDI_IR_VERSION
 
 
 def test_serializes_and_renders_complete_source_in_rust() -> None:
@@ -98,6 +143,7 @@ def test_serializes_and_renders_complete_source_in_rust() -> None:
         ("narou", "　｜東京《とうきょう》"),
         ("kakuyomu", "　｜東京《とうきょう》"),
         ("aozora", "　｜東京《とうきょう》"),
+        ("note", "　｜東京《とうきょう》"),
     ],
 )
 def test_renders_every_public_text_format(format: mdi.TextFormat, expected: str) -> None:
@@ -124,8 +170,10 @@ def test_packaged_archives_are_created_in_rust_with_required_parts() -> None:
 
 def test_public_api_exports_and_legacy_alias() -> None:
     assert set(mdi.__all__) == {
+        "layout_warichu",
         "MDI_IR_VERSION",
         "MDI_SPEC_VERSION",
+        "MDI_COMMENT_IR_VERSION",
         "MdiRenderError",
         "TextFormat",
         "parse",
@@ -165,3 +213,11 @@ def test_text_format_validation_and_unsupported_ir_guard(monkeypatch: pytest.Mon
     monkeypatch.setattr(mdi._native, "parse_json", lambda _source: json.dumps({"irVersion": "999.0"}))
     with pytest.raises(RuntimeError, match="Unsupported MDI IR version: 999.0"):
         mdi.parse("text")
+
+
+def test_warichu_layout_options_and_source_paths():
+    import mdi
+    result = mdi.layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
+    assert [f["widths"] for f in result] == [[2, 2], [4, 4]]
+    assert result[1]["sources"][0][0]["startUtf8"] == 6
+    assert result[1]["html"] == ["三四", "五六"]

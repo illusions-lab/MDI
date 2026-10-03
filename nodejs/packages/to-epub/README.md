@@ -1,8 +1,9 @@
 # @illusions-lab/mdi-to-epub
 
-Creates an EPUB 3 archive from an MDI-flavoured mdast tree. The adapter keeps
-support for profile metadata, chapter splitting, cover images, and unified
-integration; it does not parse MDI.
+Creates an EPUB 3 archive from an MDI-flavoured mdast tree. The compatibility
+entry point keeps unified integration, while profile validation, chapter
+splitting, cover packaging, XHTML, and ZIP generation all use the shared Rust
+implementation.
 
 ## Install
 
@@ -23,11 +24,11 @@ const archive = await mdiToEpub(mdastTree, {
 
 For complete `.mdi` source, use `renderEpub(source)` from
 [`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi).
-The Rust-first CLI follows that route.
+The CLI follows that route as well.
 
 ## Documentation
 
 - [Output model](https://mdi.illusions.app/ecosystem/outputs/)
-- [Export-profile guide](https://mdi.illusions.app/guides/export-profiles/)
+- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
 - [API reference](https://mdi.illusions.app/api/to-epub/)
 - [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)

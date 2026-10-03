@@ -17,7 +17,7 @@
 
 **illusion Markdown (MDI)** is Markdown for Japanese publishing. It preserves the Markdown you already know while adding the typography that Japanese prose needs: ruby readings, tate-chu-yoko, boten, warichu, vertical writing, and page-aware output.
 
-Write an `.mdi` document once, then render it as HTML, PDF, EPUB, DOCX, or text formats for platforms such as Kakuyomu, Narou, and Aozora Bunko. Ordinary CommonMark and GFM remain valid MDI, so you can introduce MDI features only where your document needs them.
+Write an `.mdi` document once, then render it as HTML, PDF, EPUB, DOCX, or text formats for platforms such as note, Kakuyomu, Narou, and Aozora Bunko. Ordinary CommonMark and GFM remain valid MDI, so you can introduce MDI features only where your document needs them.
 
 ```mdi
 # 春は曙
@@ -39,8 +39,9 @@ The language toolkits below call this same parser instead of reimplementing the 
 | JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript and TypeScript documentation" /></a> |
 | Python | [`python/`](./python) | <a href="https://mdi.illusions.app/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python documentation" /></a> |
 | Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift documentation" /></a> |
-| Android / Kotlin | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
+| Android / Kotlin *(in development)* | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
 
+> **Android / Kotlin status:** the binding is still in development and is not yet published as a stable public package on Maven Central.
 
 
 ## Repository layout
@@ -89,17 +90,11 @@ cargo build
 cargo test
 ```
 
-Building the WASM bridge also requires the `wasm32-unknown-unknown` Rust target and `wasm-pack`; the Node workspace build runs it automatically. CI tests the Rust core on Linux, macOS, and Windows for x64 and ARM64, and runs the JavaScript integration suite including Chromium PDF output on Linux x64.
+Building the WASM bridge also requires the `wasm32-unknown-unknown` Rust target and `wasm-pack`; the Node workspace build runs it automatically. CI first runs the unit and coverage suites for Node.js, Rust (Linux, macOS, and Windows on x64 and ARM64), Swift, Python, and Android. Only after they pass does it validate publication output with the .NET Open XML SDK, LibreOffice, Chromium, W3C EPUBCheck, and HTML contracts.
 
 ## Releases
 
-Package versions use `<MDI spec version>.<package release number>`; for MDI 2.0, releases begin at `2.0.1`. Use a patch Changeset for ordinary releases. Merging to `main` makes GitHub Actions build and publish packages through npm Trusted Publishing (OIDC).
-
-```bash
-cd nodejs
-pnpm changeset
-pnpm version
-```
+Package versions use `<MDI spec version>.<package release number>`; for MDI 2.0, releases begin at `2.0.1`. Merging a user-visible JavaScript change to `main` makes GitHub Actions calculate the next registry patch, build the publishable tarballs, and publish through npm Trusted Publishing (OIDC). Do not manually edit published npm package versions for a normal release.
 
 For an MDI specification version bump, run `pnpm bump-spec-version 2.1` from `nodejs/`.
 

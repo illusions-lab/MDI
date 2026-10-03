@@ -26,7 +26,7 @@ export function resolveFrontmatter(tree: Root): void {
 
 	tree.data ??= {};
 	tree.data.frontmatter = {
-		mdi: stringValue(source.mdi) ?? "2.0",
+		mdi: stringValue(source.mdi) ?? "2.1",
 		title: stringValue(source.title),
 		author: stringValue(source.author),
 		lang: stringValue(source.lang) ?? "ja",

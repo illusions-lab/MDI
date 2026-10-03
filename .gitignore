@@ -3,6 +3,9 @@ dist
 .turbo
 *.tsbuildinfo
 coverage
+.coverage
+/output/
+/tmp/
 .DS_Store
 *.log
 target/

@@ -6,6 +6,7 @@ import {
   getPageSizeLabel,
   listPageSizes,
   parseExportProfileJson,
+  requireLayoutSystem,
   resolveExportProfile,
   resolvePrintProfile,
 } from "./index.js";
@@ -96,6 +97,23 @@ describe("export profiles", () => {
     expect(() => parseExportProfileJson('{"pagination":{}}'))
       .toThrow("Configured exports require layout.system");
   });
+  it("requires an explicit layout system at configured-export boundaries", () => {
+    expect(() =>
+      requireLayoutSystem({ layout: { system: "japanese-publisher" } })
+    ).not.toThrow();
+    expect(() => requireLayoutSystem({})).toThrow(
+      "Configured exports require layout.system"
+    );
+    expect(() => requireLayoutSystem(null as never)).toThrow(
+      "Export profile must be an object"
+    );
+    expect(() => requireLayoutSystem(0 as never)).toThrow(
+      "Export profile must be an object"
+    );
+    expect(() => requireLayoutSystem([] as never)).toThrow(
+      "Export profile must be an object"
+    );
+  });
   it("adds a publisher gutter at the selected single-sheet binding edge", () => {
     const rightBound = resolveExportProfile({
       layout: { system: "japanese-publisher", bindingSide: "right", gutter: 6 },
@@ -180,6 +198,18 @@ describe("export profiles", () => {
   it("rejects malformed profiles", () => {
     expect(() => parseExportProfileJson("[]")).toThrow("JSON object");
     expect(() => parseExportProfileJson("{")).toThrow("valid JSON");
+    expect(() => parseExportProfileJson(null as never)).toThrow(
+      "source must be a string"
+    );
+    expect(() => resolvePrintProfile(null as never)).toThrow(
+      "Export profile must be an object"
+    );
+    expect(() => resolvePrintProfile(0 as never)).toThrow(
+      "Export profile must be an object"
+    );
+    expect(() => resolvePrintProfile([] as never)).toThrow(
+      "Export profile must be an object"
+    );
   });
   it("rejects runtime JSON values with the wrong primitive type", () => {
     expect(() =>

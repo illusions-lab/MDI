@@ -1,20 +1,39 @@
-import {
-	parseMdiSyntaxJson,
-	renderHtml as renderHtmlFromRust,
-	renderEpub as renderEpubFromRust,
-	renderDocx as renderDocxFromRust,
-	renderText as renderTextFromRust,
-	renderTextFormat as renderTextFormatFromRust,
-	serializeMdi as serializeMdiFromRust,
-} from "@illusions-lab/mdi-core";
+import * as mdiCore from "@illusions-lab/mdi-core";
 import type { EpubCover, EpubExportOptions } from "@illusions-lab/mdi-to-epub";
-import {
-	requireLayoutSystem,
-	type ExportProfile,
-	type WritingMode,
-} from "@illusions-lab/mdi-export-profile";
+import type { ExportProfile, WritingMode } from "@illusions-lab/mdi-export-profile";
 import type { Root } from "mdast";
 import { parse as parseYaml } from "yaml";
+
+const {
+	resolveMdiSourceSpansJson,
+	renderHtml: renderHtmlFromRust,
+	renderEpub: renderEpubFromRust,
+	renderEpubWithProfile: renderEpubWithProfileFromRust,
+	renderDocx: renderDocxFromRust,
+	renderDocxWithProfile: renderDocxWithProfileFromRust,
+	renderText: renderTextFromRust,
+	renderTextFormat: renderTextFormatFromRust,
+	resolveExportProfileJson: resolveExportProfileJsonFromRust,
+	serializeMdi: serializeMdiFromRust,
+} = mdiCore;
+
+/**
+ * Initialize the shared MDI core runtime exactly once.
+ *
+ * Browser applications must await this before calling the synchronous parse
+ * or serialization APIs. In Node.js the WASM binding is loaded eagerly, so
+ * this remains a harmless resolved promise for portable application setup.
+ */
+export function initializeMdi(): Promise<void> {
+	return mdiCore.initializeMdiCore();
+}
+
+function requireLayoutSystem(profile: ExportProfile): void {
+	if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+		throw new Error("Export profile must be an object");
+	}
+	resolveExportProfileJsonFromRust(JSON.stringify(profile), undefined, true);
+}
 
 export type { EpubCover, EpubExportOptions, ExportProfile };
 
@@ -60,9 +79,9 @@ export type MdiDocxExportProfile = ExportProfile & {
 	date?: string;
 	verticalWriting?: boolean;
 	fontFamily?: string;
-	/** Point size; requires a publication adapter that supports it. */
+	/** Body type size in typographic points. */
 	fontSize?: number;
-	/** Line-height multiplier; requires a publication adapter that supports it. */
+	/** Baseline multiplier, for example 1.5 for one-and-a-half spacing. */
 	lineSpacing?: number;
 	textIndent?: number;
 	pageSize?: NonNullable<ExportProfile["pagination"]>["pageSize"];
@@ -80,10 +99,25 @@ export type MdiDocxExportProfile = ExportProfile & {
 };
 
 /** MDI specification version implemented by this binding. */
-export const MDI_SPEC_VERSION = "2.0" as const;
+export const MDI_SPEC_VERSION = "2.1" as const;
 
 /** Version of the complete Rust-owned document IR. */
 export const MDI_IR_VERSION = "1.0" as const;
+export const MDI_COMMENT_IR_VERSION = "1.1" as const;
+
+export interface MdiParseOptions {
+	/** Include editorial comments in the returned tree; exports still omit them. */
+	includeComments?: boolean;
+}
+
+export interface MdiComment {
+	type: "comment";
+	value: string;
+	span: MdiSourceSpan;
+}
+
+/** Version of the Rust-owned searchable text projection. */
+export const MDI_TEXT_PROJECTION_VERSION = "1.0" as const;
 
 export interface MdiParserCapabilities {
 	mdi: boolean;
@@ -98,6 +132,96 @@ export interface MdiSourceSpan {
 	startByte: number;
 	/** Exclusive UTF-8 byte offset. */
 	endByte: number;
+}
+
+/** A canonical one-based `block:grapheme` text position. */
+export type MdiTextPosition = `${number}:${number}`;
+
+export interface MdiTextPositionValue {
+	block: number;
+	character: number;
+}
+
+export interface MdiTextRange {
+	/** Inclusive. */
+	start: MdiTextPosition;
+	/** Exclusive. */
+	end: MdiTextPosition;
+}
+
+export interface MdiTextSourceRun {
+	range: MdiTextRange;
+	/** One UTF-8 source boundary per grapheme, plus the final boundary. */
+	sourceBoundaries: number[];
+}
+
+export interface MdiTextSourceMap {
+	runs: MdiTextSourceRun[];
+	synthetic: MdiTextRange[];
+	unmapped: MdiTextRange[];
+}
+
+export type MdiAnnotationSourceMap = MdiTextSourceMap;
+
+export interface MdiTextAnnotation {
+	kind: "rubyReading";
+	text: string;
+	anchor: MdiTextRange;
+	span?: MdiSourceSpan;
+	sourceMap: MdiAnnotationSourceMap;
+}
+
+export interface MdiTextBlock {
+	/** One-based source-order block number. */
+	index: number;
+	kind: "heading" | "paragraph" | "listItem" | "blockquote" | "code" | "table" | "footnote" | "html" | "other";
+	text: string;
+	range: MdiTextRange;
+	span?: MdiSourceSpan;
+	sourceMap: MdiTextSourceMap;
+	annotations: MdiTextAnnotation[];
+	node: MdiNode;
+}
+
+export interface MdiTextBlocksResult {
+	projectionVersion: "1.0";
+	positionEncoding: "unicode-grapheme-cluster-1-based";
+	irVersion: typeof MDI_IR_VERSION | typeof MDI_COMMENT_IR_VERSION;
+	syntaxVersion: typeof MDI_SPEC_VERSION;
+	capabilities: MdiParserCapabilities;
+	blocks: MdiTextBlock[];
+	document: MdiDocument;
+	diagnostics: MdiDiagnostic[];
+}
+
+export type MdiSourceSpanCoverage = "complete" | "partial" | "none";
+export type MdiSourceSpanRelation = "exact" | "overlap";
+
+export interface MdiSourceSpanBlockTextMatch {
+	kind: "blockText";
+	blockIndex: number;
+	range: MdiTextRange;
+	relation: MdiSourceSpanRelation;
+}
+
+export interface MdiSourceSpanAnnotationMatch {
+	kind: "annotation";
+	blockIndex: number;
+	/** Zero-based index in the containing block's annotations array. */
+	annotationIndex: number;
+	range: MdiTextRange;
+	relation: MdiSourceSpanRelation;
+}
+
+export type MdiSourceSpanTextMatch =
+	| MdiSourceSpanBlockTextMatch
+	| MdiSourceSpanAnnotationMatch;
+
+export interface MdiSourceSpanTextResolution {
+	projectionVersion: "1.0";
+	sourceSpan: MdiSourceSpan;
+	coverage: MdiSourceSpanCoverage;
+	matches: MdiSourceSpanTextMatch[];
 }
 
 export interface MdiDiagnostic {
@@ -131,6 +255,21 @@ export interface MdiDocument {
 	children: MdiNode[];
 }
 
+/** Resolved front matter attached to mdast compatibility roots. */
+export interface MdiPublicationFrontmatter {
+	mdi: string;
+	title?: string;
+	author?: string;
+	lang: string;
+	date?: string;
+	writingMode: "horizontal" | "vertical";
+	pageProgression: "ltr" | "rtl";
+}
+
+export interface MdiPublicationRoot extends Root {
+	data?: Root["data"] & { frontmatter?: MdiPublicationFrontmatter };
+}
+
 /** A source-backed heading available to host navigation and chapter UIs. */
 export interface MdiHeading {
 	depth: 1 | 2 | 3 | 4 | 5 | 6;
@@ -142,7 +281,7 @@ export interface MdiHeading {
 }
 
 /** HTML output controls that do not alter MDI semantics. */
-export interface MdiHtmlRenderOptions {
+export interface MdiHtmlRenderOptions extends MdiParseOptions {
 	/** Return the semantic contents of `<body>` rather than a standalone page. */
 	bodyOnly?: boolean;
 }
@@ -162,7 +301,7 @@ export interface MdiRenderResult<T> {
  * this complete Rust-owned document tree.
  */
 export interface MdiSyntaxParseResult {
-	irVersion: typeof MDI_IR_VERSION;
+	irVersion: typeof MDI_IR_VERSION | typeof MDI_COMMENT_IR_VERSION;
 	syntaxVersion: typeof MDI_SPEC_VERSION;
 	capabilities: MdiParserCapabilities;
 	document: MdiDocument;
@@ -176,13 +315,198 @@ export type MdiSyntaxDocument = MdiDocument;
  * Parse the complete `.mdi` source in Rust and return the versioned
  * language-neutral document IR. JavaScript performs no grammar work.
  */
-export function parse(source: string): MdiSyntaxParseResult {
+export function parse(source: string, options: MdiParseOptions = {}): MdiSyntaxParseResult {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
-	const result = JSON.parse(parseMdiSyntaxJson(source)) as MdiSyntaxParseResult;
-	if (result.irVersion !== MDI_IR_VERSION) {
+	const result = JSON.parse(Object.keys(options).length === 0 ? mdiCore.parseMdiSyntaxJson(source) : mdiCore.parseMdiSyntaxWithOptionsJson(source, JSON.stringify(options))) as MdiSyntaxParseResult;
+	if (result.irVersion !== MDI_IR_VERSION && result.irVersion !== MDI_COMMENT_IR_VERSION) {
 		throw new Error(`Unsupported MDI IR version: ${String(result.irVersion)}`);
 	}
 	return result;
+}
+
+/**
+ * Parse once in Rust and return source-order plaintext blocks, annotations,
+ * and grapheme-precise UTF-8 source maps alongside the complete document IR.
+ */
+export function getMdiTextBlocks(source: string, options: MdiParseOptions = {}): MdiTextBlocksResult {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	const result = JSON.parse(Object.keys(options).length === 0 ? mdiCore.getMdiTextBlocksJson(source) : mdiCore.getMdiTextBlocksWithOptionsJson(source, JSON.stringify(options))) as MdiTextBlocksResult;
+	if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
+		throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
+	}
+	return result;
+}
+
+/**
+ * Resolve a half-open UTF-8 source span to all mapped canonical block and
+ * annotation ranges. Mapping semantics are implemented exclusively in Rust.
+ */
+export function resolveMdiSourceSpan(
+	source: string,
+	span: MdiSourceSpan,
+): MdiSourceSpanTextResolution {
+	return resolveMdiSourceSpans(source, [span])[0]!;
+}
+
+/**
+ * Resolve many half-open UTF-8 source spans with one Rust parse/projection.
+ * The returned resolutions preserve input order.
+ */
+export function resolveMdiSourceSpans(
+	source: string,
+	spans: readonly MdiSourceSpan[],
+): MdiSourceSpanTextResolution[] {
+	if (typeof source !== "string") throw new TypeError("source must be a string");
+	if (!Array.isArray(spans)) throw new TypeError("spans must be an array");
+	if (spans.length === 0) return [];
+	const utf8 = utf8SourceBoundaries(source);
+	for (const [index, span] of spans.entries()) {
+		assertSourceSpanInput(span, `spans[${index}]`);
+		if (span.startByte > span.endByte) {
+			throw new RangeError(`spans[${index}].startByte must not exceed endByte`);
+		}
+		if (span.endByte > utf8.length) {
+			throw new RangeError(`spans[${index}] falls outside the UTF-8 source length`);
+		}
+		if (!utf8.boundaries.has(span.startByte) || !utf8.boundaries.has(span.endByte)) {
+			throw new RangeError(`spans[${index}] endpoints must be UTF-8 code-point boundaries`);
+		}
+	}
+	const results = JSON.parse(
+		resolveMdiSourceSpansJson(source, JSON.stringify(spans)),
+	) as MdiSourceSpanTextResolution[];
+	for (const result of results) {
+		if (result.projectionVersion !== MDI_TEXT_PROJECTION_VERSION) {
+			throw new Error(`Unsupported MDI text projection version: ${String(result.projectionVersion)}`);
+		}
+	}
+	return results;
+}
+
+function assertSourceSpanInput(span: MdiSourceSpan, name = "span"): void {
+	if (!span || typeof span !== "object" || Array.isArray(span)) {
+		throw new TypeError(`${name} must be an object`);
+	}
+	if (typeof span.startByte !== "number" || typeof span.endByte !== "number") {
+		throw new TypeError(`${name}.startByte and ${name}.endByte must be numbers`);
+	}
+	const isUint32 = (value: number): boolean => Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
+	if (!isUint32(span.startByte) || !isUint32(span.endByte)) {
+		throw new RangeError(`${name}.startByte and ${name}.endByte must be uint32 values`);
+	}
+}
+
+function utf8SourceBoundaries(source: string): { length: number; boundaries: Set<number> } {
+	let length = 0;
+	const boundaries = new Set<number>([0]);
+	for (const character of source) {
+		const codePoint = character.codePointAt(0)!;
+		length += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+		boundaries.add(length);
+	}
+	return { length, boundaries };
+}
+
+/** Parse and validate a canonical one-based `block:character` position. */
+export function parseMdiTextPosition(position: string): MdiTextPositionValue {
+	if (typeof position !== "string") throw new TypeError("position must be a string");
+	const match = /^([1-9]\d*):([1-9]\d*)$/.exec(position);
+	if (!match) throw new RangeError(`Invalid MDI text position: ${position}`);
+	const block = Number(match[1]);
+	const character = Number(match[2]);
+	if (!Number.isSafeInteger(block) || !Number.isSafeInteger(character)) {
+		throw new RangeError(`Invalid MDI text position: ${position}`);
+	}
+	return { block, character };
+}
+
+/** Format a validated one-based text position. */
+export function formatMdiTextPosition(position: MdiTextPositionValue): MdiTextPosition {
+	if (!position || typeof position !== "object") {
+		throw new TypeError("position must be an object");
+	}
+	if (!isPositiveSafeInteger(position.block) || !isPositiveSafeInteger(position.character)) {
+		throw new RangeError("position.block and position.character must be positive safe integers");
+	}
+	return `${position.block}:${position.character}`;
+}
+
+/** Format a canonical full `start-end` range such as `3:18-3:24`. */
+export function formatMdiTextRange(range: MdiTextRange): string {
+	if (!range || typeof range !== "object") throw new TypeError("range must be an object");
+	const start = parseMdiTextPosition(range.start);
+	const end = parseMdiTextPosition(range.end);
+	if (start.block !== end.block || end.character < start.character) {
+		throw new RangeError("range must be ordered within one text block");
+	}
+	return `${range.start}-${range.end}`;
+}
+
+/**
+ * Resolve a text range to its source-derived UTF-8 spans. Synthetic table or
+ * paragraph separators are deliberately omitted.
+ */
+export function sourceSpansForTextRange(
+	block: MdiTextBlock,
+	range: MdiTextRange,
+): MdiSourceSpan[] {
+	if (!block || typeof block !== "object") throw new TypeError("block must be an object");
+	const start = parseMdiTextPosition(range.start);
+	const end = parseMdiTextPosition(range.end);
+	if (start.block !== block.index || end.block !== block.index) {
+		throw new RangeError("range must belong to the supplied text block");
+	}
+	const blockEnd = parseMdiTextPosition(block.range.end).character;
+	if (end.character < start.character || start.character < 1 || end.character > blockEnd) {
+		throw new RangeError("range falls outside the supplied text block");
+	}
+
+	const spans: MdiSourceSpan[] = [];
+	let previousRunEnd = 1;
+	for (const run of block.sourceMap.runs) {
+		const runStartPosition = parseMdiTextPosition(run.range.start);
+		const runEndPosition = parseMdiTextPosition(run.range.end);
+		const runStart = runStartPosition.character;
+		const runEnd = runEndPosition.character;
+		const invalidRange = runStartPosition.block !== block.index
+			|| runEndPosition.block !== block.index
+			|| runEnd < runStart
+			|| runStart < previousRunEnd
+			|| runEnd > blockEnd;
+		const invalidBoundaries = run.sourceBoundaries.length !== runEnd - runStart + 1
+			|| run.sourceBoundaries.some((boundary) => !Number.isSafeInteger(boundary) || boundary < 0)
+			|| run.sourceBoundaries.some((boundary, index) => index > 0 && boundary < run.sourceBoundaries[index - 1]!)
+			|| (block.span !== undefined && run.sourceBoundaries.some(
+				(boundary) => boundary < block.span!.startByte || boundary > block.span!.endByte,
+			));
+		if (invalidRange || invalidBoundaries) {
+			throw new Error("Invalid MDI text source run");
+		}
+		previousRunEnd = runEnd;
+		const overlapStart = Math.max(start.character, runStart);
+		const overlapEnd = Math.min(end.character, runEnd);
+		for (let character = overlapStart; character < overlapEnd; character += 1) {
+			const offset = character - runStart;
+			appendMergedSourceSpan(spans, {
+				startByte: run.sourceBoundaries[offset]!,
+				endByte: run.sourceBoundaries[offset + 1]!,
+			});
+		}
+	}
+	return spans;
+}
+
+function appendMergedSourceSpan(spans: MdiSourceSpan[], next: MdiSourceSpan): void {
+	const previous = spans.at(-1);
+	if (previous?.endByte === next.startByte) {
+		previous.endByte = next.endByte;
+	} else {
+		spans.push(next);
+	}
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
 
 /** Render complete `.mdi` source to standalone semantic HTML in Rust. */
@@ -209,7 +533,7 @@ export function renderHtmlWithDiagnostics(
 ): MdiRenderResult<string> {
 	assertSource(source);
 	assertHtmlOptions(options);
-	return renderWithDiagnostics(source, () => renderHtml(source, options));
+	return renderWithDiagnostics(source, () => renderHtml(source, options), options?.includeComments === undefined ? {} : { includeComments: options.includeComments });
 }
 
 /**
@@ -217,15 +541,15 @@ export function renderHtmlWithDiagnostics(
  * spans before selecting one of the renderer APIs. The returned document is
  * Rust-owned IR and must not be mutated as an input to a renderer.
  */
-export function prepareRender(source: string): MdiSyntaxParseResult {
-	return parse(source);
+export function prepareRender(source: string, options: MdiParseOptions = {}): MdiSyntaxParseResult {
+	return parse(source, options);
 }
 
 /** Build a baseline EPUB 3 archive from complete source in Rust. */
 export function renderEpub(source: string): Uint8Array;
 /**
  * Build a profile-configured EPUB 3 archive. This overload is asynchronous
- * because archive generation is performed by the Node.js publication adapter.
+ * for backward compatibility; validation and archive generation run in Rust.
  */
 export function renderEpub(
 	source: string,
@@ -244,25 +568,28 @@ export function renderEpub(
 }
 
 /** Build a baseline Rust EPUB while retaining diagnostics for an export UI. */
+export function renderEpubWithDiagnostics(source: string, options: undefined, parseOptions: MdiParseOptions): MdiRenderResult<Uint8Array>;
 export function renderEpubWithDiagnostics(source: string): MdiRenderResult<Uint8Array>;
 export function renderEpubWithDiagnostics(
 	source: string,
 	options: MdiEpubExportOptions,
+	parseOptions?: MdiParseOptions,
 ): Promise<MdiRenderResult<Uint8Array>>;
 export function renderEpubWithDiagnostics(
 	source: string,
 	options?: MdiEpubExportOptions,
+	parseOptions: MdiParseOptions = {},
 ): MdiRenderResult<Uint8Array> | Promise<MdiRenderResult<Uint8Array>> {
 	return options === undefined
-		? renderWithDiagnostics(source, () => renderEpub(source))
-		: renderWithDiagnosticsAsync(source, () => renderEpub(source, options));
+		? renderWithDiagnostics(source, () => renderEpub(source), parseOptions)
+		: renderWithDiagnosticsAsync(source, () => renderEpub(source, options), parseOptions);
 }
 
 /** Build a baseline DOCX archive from complete source in Rust. */
 export function renderDocx(source: string): Uint8Array;
 /**
  * Build a profile-configured DOCX archive. This overload is asynchronous
- * because archive generation is performed by the Node.js publication adapter.
+ * for backward compatibility; validation and OOXML generation run in Rust.
  */
 export function renderDocx(
 	source: string,
@@ -281,25 +608,27 @@ export function renderDocx(
 }
 
 /** Build a baseline Rust DOCX while retaining diagnostics for an export UI. */
+export function renderDocxWithDiagnostics(source: string, profile: undefined, parseOptions: MdiParseOptions): MdiRenderResult<Uint8Array>;
 export function renderDocxWithDiagnostics(source: string): MdiRenderResult<Uint8Array>;
 export function renderDocxWithDiagnostics(
 	source: string,
 	profile: MdiDocxExportProfile,
+	parseOptions?: MdiParseOptions,
 ): Promise<MdiRenderResult<Uint8Array>>;
 export function renderDocxWithDiagnostics(
 	source: string,
 	profile?: MdiDocxExportProfile,
+	parseOptions: MdiParseOptions = {},
 ): MdiRenderResult<Uint8Array> | Promise<MdiRenderResult<Uint8Array>> {
 	return profile === undefined
-		? renderWithDiagnostics(source, () => renderDocx(source))
-		: renderWithDiagnosticsAsync(source, () => renderDocx(source, profile));
+		? renderWithDiagnostics(source, () => renderDocx(source), parseOptions)
+		: renderWithDiagnosticsAsync(source, () => renderDocx(source, profile), parseOptions);
 }
 
 /**
- * Build a configured EPUB using the same profile schema as the dedicated
- * publication adapters.  Unlike the one-argument {@link renderEpub}, this
- * returns a Promise and supports cover art, metadata, chapters and vertical
- * writing.
+ * Build a configured EPUB in Rust. Unlike the one-argument
+ * {@link renderEpub}, this returns a Promise for API compatibility and
+ * supports cover art, metadata, chapters and vertical writing.
  */
 export async function renderEpubWithProfile(
 	source: string,
@@ -307,14 +636,19 @@ export async function renderEpubWithProfile(
 ): Promise<Uint8Array> {
 	assertSource(source);
 	assertEpubOptions(options);
-	const { mdiToEpub } = await import("@illusions-lab/mdi-to-epub");
 	const normalized = normalizeEpubOptions(options);
 	requireLayoutSystem(normalized.profile!);
-	return mdiToEpub(toPublicationMdast(parse(source).document), normalized);
+	const cover = normalized.cover;
+	return renderEpubWithProfileFromRust(
+		source,
+		JSON.stringify(normalized.profile),
+		cover?.data ?? new Uint8Array(),
+		cover?.mediaType,
+	);
 }
 
 /**
- * Build a configured DOCX using the shared print profile.  The profile
+ * Build a configured DOCX in Rust using the shared print profile. The profile
  * supports metadata, writing mode, paper size, margins and page numbers.
  */
 export async function renderDocxWithProfile(
@@ -323,48 +657,19 @@ export async function renderDocxWithProfile(
 ): Promise<Uint8Array> {
 	assertSource(source);
 	assertPlainObject(profile, "profile");
-	prepareNodeDocxImport();
-	const { mdiToDocx } = await import("@illusions-lab/mdi-to-docx");
 	const normalized = normalizeDocxProfile(profile);
 	requireLayoutSystem(normalized);
-	return mdiToDocx(toPublicationMdast(parse(source).document), normalized);
+	return renderDocxWithProfileFromRust(source, JSON.stringify(normalized));
 }
 
 /**
- * `docx` probes `globalThis.localStorage` while loading its deprecation shim.
- * Node 26 warns when that experimental getter is read without a persistence
- * file.  Give only that Node-only import a harmless, non-persistent value;
- * browser and Electron storage are left untouched.
+ * Convert a Rust-owned MDI document IR into mdast for unified compatibility
+ * workflows. This performs no parsing and preserves the established mdast
+ * node conventions.
  */
-function prepareNodeDocxImport(): void {
-	const nodeProcess = (globalThis as typeof globalThis & {
-		process?: { release?: { name?: string }; execArgv?: string[] };
-	}).process;
-	if (
-		nodeProcess?.release?.name === "node" &&
-		!nodeProcess.execArgv?.some((argument) => argument.startsWith("--localstorage-file="))
-	) {
-		const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-		if (descriptor?.configurable && descriptor.get)
-			Object.defineProperty(globalThis, "localStorage", {
-				value: undefined,
-				configurable: true,
-			});
-	}
-}
-
-/**
- * Map the Rust-owned IR to mdast for the publication adapters. This is a
- * structural conversion only: all grammar decisions have already been made
- * by {@link parse}, so it never reparses MDI source in JavaScript.
- */
-/**
- * Convert a Rust-owned MDI document IR into mdast for publication adapters.
- * This performs no parsing and preserves the adapter node conventions.
- */
-export function toPublicationMdast(document: MdiDocument): Root {
-	const children = document.children.map(toPublicationMdastNode) as unknown as Root["children"];
-	const tree = { type: "root", children } as Root;
+export function toPublicationMdast(document: MdiDocument, options: MdiParseOptions = {}): MdiPublicationRoot {
+	const children = document.children.filter((node) => options.includeComments || node.type !== "comment").map((node) => toPublicationMdastNode(node, options)) as unknown as Root["children"];
+	const tree = { type: "root", children } as MdiPublicationRoot;
 	if (document.frontmatter) {
 		children.unshift({ type: "yaml", value: document.frontmatter.raw } as Root["children"][number]);
 		const frontmatter = publicationFrontmatter(document.frontmatter.raw);
@@ -374,15 +679,16 @@ export function toPublicationMdast(document: MdiDocument): Root {
 	return tree;
 }
 
-function toPublicationMdastNode(node: MdiNode): Record<string, unknown> {
+function toPublicationMdastNode(node: MdiNode, options: MdiParseOptions): Record<string, unknown> {
 	const { span: _span, children, ...rest } = node;
 	const mapped: Record<string, unknown> = { ...rest };
-	if (children) mapped.children = children.map(toPublicationMdastNode);
+	if (children) mapped.children = children.filter((node) => options.includeComments || node.type !== "comment").map((node) => toPublicationMdastNode(node, options));
 	switch (node.type) {
 		case "ruby": {
 			const ruby = node.ruby as { value: string | string[] };
 			return { ...mapped, type: "mdiRuby", ruby: ruby.value };
 		}
+		case "comment": return { ...mapped, type: "mdiComment", span: _span };
 		case "tcy": return { ...mapped, type: "mdiTcy" };
 		case "break": return { ...mapped, type: "mdiBreak" };
 		case "em": return { ...mapped, type: "mdiEm" };
@@ -407,13 +713,13 @@ function toPublicationMdastNode(node: MdiNode): Record<string, unknown> {
 	}
 }
 
-function publicationFrontmatter(raw: string): Record<string, unknown> {
+function publicationFrontmatter(raw: string): MdiPublicationFrontmatter {
 	let value: unknown;
 	try { value = parseYaml(raw); } catch { value = undefined; }
 	const source = isRecord(value) ? value : {};
 	const writingMode = source["writing-mode"] === "vertical" ? "vertical" : "horizontal";
 	return {
-		mdi: stringValue(source.mdi) ?? "2.0",
+		mdi: stringValue(source.mdi) ?? "2.1",
 		title: stringValue(source.title),
 		author: stringValue(source.author),
 		lang: stringValue(source.lang) ?? "ja",
@@ -433,8 +739,8 @@ function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-function renderWithDiagnostics<T>(source: string, render: () => T): MdiRenderResult<T> {
-	const parsed = parse(source);
+function renderWithDiagnostics<T>(source: string, render: () => T, options: MdiParseOptions = {}): MdiRenderResult<T> {
+	const parsed = parse(source, options);
 	return {
 		output: render(),
 		document: parsed.document,
@@ -446,8 +752,9 @@ function renderWithDiagnostics<T>(source: string, render: () => T): MdiRenderRes
 async function renderWithDiagnosticsAsync<T>(
 	source: string,
 	render: () => Promise<T>,
+	options: MdiParseOptions = {},
 ): Promise<MdiRenderResult<T>> {
-	const parsed = parse(source);
+	const parsed = parse(source, options);
 	return {
 		output: await render(),
 		document: parsed.document,
@@ -500,6 +807,7 @@ function isHeadingDepth(value: unknown): value is MdiHeading["depth"] {
 }
 
 function plainNodeText(node: MdiNode): string {
+	if (node.type === "comment") return "";
 	if (node.type === "ruby" && typeof node.base === "string") return node.base;
 	const value = node.value;
 	const ownText = typeof value === "string" ? value : "";
@@ -610,11 +918,11 @@ export function renderText(source: string): string {
 }
 
 /** Render plain text without discarding Rust diagnostics and source spans. */
-export function renderTextWithDiagnostics(source: string): MdiRenderResult<string> {
-	return renderWithDiagnostics(source, () => renderText(source));
+export function renderTextWithDiagnostics(source: string, options: MdiParseOptions = {}): MdiRenderResult<string> {
+	return renderWithDiagnostics(source, () => renderText(source), options);
 }
 
-export type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora";
+export type MdiTextFormat = "txt" | "txt-ruby" | "narou" | "kakuyomu" | "aozora" | "note";
 
 /** Render a named publication-text convention through Rust. */
 export function renderTextFormat(
@@ -633,9 +941,40 @@ export function renderTextFormatWithDiagnostics(
 	source: string,
 	format: MdiTextFormat,
 	indentPrefix = "",
+	options: MdiParseOptions = {},
 ): MdiRenderResult<string> {
-	return renderWithDiagnostics(source, () => renderTextFormat(source, format, indentPrefix));
+	return renderWithDiagnostics(source, () => renderTextFormat(source, format, indentPrefix), options);
 }
 
 /** @deprecated Use {@link parse}; it now parses the complete document. */
 export const parseMdiSyntax = parse;
+
+/** UTF-8 boundaries in an original inline leaf; paths are relative to children. */
+export interface MdiWarichuSource { path: number[]; startUtf8: number; endUtf8: number; group: number }
+export interface MdiWarichuOptions { firstCapacity: number; continuationCapacity: number }
+/** Presentation-only two-line fragment; generated boundaries never belong in MDI. */
+export interface MdiWarichuFragment {
+  lines: [Record<string, unknown>[], Record<string, unknown>[]];
+  widths: [number, number];
+  overflow: boolean;
+  hardBreakAfter: boolean;
+  sources: [MdiWarichuSource[], MdiWarichuSource[]];
+  html: [string, string];
+}
+/** Rust owns splitting. Capacities are half-em units at the note's 50% font size. */
+export function layoutMdiWarichu(
+  children: readonly Record<string, unknown>[],
+  capacity: number | MdiWarichuOptions = 40,
+): MdiWarichuFragment[] {
+  const options = typeof capacity === "number" ? {firstCapacity:capacity,continuationCapacity:capacity} : capacity;
+  for (const value of [options.firstCapacity, options.continuationCapacity]) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > 0xffffffff) {
+      throw new RangeError("Warichu capacity must be a positive u32 integer");
+    }
+  }
+  return JSON.parse(mdiCore.layoutWarichuOptionsJson(JSON.stringify(children), JSON.stringify(options)));
+}
+export { attachMdiWarichuLayout, measureMdiWarichu, applyMdiWarichu } from "./warichu-browser.js";
+export type { MdiWarichuLayoutController, MdiWarichuSettleOptions } from "./warichu-browser.js";
+
+export { settleMdiPrintLayout, type MdiPrintEvaluate, type MdiPrintPage, type MdiPrintLayoutOptions } from "./warichu-print.js";

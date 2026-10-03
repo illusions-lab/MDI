@@ -9,15 +9,15 @@ on:
         type: choice
         options: [prepare, publish]
       version:
-        description: Complete SemVer version (for example, 2.0.1)
+        description: Complete SemVer version (for example, 2.0.3)
         required: true
         type: string
       prepare_run_id:
         description: Required for publish; the successful prepare workflow run ID
         required: false
         type: string
-      force_retag:
-        description: "Recovery only: replace an existing tag with the approved main commit"
+      recover_existing_tag:
+        description: "Recovery only: allow an unpublished tag that already points to the approved main commit"
         required: false
         default: false
         type: boolean
@@ -28,7 +28,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: swift-release-${{ inputs.version }}-${{ inputs.action }}
+  group: swift-release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -42,29 +42,70 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Verify the complete CI gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_sha=$(git rev-parse HEAD)
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Validate version
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-          FORCE_RETAG: ${{ inputs.force_retag }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           if git rev-parse --verify --quiet "refs/tags/$VERSION"; then
-            [[ "$FORCE_RETAG" == "true" ]]
+            echo "tag $VERSION already exists" >&2
+            exit 1
           fi
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY"; then
+            echo "release $VERSION already exists" >&2
+            exit 1
+          fi
+
+      - name: Install the official W3C EPUBCheck validator
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip \
+            --output "$RUNNER_TEMP/epubcheck.zip"
+          ditto -x -k "$RUNNER_TEMP/epubcheck.zip" "$RUNNER_TEMP"
 
       - name: Build the Apple XCFramework
         run: scripts/package-swift-xcframework.sh "$RUNNER_TEMP/mdi-swift"
 
-      - name: Test against the local XCFramework
+      - name: Test the local XCFramework with the coverage gate
+        env:
+          MDI_SWIFT_SMOKE_OUTPUT: ${{ runner.temp }}/swift-package-smoke
         run: |
           mkdir -p swift/Artifacts
           ditto "$RUNNER_TEMP/mdi-swift/MDICore.xcframework" swift/Artifacts/MDICore.xcframework
           scripts/write-swift-package-manifest.sh local "swift/Artifacts/MDICore.xcframework"
-          swift test
+          swift test --enable-code-coverage
+          scripts/export-swift-coverage.sh "$RUNNER_TEMP/swift-coverage.lcov"
+
+      - name: Open and validate every Swift package format
+        run: >-
+          scripts/verify-swift-package-formats.sh
+          "$RUNNER_TEMP/swift-package-smoke"
+          "$RUNNER_TEMP/epubcheck-5.3.0/epubcheck.jar"
 
       - name: Archive the XCFramework
         id: artifact
@@ -91,13 +132,18 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           BRANCH="swift-release/$VERSION"
-          git switch -c "$BRANCH"
+          git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH" || true
+          git switch -C "$BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Package.swift
           git commit -m "Release Swift package $VERSION"
-          git push origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "Release Swift package $VERSION" --body "Prepared by workflow run $GITHUB_RUN_ID. Merge after the required checks pass, then dispatch **Publish Swift Package** with action **publish** and prepare run ID $GITHUB_RUN_ID."
+          git push --force-with-lease origin "$BRANCH"
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "Updated the existing release manifest pull request."
+          elif ! gh pr create --base main --head "$BRANCH" --title "Release Swift package $VERSION" --body "Prepared by workflow run $GITHUB_RUN_ID. Merge after the required checks pass, then dispatch **Publish Swift Package** with action **publish** and prepare run ID $GITHUB_RUN_ID."; then
+            echo "::notice::The release branch is ready, but GitHub Actions cannot create pull requests in this repository. Create the pull request manually, then merge it after the required checks pass."
+          fi
 
   publish:
     if: inputs.action == 'publish'
@@ -109,17 +155,60 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Verify the complete CI gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_sha=$(git rev-parse HEAD)
+          count=$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          )
+          test "$count" -gt 0
+
       - name: Validate approved release inputs
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
-          FORCE_RETAG: ${{ inputs.force_retag }}
+          RECOVER_EXISTING_TAG: ${{ inputs.recover_existing_tag }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ -n "$PREPARE_RUN_ID" ]]
+          [[ "$PREPARE_RUN_ID" =~ ^[0-9]+$ ]]
+          release_sha=$(git rev-parse HEAD)
           if git rev-parse --verify --quiet "refs/tags/$VERSION"; then
-            [[ "$FORCE_RETAG" == "true" ]]
+            [[ "$RECOVER_EXISTING_TAG" == "true" ]]
+            [[ "$(git rev-list -n 1 "$VERSION")" == "$release_sha" ]]
+          else
+            [[ "$RECOVER_EXISTING_TAG" == "false" ]]
           fi
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY"; then
+            echo "release $VERSION already exists" >&2
+            exit 1
+          fi
+
+      - name: Verify the successful prepare run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+        run: |
+          run_metadata=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREPARE_RUN_ID")
+          [[ "$(jq -r '.path' <<<"$run_metadata")" == ".github/workflows/swift-release.yml" ]]
+          [[ "$(jq -r '.event' <<<"$run_metadata")" == "workflow_dispatch" ]]
+          [[ "$(jq -r '.head_branch' <<<"$run_metadata")" == "main" ]]
+          [[ "$(jq -r '.conclusion' <<<"$run_metadata")" == "success" ]]
+          prepare_jobs=$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREPARE_RUN_ID/jobs" \
+              -f per_page=100 \
+              --method GET \
+              --jq "[.jobs[] | select(.name == \"Prepare MDI $VERSION\" and .conclusion == \"success\")] | length"
+          )
+          [[ "$prepare_jobs" == "1" ]]
 
       - name: Download the approved XCFramework
         env:
@@ -140,12 +229,8 @@ jobs:
       - name: Tag the approved main commit
         env:
           VERSION: ${{ inputs.version }}
-          FORCE_RETAG: ${{ inputs.force_retag }}
         run: |
-          if [[ "$FORCE_RETAG" == "true" ]]; then
-            git tag -f "$VERSION"
-            git push --force origin "refs/tags/$VERSION"
-          else
+          if ! git rev-parse --verify --quiet "refs/tags/$VERSION"; then
             git tag "$VERSION"
             git push origin "$VERSION"
           fi
@@ -154,4 +239,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "$VERSION" "$RUNNER_TEMP/release/MDICore.xcframework.zip#MDICore.xcframework.zip" --title "MDI $VERSION" --generate-notes
+        run: gh release create "$VERSION" "$RUNNER_TEMP/release/MDICore.xcframework.zip#MDICore.xcframework.zip" --verify-tag --title "MDI $VERSION" --generate-notes

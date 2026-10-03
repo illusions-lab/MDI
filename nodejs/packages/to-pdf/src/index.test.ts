@@ -110,6 +110,14 @@ describe("browser-safe Chromium print profile", () => {
 
   it("keeps browser-safe input validation and creates no header/footer for disabled numbering", () => {
     expect(() => prepareChromiumPrintProfile(null as never)).toThrow("html must be a string");
+    for (const profile of [null, 1, []]) {
+      expect(() =>
+        prepareChromiumPrintProfile("<p>本文</p>", profile as never)
+      ).toThrow("profile must be an object");
+    }
+    expect(() => applyPdfProfile(null as never, resolveExportProfile())).toThrow(
+      "html must be a string",
+    );
     const prepared = prepareChromiumPrintProfile(
       "<html><body><p>本文</p></body></html>",
       {
@@ -202,6 +210,7 @@ describe("PDF export profile", () => {
         typesetting: {
           writingMode: "vertical",
           fontFamily: "Noto Serif JP",
+          fontSize: 10.5,
           textIndentEm: 2,
           fullwidthSpaceIndent: true,
         },
@@ -278,3 +287,10 @@ describe("PDF export profile", () => {
     expect(html).toContain("line-height:1.5");
   });
 });
+
+it('prints a long formatted warichu only after host-driven layout converges', async()=>{
+ const html=renderHtml(`前文（[[warichu:${'一二三四五六七八九十'.repeat(15)}[[br]][[br]]{東京|とうきょう}]]）後文`);
+ const pdf=await renderHtmlToPdf(html);
+ expect(pdf.subarray(0,5).toString()).toBe('%PDF-');
+ expect(pdf.length).toBeGreaterThan(500);
+},30000);

@@ -36,6 +36,9 @@ describe("mdiToEpub", () =>
     const opf = await zip.file("OEBPS/package.opf")!.async("string");
     expect(opf).toContain('<itemref idref="chapter-1"/>');
     expect(opf).toContain('<itemref idref="chapter-2"/>');
+    expect(opf).toMatch(
+      /<meta property="dcterms:modified">\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z<\/meta>/
+    );
     expect(
       Object.keys(zip.files).filter((name) => name.startsWith("OEBPS/chapter-"))
         .length
@@ -43,6 +46,48 @@ describe("mdiToEpub", () =>
   }));
 
 describe("mdiToEpub edge cases", () => {
+  it("rejects every invalid adapter input shape", async () => {
+    await expect(mdiToEpub(null as never)).rejects.toThrow(
+      "tree must be an mdast root",
+    );
+    await expect(
+      mdiToEpub({ type: "paragraph", children: [] } as never),
+    ).rejects.toThrow("tree must be an mdast root");
+    await expect(
+      mdiToEpub({ type: "root", children: null } as never),
+    ).rejects.toThrow("tree must be an mdast root");
+
+    const tree = parse("text");
+    for (const options of [null, 1, []]) {
+      await expect(mdiToEpub(tree, options as never)).rejects.toThrow(
+        "options must be an object",
+      );
+    }
+    for (const profile of [null, 1, []]) {
+      await expect(
+        mdiToEpub(tree, { profile: profile as never }),
+      ).rejects.toThrow("profile must be an object");
+    }
+    for (const cover of [null, 1, []]) {
+      await expect(
+        mdiToEpub(tree, { cover: cover as never }),
+      ).rejects.toThrow("cover must be an object");
+    }
+    await expect(
+      mdiToEpub(tree, {
+        cover: { data: "not bytes", mediaType: "image/png" } as never,
+      }),
+    ).rejects.toThrow("cover.data must be a Uint8Array");
+    await expect(
+      mdiToEpub(tree, {
+        cover: {
+          data: new Uint8Array(),
+          mediaType: "image/gif",
+        } as never,
+      }),
+    ).rejects.toThrow("cover.mediaType must be image/jpeg or image/png");
+  });
+
   it("creates one chapter when no pagebreak is present", async () => {
     const zip = await JSZip.loadAsync(await mdiToEpub(parse("one chapter")));
     expect(
@@ -105,6 +150,22 @@ describe("mdiToEpub edge cases", () => {
     expect(chapter).toContain('data-footnotes=""');
     expect(chapter).toContain('data-footnote-backref=""');
     expect(chapter).not.toMatch(/\sdata-footnote-ref(?=\s|>)/);
+  });
+
+  it("keeps a split footnote and its ARIA target in the referencing content document", async () => {
+    const zip = await JSZip.loadAsync(
+      await mdiToEpub(
+        parse("A note[^1].\n\n[[pagebreak]]\n\nafter\n\n[^1]: note text")
+      )
+    );
+    const first = await zip.file("OEBPS/chapter-1.xhtml")!.async("string");
+    const second = await zip.file("OEBPS/chapter-2.xhtml")!.async("string");
+
+    expect(first).toContain('href="#user-content-fn-1"');
+    expect(first).toContain('aria-describedby="footnote-label"');
+    expect(first).toContain('id="user-content-fn-1"');
+    expect(first).toContain('href="#user-content-fnref-1"');
+    expect(second).not.toContain("user-content-fn-1");
   });
 
 	it("writes cover, profile metadata, vertical progression, styles, and heading chapters", async () => {

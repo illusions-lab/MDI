@@ -10,20 +10,24 @@ description: 每個輸出格式的含義、rendering package 與 layout responsi
 | Format | Package | 實際內容 |
 | --- | --- | --- |
 | HTML | `@illusions-lab/mdi`（`renderHtml`） | standalone HTML document 加 embedded `.mdi-*` stylesheet |
-| TXT（5 flavors） | `@illusions-lab/mdi`（`renderTextFormat`）/ CLI | plain、保留 ruby 或特定日文出版平台的 plain-text convention；見[TXT export flavors](/zh-tw/syntax/reference/#txt-匯出風格) |
+| TXT（6 flavors） | `@illusions-lab/mdi`（`renderTextFormat`）/ CLI | plain、保留 ruby 或特定日文出版平台的 plain-text convention；包含 [note 匯出](/zh-tw/ecosystem/note/) |
 | EPUB | `@illusions-lab/mdi`（`renderEpub`） | 真正 EPUB 3 archive：reflowable XHTML chapters + `nav.xhtml` + CSS + OPF package，由 Rust zip |
 | DOCX | `@illusions-lab/mdi`（`renderDocx`） | 真正 OOXML（WordprocessingML）文件，由 Rust zip |
 | PDF | `@illusions-lab/mdi-to-pdf` | Rust-rendered HTML/print CSS，由本機 Chromium-family browser layout/rasterize |
 
-五種中四種完全在 Rust 內產生：CLI 與 JavaScript package 直接呼叫 `mdi-core` renderer，沒有中間 JavaScript render step。PDF 是例外，只因它需 launch OS process；native host 的 Rust core 用 `render_pdf`/`find_chromium`，Node CLI 則經由 `@illusions-lab/mdi-to-pdf`。
+五種中四種完全在 Rust 內產生，包含套用 profile 的 EPUB/DOCX。CLI 與 JavaScript package 只整理 arguments，不含中間 JavaScript renderer。PDF 使用 Rust 解決的 profile 與準備完成的 HTML/print CSS，再由 native 或 Node host 啟動 Chromium。
 
 ## Legacy compatibility packages
 
-`@illusions-lab/mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` 仍存在並發布。它們早於 Rust-native renderer，操作 `mdast`/HAST tree 而不直接呼叫 Rust render functions，對已有 `mdast`（經由[remark adapter](/zh-tw/ecosystem/remark/)）的 unified consumer 仍有用。**CLI 已不再使用它們**。重要差異是 `mdi-to-hast` stylesheet 比 Rust `render_html` embedded CSS 更接近 `SYNTAX.md`，見[stylesheet parity](/zh-tw/ecosystem/compatibility/#stylesheet-parity)。
+`@illusions-lab/mdi-to-hast`、`mdi-to-html`、`mdi-to-epub`、`mdi-to-docx` 仍發布，供已持有 `mdast`/HAST tree 的 unified consumer 使用。EPUB/DOCX compatibility entry 會把 tree serialize 為 MDI，再交給 Rust 完成輸出；JavaScript 不再保留獨立 archive generator。**CLI 不使用這些 tree-facing entry**。重要差異是 `mdi-to-hast` stylesheet 比 Rust `render_html` embedded CSS 更接近 `SYNTAX.md`，見[stylesheet parity](/zh-tw/ecosystem/compatibility/#stylesheet-parity)。
 
-## 所有 renderer 尚待完成的部分
+## 設定型輸出
 
-EPUB/DOCX 尚未接上 [export profile](/zh-tw/ecosystem/export-profiles/) 的 cover image、configurable chapter-split level、完整 page-geometry/font control；目前只讀 front matter 的 `title`/`author`/`lang`/`writing-mode`。這在 [Rust Core API](/zh-tw/core/rust-api/#尚未實作) 明確列為 pending，而非靜默缺失。
+設定型 EPUB 支援 metadata、writing mode、typography、chapter split 與
+PNG/JPEG cover。設定型 DOCX 支援 metadata、page geometry、mirror margin、
+writing mode、typography、strict／flowing grid 和頁碼。兩條路徑都在 Rust
+解析同一份 [export profile](/zh-tw/ecosystem/export-profiles/)，因此未來
+Python、Swift 或 Android API 可以直接公開同樣的能力，不必重寫邏輯。
 
 ## 下一步
 

@@ -1,6 +1,6 @@
 [package]
 name = "illusion-markdown-python"
-version = "2.0.3"
+version = "2.1.0"
 description = "PyO3 bindings for illusion Markdown (MDI)"
 edition = "2024"
 license = "MIT"
@@ -8,6 +8,8 @@ publish = false
 readme = "README.md"
 repository = "https://github.com/illusions-lab/MDI"
 exclude = [
+  ".pytest_cache/**",
+  "coverage*.xml",
   "src/mdi/_native.abi3.so",
   "src/**/__pycache__/**",
   "tests/**/__pycache__/**",

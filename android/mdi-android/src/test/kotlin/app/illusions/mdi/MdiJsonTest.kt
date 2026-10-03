@@ -44,7 +44,15 @@ class MdiJsonTest {
     fun text_formats_keep_the_stable_core_names() {
         assertEquals("txt-ruby", MdiTextFormat.Ruby.wireName)
         assertTrue(MdiTextFormat.entries.any { it.wireName == "aozora" })
+        assertTrue(MdiTextFormat.entries.any { it.wireName == "note" })
         assertFalse(MdiTextFormat.entries.any { it.wireName == "pdf" })
+    }
+
+    @Test
+    fun comments_are_explicit_and_extended_ir_is_supported() {
+        bridge.parseJson = validParseJson.replace("\"irVersion\":\"1.0\"", "\"irVersion\":\"1.1\"")
+        assertEquals(MDI_COMMENT_IR_VERSION, Mdi.parse("source", includeComments = true).irVersion)
+        assertEquals(listOf("parse:source:true"), bridge.calls)
     }
 
     @Test
@@ -55,10 +63,11 @@ class MdiJsonTest {
         assertEquals("plain", Mdi.renderText("source"))
         assertEquals("narou:  ", Mdi.renderTextFormat("source", MdiTextFormat.Narou, "  "))
         assertEquals("txt:", Mdi.renderTextFormat("source", MdiTextFormat.Plain))
+        assertEquals("note:", Mdi.renderTextFormat("source", MdiTextFormat.Note))
         assertEquals(listOf<Byte>(1, 2), Mdi.renderEpub("source").toList())
         assertEquals(listOf<Byte>(3, 4), Mdi.renderDocx("source").toList())
         assertEquals(
-            listOf("parse:source", "html:source", "serialize:source", "text:source", "format:narou:  ", "format:txt:", "epub:source", "docx:source"),
+            listOf("parse:source", "html:source", "serialize:source", "text:source", "format:narou:  ", "format:txt:", "format:note:", "epub:source", "docx:source"),
             bridge.calls,
         )
     }
@@ -109,10 +118,20 @@ class MdiJsonTest {
         assertNotNull(MdiSourceSpan.serializer())
     }
 
+    @Test
+    fun warichu_options_forward_to_rust_and_reject_negative_capacity() {
+        assertEquals("{\"firstCapacity\":2,\"continuationCapacity\":4}", Mdi.layoutWarichuJson("[]", 4, 2))
+        assertEquals("{\"firstCapacity\":40,\"continuationCapacity\":40}", Mdi.layoutWarichuJson("[]"))
+        assertFailsWith<IllegalArgumentException> { Mdi.layoutWarichuJson("[]", -1) }
+        assertFailsWith<IllegalArgumentException> { Mdi.layoutWarichuJson("[]", 1, -1) }
+    }
+
     private class FakeBridge : MdiBridge {
+        override fun layoutWarichuJson(nodes: String, options: String): String = options
         val calls = mutableListOf<String>()
         var parseJson: String = validParseJson
 
+        override fun parseJsonWithOptions(source: String, includeComments: Boolean): String = parseJson.also { calls += "parse:$source:$includeComments" }
         override fun parseJson(source: String): String = parseJson.also { calls += "parse:$source" }
         override fun renderHtml(source: String): String = "<html>".also { calls += "html:$source" }
         override fun serializeMdi(source: String): String = "normalized".also { calls += "serialize:$source" }

@@ -1,3 +1,4 @@
 packages:
   - "nodejs/packages/*"
+  - "nodejs/browser-test"
   - "docs"

@@ -27,22 +27,40 @@ description: 現在 mdi-core/src/lib.rs に実在する public symbol の一覧�
 
 - `render_html` / `render_html_document` → standalone HTML
 - `render_text` / `render_text_document` → plain `txt`
-- `render_text_format(source, format: TextFormat, indent_prefix)` → `txt`、`txt-ruby`、`narou`、`kakuyomu`、`aozora`
+- `render_text_format(source, format: TextFormat, indent_prefix)` → `txt`、`txt-ruby`、`narou`、`kakuyomu`、`aozora`、`note`
 - `render_epub` / `render_epub_document` → `Result<Vec<u8>, String>` EPUB 3
+- `render_epub_with_profile` / `render_epub_document_with_profile` → metadata、typography、chapter split、PNG/JPEG cover 付き EPUB 3
 - `render_docx` / `render_docx_document` → `Result<Vec<u8>, String>` DOCX
+- `render_docx_with_profile` / `render_docx_document_with_profile` → page geometry、typography、grid、mirror margin、page number 付き DOCX
 - `render_pdf(source, options: &PdfOptions)` → local Chromium による PDF
 - `find_chromium() -> Option<PathBuf>` → Chromium の best-effort search
 
+## Publication profile
+
+- `resolve_export_profile` / `resolve_export_profile_json` — canonical profile を検証し、default を補います。
+- `page_dimensions` / `page_size_catalog_json` — binding と renderer が共用する 67 種の physical paper catalogue。
+- `prepare_chromium_print_profile` と JSON/resolved variants — Chromium host 用の styled HTML、mm 単位 geometry、margin、page-number template。
+- `apply_pdf_profile` / `apply_pdf_profile_json` — browser を起動せず resolved print CSS を適用します。
+
 ## Public data types
 
-current-generation API は `ParseOutput`、`ParserCapabilities`、`Diagnostic`、`SourceSpan`、`Document`、`Frontmatter`、`PdfOptions` です。旧 shape は `MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading` です。
+current-generation API は `ParseOutput`、`ParserCapabilities`、`Diagnostic`、`SourceSpan`、`Document`、`Frontmatter`、`MdiTextBlocksResult`、`MdiSourceSpanTextResolution`、`MdiSourceSpanTextMatch`、`MdiSourceSpanCoverage`、`MdiSourceSpanRelation`、`MdiSourceSpanResolutionError`、`PdfOptions`、`EpubCover`、`ResolvedExportProfile` とその nested profile/Chromium print types です。旧 shape は `MdiSyntaxDocument`、`MdiBlock`、`PagebreakVariant`、`Inline`、`RubyReading` です。
+
+`get_mdi_text_blocks(source)` は grapheme 単位の canonical text projection を返し、
+`resolve_mdi_source_span(source, span)` は half-open UTF-8 source span を本文と ruby
+annotation の range に逆引きします。coverage、relation、boundary、delimiter、
+synthetic/unmapped、round-trip の制約は [Rust binding](/ja/bindings/rust/) を参照してください。
+複数 span は `resolve_mdi_source_spans(source, spans)` で一度の parse/projection にまとめられます。
 
 ## Not yet implemented
 
 - `parse_output` と別個の validation API はありません。
 - `serialize_mdi` と別個の normalize API はありません。
-- export-profile-aware EPUB/DOCX（cover、chapter split、page geometry、font）はありません。
-- DOCX の ruby run、boten style、page geometry はありません。現在は typography を plain text に flatten します。
+
+DOCX は ruby、tate-chu-yoko、emphasis、kern、page geometry などを native
+または portable な OOXML で出力します。ただし Word-compatible reader
+ごとに和文の行組みは異なるため、browser と pixel-identical であるという
+意味ではありません。
 
 ## 次へ
 

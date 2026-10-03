@@ -9,25 +9,56 @@ description: "Export a .mdi file from the shell, with one shared profile for EPU
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
+mdi novel.mdi
 mdi build novel.mdi --to epub --config novel.export.json -o dist/novel.epub
+mdi check novel.mdi
+mdi update --check
 ```
 
 ```text
-mdi build <input.mdi> --to html|pdf|epub|docx|txt|txt-ruby|narou|kakuyomu|aozora|txt-all [--config export.json] [-o <output>]
+mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
+mdi check <input.mdi>
+mdi update [--check] [--yes]
 ```
 
-`<input.mdi>` is UTF-8. `--to` is required; `-o` overrides the derived output path and cannot be used with `txt-all`; `--config` points to an [export profile](/ecosystem/export-profiles/) JSON file. Success prints `Written <path>` and exits `0`. Any argument, input, profile, renderer, or output failure writes one message to stderr and exits `1`.
+`<input.mdi>` is UTF-8. The shorthand command defaults to HTML, so
+`mdi novel.mdi` writes `novel.html`. `build` remains compatible with the
+explicit form; its default is also HTML. `--to` selects one of `html`, `json`,
+`pdf`, `epub`, `docx`, `txt`, `txt-ruby`, `narou`, `kakuyomu`, `aozora`,
+`note`, or `txt-all`. If `--to` is omitted, a recognized `-o` extension selects
+the format (`.html`, `.json`, `.pdf`, `.epub`, `.docx`, or `.txt`). An explicit
+format that conflicts with the output extension is rejected. `-o` overrides the
+derived output path and cannot be used with `txt-all`; `--config` points to an
+[export profile](/ecosystem/export-profiles/) JSON file. Success prints
+`Written <path>` and exits `0`. Any argument, input, profile, renderer, or
+output failure writes one message to stderr and exits `1`.
+
+`mdi --version`, `mdi --help`, and `mdi -h` show the installed version or full
+command reference. `mdi check` parses the document and prints source-backed
+diagnostics. Warnings still exit `0`; an error diagnostic exits `1`.
+
+`mdi update --check` reports the installed and npm registry versions without
+installing anything. `mdi update` asks `Proceed? [y/N]` before running the
+global npm install, while `mdi update --yes` is intended for explicitly
+authorized automation. Non-interactive sessions never install implicitly and
+print the install command instead. Normal CLI invocations perform a
+best-effort, once-per-day cached registry check in the background; failures do
+not change the command result and update notices go to stderr, so JSON and
+other stdout pipelines remain valid. Set `MDI_NO_UPDATE_CHECK=1` to disable
+the background check.
 
 ## Which output you get
 
 | `--to` | Default | Renderer and profile behavior |
 | --- | --- | --- |
+| `json` | `novel.json` | Pretty-printed versioned MDI IR envelope, including parser diagnostics. |
 | `html` | `novel.html` | Rust semantic standalone HTML; no page profile is applied. |
 | `pdf` | `novel.pdf` | Rust HTML plus local Chromium; consumes the print profile. |
 | `epub` | `novel.epub` | Baseline Rust EPUB without `--config`; configured profile export with metadata, typography, chapter split, and optional cover with `--config`. |
 | `docx` | `novel.docx` | Baseline Rust DOCX without `--config`; configured profile export with metadata, page setup, typography, and numbering with `--config`. |
-| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` | matching `.txt` suffix | Rust text convention; profile controls indentation. `aozora` is Shift_JIS + CRLF and rejects characters outside that official repertoire instead of writing `?`. |
-| `txt-all` | five text files | Writes every text flavor and rejects `-o`. |
+| `txt` / `txt-ruby` / `narou` / `kakuyomu` / `aozora` / `note` | matching `.txt` suffix | Rust text convention; profile controls indentation. `note` is UTF-8 editor input; see [note export](/ecosystem/note/). `aozora` is Shift_JIS + CRLF and rejects characters outside that official repertoire instead of writing `?`. |
+| `txt-all` | six text files | Writes every text flavor and rejects `-o`. |
 
 The CLI reads `epub.coverPath` relative to the profile file. It must name a PNG or JPEG; the bytes are included in the EPUB only, never sent to the parser. `--config` is no longer silently ignored for EPUB or DOCX.
 
@@ -50,7 +81,7 @@ Without `--config`, the CLI chooses its built-in layout from front matter: `writ
 
 When supplied, `--config` must contain `layout.system`; a profile without it is rejected. `"japanese-publisher"` is the book system: horizontal text defaults to a mirrored, left-bound `Shirokuban`/10 pt Mincho 27×26 strict grid; vertical text defaults to the mirrored, right-bound A4-landscape novel-manuscript 40×30 strict grid. `"word"` is a separate flowing system: A4, 25.4 mm margins on all four sides, no mirroring, and `gridMode: "typographic"`; it rejects strict grids.
 
-Semantic MDI parsing and source-span diagnostics remain Rust-owned. Profile values are publication policy: EPUB/DOCX adapters use them to package the parsed IR, while PDF geometry and Chromium layout are host concerns. This keeps application UI preferences and machine-specific browser behavior out of the parser.
+Rust owns semantic parsing, source-span diagnostics, profile validation, the paper catalogue, and configured EPUB/DOCX generation. For PDF it also prepares the print HTML and geometry; the host supplies the machine-specific Chromium process. Application UI preferences stay outside both layers.
 
 ## PDF and DOCX limits
 

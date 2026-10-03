@@ -1,8 +1,9 @@
 # `@illusions-lab/mdi-export-profile`
 
-Typed export-profile schema shared by MDI output adapters. A profile controls
-presentation and metadata—page geometry, typography, page numbers, EPUB
-chapters, and publication-text options—without changing MDI syntax.
+Typed JavaScript interface to MDI's Rust-owned export-profile contract. A
+profile controls presentation and metadata—page geometry, typography, page
+numbers, EPUB chapters, and publication-text options—without changing MDI
+syntax.
 
 ## Install
 
@@ -51,9 +52,11 @@ listPageSizes({ locale: "ja" });
 // [{ key: "A4", label: "A4判", widthMm: 210, heightMm: 297 }, ...]
 ```
 
-Use the resolved profile with the JavaScript PDF/mdast adapters or pass a JSON
-profile to `mdi build --config export.json`. Rust remains responsible for MDI
-syntax and document semantics.
+Use the resolved profile with the JavaScript export APIs, or pass a JSON
+profile to `mdi build --config export.json`. Validation, defaults, physical
+page dimensions, and renderer-facing values come from `mdi-core`; this package
+adds TypeScript types and Japanese UI labels without keeping a second layout
+table.
 
 Configured exports must select `layout.system`. The two systems deliberately
 do not blend:

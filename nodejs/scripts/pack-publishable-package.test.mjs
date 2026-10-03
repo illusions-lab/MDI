@@ -84,7 +84,16 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       );
 
     for (const tarball of tarballs) {
-      assert.doesNotMatch(JSON.stringify(packedManifest(tarball)), /workspace:/);
+      const manifest = packedManifest(tarball);
+      assert.doesNotMatch(JSON.stringify(manifest), /workspace:/);
+      if (manifest.name === "@illusions-lab/mdi-core") {
+        const files = execFileSync("tar", ["-tf", tarball], { encoding: "utf8" });
+        assert.match(files, /package\/dist\/generated\/node\/mdi_core_bg\.wasm/);
+        assert.match(files, /package\/dist\/generated\/web\/mdi_core_bg\.wasm/);
+        assert.match(files, /package\/dist\/web\/index\.js/);
+        assert.equal(manifest.exports["."].browser, "./dist/web/index.js");
+        assert.equal(manifest.exports["."].node, "./dist/node/index.cjs");
+      }
     }
 
     mkdirSync(consumerDirectory);
@@ -102,6 +111,16 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
         "--prefer-offline",
         ...tarballs,
       ],
+      { cwd: consumerDirectory, stdio: "inherit" }
+    );
+
+    // The consumer install may resolve the package's caret-ranged Playwright
+    // dependency to a newer browser revision than the workspace lockfile.
+    // Install the browser through that exact consumer dependency so this
+    // contract tests the artifact a user actually installed.
+    execFileSync(
+      join(consumerDirectory, "node_modules", ".bin", "playwright"),
+      ["install", "chromium"],
       { cwd: consumerDirectory, stdio: "inherit" }
     );
 
@@ -155,6 +174,7 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       narou: join(consumerDirectory, "book_narou.txt"),
       kakuyomu: join(consumerDirectory, "book_kakuyomu.txt"),
       aozora: join(consumerDirectory, "book_aozora.txt"),
+      note: join(consumerDirectory, "book_note.txt"),
     };
     for (const [format, output] of Object.entries(outputs)) {
       execFileSync(cli, ["build", source, "--to", format, "-o", output], {
@@ -168,16 +188,17 @@ test("npm artifacts replace workspace dependencies and MDI installs for consumer
       stdio: "inherit",
     });
     assert.deepEqual(
-      ["book.txt", "book_ruby.txt", "book_narou.txt", "book_kakuyomu.txt", "book_aozora.txt"].map(
+      ["book.txt", "book_ruby.txt", "book_narou.txt", "book_kakuyomu.txt", "book_aozora.txt", "book_note.txt"].map(
         (output) => existsSync(join(consumerDirectory, output))
       ),
-      [true, true, true, true, true]
+      [true, true, true, true, true, true]
     );
     assert.match(readFileSync(outputs.html, "utf8"), /<ruby(?:\s|>)/);
     assert.deepEqual(readFileSync(outputs.pdf).subarray(0, 4), Buffer.from("%PDF"));
     assert.deepEqual(readFileSync(outputs.epub).subarray(0, 2), Buffer.from("PK"));
     assert.deepEqual(readFileSync(outputs.docx).subarray(0, 2), Buffer.from("PK"));
     assert.match(readFileSync(outputs["txt-ruby"], "utf8"), /\{東京\|とうきょう\}/);
+    assert.match(readFileSync(outputs.note, "utf8"), /｜東京《とうきょう》/);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }

@@ -5,7 +5,7 @@ description: The real, validated ExportProfile schema — every field, its defau
 
 **Prerequisites:** [Getting Started](/guides/getting-started/).
 
-An export profile configures **presentation** — page size, fonts, margins, indentation, page numbers — for a specific output. It never changes MDI syntax or meaning; the same source with two different profiles produces two different-looking PDFs of the *same document*. The package is `@illusions-lab/mdi-export-profile`; `resolveExportProfile` validates every field and throws a descriptive `Error` rather than silently accepting malformed layout data (see below).
+An export profile configures **presentation** — page size, fonts, margins, indentation, page numbers — for a specific output. It never changes MDI syntax or meaning; the same source with two different profiles produces two different-looking PDFs of the *same document*. The package is `@illusions-lab/mdi-export-profile`; its JavaScript functions pass validation and default resolution to `mdi-core`, then return a friendly typed result or a descriptive `Error`.
 
 ## The schema
 
@@ -48,7 +48,7 @@ An export profile configures **presentation** — page size, fonts, margins, ind
 | `typesetting.fontFamily` | `string` | Mincho fallback stack | Must be a non-empty string; whitespace-only falls back to default. |
 | `typesetting.textIndentEm` | `number` | `1` | `0`–`4`. |
 | `typesetting.fullwidthSpaceIndent` | `boolean` | `false` | — |
-| `pagination.pageSize` | one of `PAGE_SIZES` | publisher: `"Shirokuban"`; word: `"A4"` | Must be a key of the exported `PAGE_DIMENSIONS` map. |
+| `pagination.pageSize` | one of `PAGE_SIZES` | publisher: `"Shirokuban"`; word: `"A4"` | Must be one of the 67 Rust-owned catalogue keys exposed through `PAGE_DIMENSIONS`. |
 | `pagination.landscape` | `boolean` | `false` | — |
 | `pagination.charactersPerLine` / `linesPerPage` | `number` | publisher horizontal: `27`×`26`; vertical: `40`×`30`; word: informational | `10`–`400`. |
 | `pagination.gridMode` | `"strict" \| "typographic"` | publisher: strict; word: typographic | `word` rejects strict; strict rejects explicit line spacing. |
@@ -90,7 +90,10 @@ const resolved = resolveExportProfile(profile); // every field filled in, fully 
 | Full-width-space indent | Yes | Yes (1–4 spaces via `text.indentCount`) | EPUB / DOCX: Yes |
 | Cover image, chapter split level | — | — | EPUB: Yes |
 
-The adapters package Rust-owned parsed IR; layout policy remains outside the MDI parser. EPUB cannot promise fixed physical pages because it is reflowable.
+`mdi-core` owns the defaults, validation rules, physical paper dimensions,
+and renderer-facing profile. The JavaScript package adds TypeScript types and
+Japanese UI labels without copying the layout table. EPUB cannot promise fixed
+physical pages because it is reflowable.
 
 ## Next steps
 

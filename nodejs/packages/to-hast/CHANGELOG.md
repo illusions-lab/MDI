@@ -1,5 +1,12 @@
 # @illusions-lab/mdi-to-hast
 
+## 2.1.0 — Editorial comments
+
+- Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.
+- Keep default document APIs on comment-free IR 1.0; explicitly request comments for IR 1.1.
+- Always omit valid comments from body projections, layout and publications. Previously visible HTML comment text is now omitted.
+- Warn on unterminated comments and retain their literal text; intended private text may therefore be exported.
+
 ## 2.0.18
 
 ### Patch Changes
@@ -31,3 +38,7 @@
 - Updated dependencies
   - mdast-util-mdi@2.0.2
   - @illusions-lab/mdi-remark@2.0.3
+
+## Unreleased
+
+- Render legacy mdast warichu through the Rust layout engine with portable two-line spans, transient source maps, and preserved authored hard breaks.
