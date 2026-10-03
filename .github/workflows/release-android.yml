@@ -50,7 +50,7 @@ jobs:
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - name: Install Android NDK and cargo-ndk
         run: |
