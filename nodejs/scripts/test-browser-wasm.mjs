@@ -148,6 +148,7 @@ async function testPage(browserName, page, url, getNodeProjection, parseNodeMdas
   assert.equal(result.error, undefined, `${browserName}: ${result.error}`);
   assert.equal(result.irVersion, "1.0", browserName);
   assert.equal(result.projectionVersion, "1.0", browserName);
+  assert.equal(result.stylesheetMutations, true, `${browserName}: stylesheet mutation invalidation`);
   assert.deepEqual(result.warichu[0].widths, [6, 4], browserName);
   const geometry=result.warichuBrowser;
   assert(geometry.preserved && geometry.wraps && geometry.resized, `${browserName}: adaptive warichu preserves source through wrapping and resizing`);
