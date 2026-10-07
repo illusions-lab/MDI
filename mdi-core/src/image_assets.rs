@@ -97,10 +97,16 @@ impl ImageKind {
                 Self::Png | Self::Jpeg | Self::Gif | Self::WebP | Self::Bmp | Self::Svg
             ),
             ImageTarget::Epub => {
-                matches!(self, Self::Png | Self::Jpeg | Self::Gif | Self::WebP | Self::Svg)
+                matches!(
+                    self,
+                    Self::Png | Self::Jpeg | Self::Gif | Self::WebP | Self::Svg
+                )
             }
             ImageTarget::Docx => {
-                matches!(self, Self::Png | Self::Jpeg | Self::Gif | Self::Bmp | Self::Tiff)
+                matches!(
+                    self,
+                    Self::Png | Self::Jpeg | Self::Gif | Self::Bmp | Self::Tiff
+                )
             }
         }
     }
@@ -398,9 +404,7 @@ fn sniff(bytes: &[u8]) -> Option<ImageKind> {
     if bytes.starts_with(b"BM") {
         return Some(ImageKind::Bmp);
     }
-    if bytes.len() >= 4
-        && (bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*"))
-    {
+    if bytes.len() >= 4 && (bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*")) {
         return Some(ImageKind::Tiff);
     }
     if looks_like_svg(bytes) {
@@ -604,21 +608,15 @@ pub fn content_box_px(profile: &ResolvedExportProfile) -> (u32, u32) {
     } else {
         (natural_width, natural_height)
     };
-    let width_mm = (page_width
-        - profile.pagination.margins.left
-        - profile.pagination.margins.right)
-        .max(1.0);
-    let height_mm = (page_height
-        - profile.pagination.margins.top
-        - profile.pagination.margins.bottom)
-        .max(1.0);
+    let width_mm =
+        (page_width - profile.pagination.margins.left - profile.pagination.margins.right).max(1.0);
+    let height_mm =
+        (page_height - profile.pagination.margins.top - profile.pagination.margins.bottom).max(1.0);
     (mm_to_css_px(width_mm), mm_to_css_px(height_mm))
 }
 
 fn mm_to_css_px(mm: f64) -> u32 {
-    ((mm / MM_PER_INCH) * CSS_PIXELS_PER_INCH)
-        .floor()
-        .max(1.0) as u32
+    ((mm / MM_PER_INCH) * CSS_PIXELS_PER_INCH).floor().max(1.0) as u32
 }
 
 pub fn fit_px(width: u32, height: u32, box_width: u32, box_height: u32) -> (u32, u32) {
@@ -676,9 +674,7 @@ fn rasterize_svg(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Strin
         ),
         &mut pixmap.as_mut(),
     );
-    pixmap
-        .encode_png()
-        .map_err(|error| error.to_string())
+    pixmap.encode_png().map_err(|error| error.to_string())
 }
 
 fn usvg_tree(text: &str) -> Result<resvg::usvg::Tree, String> {
@@ -738,12 +734,10 @@ fn write_svg_node(
         }
         roxmltree::NodeType::Text => {
             let text = node.text().unwrap_or_default();
-            if node.parent().is_some_and(|parent| {
-                parent
-                    .tag_name()
-                    .name()
-                    .eq_ignore_ascii_case("style")
-            }) {
+            if node
+                .parent()
+                .is_some_and(|parent| parent.tag_name().name().eq_ignore_ascii_case("style"))
+            {
                 vet_style(text)?;
             }
             let rewritten = rewrite_nested_svgs(text, depth)?;
@@ -860,10 +854,7 @@ fn is_reference_attribute(name: &str) -> bool {
 }
 
 fn is_smil_value_attribute(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "to" | "from" | "values"
-    )
+    matches!(name.to_ascii_lowercase().as_str(), "to" | "from" | "values")
 }
 
 enum ReferenceDecision {
@@ -1114,7 +1105,8 @@ fn percent_decode(value: &str) -> Result<Vec<u8>, String> {
             let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
                 .map_err(|_| "data URL encoding is invalid".to_owned())?;
             output.push(
-                u8::from_str_radix(hex, 16).map_err(|_| "data URL encoding is invalid".to_owned())?,
+                u8::from_str_radix(hex, 16)
+                    .map_err(|_| "data URL encoding is invalid".to_owned())?,
             );
             index += 3;
         } else {
@@ -1128,7 +1120,7 @@ fn percent_decode(value: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_document, resolve_export_profile};
+    use crate::{EpubCover, parse_document, resolve_export_profile};
     use serde_json::Map;
     use std::io::Read;
 
@@ -1160,7 +1152,10 @@ mod tests {
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBP"), Some(ImageKind::WebP));
         assert_eq!(sniff(b"BM"), Some(ImageKind::Bmp));
         assert_eq!(sniff(b"II*\0"), Some(ImageKind::Tiff));
-        assert_eq!(sniff(b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"), Some(ImageKind::Svg));
+        assert_eq!(
+            sniff(b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+            Some(ImageKind::Svg)
+        );
         assert_eq!(sniff(b"<html><img></html>"), None);
         assert_eq!(sniff(b""), None);
     }
@@ -1179,7 +1174,13 @@ mod tests {
         )
         .expect("png data url");
         assert_eq!(prepared.get(&url).expect("image").media_type, "image/png");
-        assert!(prepared.get(&url).expect("image").html_src().starts_with("data:image/png;base64,"));
+        assert!(
+            prepared
+                .get(&url)
+                .expect("image")
+                .html_src()
+                .starts_with("data:image/png;base64,")
+        );
 
         let wrong = format!("data:image/gif;base64,{}", base64_encode(&bytes));
         let document = parse_document(&format!("![]({wrong})\n"));
@@ -1241,17 +1242,27 @@ mod tests {
         assert!(text.contains("href=\"#icon\""));
 
         let external = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><image href="https://example.test/a.png"/></svg>"#;
-        assert!(sanitize_svg(external).expect_err("external").contains("external"));
-        assert!(sanitize_svg(b"<!DOCTYPE svg [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><svg/>").is_err());
+        assert!(
+            sanitize_svg(external)
+                .expect_err("external")
+                .contains("external")
+        );
+        assert!(
+            sanitize_svg(b"<!DOCTYPE svg [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><svg/>")
+                .is_err()
+        );
         let styled = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><style>@import "https://evil.example/a.css"</style></svg>"#;
         assert!(sanitize_svg(styled).is_err());
         let fill = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><rect width="8" height="4" fill="url(https://evil.example/a.png)"/></svg>"#;
         assert!(sanitize_svg(fill).is_err());
         let obfuscated = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><set attributeName="href" to="java&#9;script:alert(1)"/></svg>"#;
-        let cleaned = String::from_utf8(sanitize_svg(obfuscated).expect("obfuscated")).expect("utf8");
+        let cleaned =
+            String::from_utf8(sanitize_svg(obfuscated).expect("obfuscated")).expect("utf8");
         assert!(!cleaned.to_ascii_lowercase().contains("javascript"));
         assert!(!cleaned.contains("alert"));
-        let inner = base64_encode(b"<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"/etc/passwd\"/></svg>");
+        let inner = base64_encode(
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"/etc/passwd\"/></svg>",
+        );
         let nested = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"4\"><image href=\"data:image/svg+xml;base64,{inner}\"/></svg>"
         );
@@ -1283,8 +1294,14 @@ mod tests {
         let document = parse_document("![](big.png)\n");
         let mut assets = ImageAssets::new();
         assets.insert("big.png", asset(header, "image/png"));
-        let error = prepare_images(&document, &assets, &profile(), ImageTarget::Html, 1024 * 1024)
-            .expect_err("pixel limit");
+        let error = prepare_images(
+            &document,
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            1024 * 1024,
+        )
+        .expect_err("pixel limit");
         assert!(error.contains("pixel limit"));
     }
 
@@ -1300,7 +1317,10 @@ mod tests {
         };
         let document = parse_document("![](a.jpg)\n");
         let mut assets = ImageAssets::new();
-        assets.insert("https://user:secret@example.test/a.jpg", asset(jpeg.clone(), "image/jpeg"));
+        assets.insert(
+            "https://user:secret@example.test/a.jpg",
+            asset(jpeg.clone(), "image/jpeg"),
+        );
         let kept = prepare_images(
             &parse_document("![](https://user:secret@example.test/a.jpg)\n"),
             &assets,
@@ -1310,7 +1330,9 @@ mod tests {
         )
         .expect("jpeg");
         assert_eq!(
-            kept.get("https://user:secret@example.test/a.jpg").expect("image").media_type,
+            kept.get("https://user:secret@example.test/a.jpg")
+                .expect("image")
+                .media_type,
             "image/jpeg"
         );
 
@@ -1323,19 +1345,114 @@ mod tests {
             bytes.into_inner()
         };
         let mut assets = ImageAssets::new();
-        assets.insert("a.bmp", asset(bmp, "image/bmp"));
-        let epub = prepare_images(&parse_document("![](a.bmp)\n"), &assets, &profile(), ImageTarget::Epub, DEFAULT_MAX_IMAGE_BYTES).expect("bmp epub");
+        assets.insert("a.bmp", asset(bmp.clone(), "image/bmp"));
+        let epub = prepare_images(
+            &parse_document("![](a.bmp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Epub,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("bmp epub");
         assert_eq!(epub.get("a.bmp").expect("image").media_type, "image/png");
-        let docx = prepare_images(&parse_document("![](a.bmp)\n"), &assets, &profile(), ImageTarget::Docx, DEFAULT_MAX_IMAGE_BYTES).expect("bmp docx");
+        let docx = prepare_images(
+            &parse_document("![](a.bmp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("bmp docx");
         assert_eq!(docx.get("a.bmp").expect("image").media_type, "image/bmp");
+        let html = prepare_images(
+            &parse_document("![](a.bmp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("bmp html");
+        assert_eq!(html.get("a.bmp").expect("image").media_type, "image/bmp");
+        assert_eq!(html.get("a.bmp").expect("image").bytes, bmp);
+
+        let tiff = {
+            let image = image::RgbImage::from_pixel(2, 1, image::Rgb([1, 1, 1]));
+            let mut bytes = Cursor::new(Vec::new());
+            image
+                .write_with_encoder(image::codecs::tiff::TiffEncoder::new(&mut bytes))
+                .expect("tiff");
+            bytes.into_inner()
+        };
+        let mut assets = ImageAssets::new();
+        assets.insert("a.tif", asset(tiff, "image/tiff"));
+        for target in [ImageTarget::Html, ImageTarget::Epub] {
+            let prepared = prepare_images(
+                &parse_document("![](a.tif)\n"),
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("tiff png");
+            let image = prepared.get("a.tif").expect("image");
+            assert_eq!(image.media_type, "image/png");
+            assert!(image.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
+        let docx = prepare_images(
+            &parse_document("![](a.tif)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("tiff docx");
+        let image = docx.get("a.tif").expect("image");
+        assert_eq!(image.media_type, "image/tiff");
+        if stored_orientation(ImageKind::Tiff, &image.bytes).is_some() {
+            assert_eq!(stored_orientation(ImageKind::Tiff, &image.bytes), Some(1));
+        }
+
+        let still = lossless_webp();
+        let mut assets = ImageAssets::new();
+        assets.insert("a.webp", asset(still.clone(), "image/webp"));
+        let epub = prepare_images(
+            &parse_document("![](a.webp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Epub,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("webp epub");
+        let image = epub.get("a.webp").expect("image");
+        assert_eq!(image.media_type, "image/webp");
+        assert_eq!(image.bytes, still);
 
         let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="black"/></svg>"#;
         let mut assets = ImageAssets::new();
         assets.insert("a.svg", asset(svg.to_vec(), "image/svg+xml"));
-        let epub = prepare_images(&parse_document("![](a.svg)\n"), &assets, &profile(), ImageTarget::Epub, DEFAULT_MAX_IMAGE_BYTES).expect("svg");
-        assert_eq!(epub.get("a.svg").expect("image").media_type, "image/svg+xml");
-        assert!(!String::from_utf8_lossy(&epub.get("a.svg").expect("image").bytes).contains("<script"));
-        let docx = prepare_images(&parse_document("![](a.svg)\n"), &assets, &profile(), ImageTarget::Docx, DEFAULT_MAX_IMAGE_BYTES).expect("svg docx");
+        let epub = prepare_images(
+            &parse_document("![](a.svg)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Epub,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("svg");
+        assert_eq!(
+            epub.get("a.svg").expect("image").media_type,
+            "image/svg+xml"
+        );
+        assert!(
+            !String::from_utf8_lossy(&epub.get("a.svg").expect("image").bytes).contains("<script")
+        );
+        let docx = prepare_images(
+            &parse_document("![](a.svg)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("svg docx");
         assert_eq!(docx.get("a.svg").expect("image").media_type, "image/png");
         assert!(error_label("https://user:secret@example.test/a.png").contains("example.test"));
         assert!(!error_label("https://user:secret@example.test/a.png").contains("secret"));
@@ -1382,7 +1499,9 @@ mod tests {
         assert!(!html.contains("[Content_Types].xml"));
         assert!(!html.contains("note.png"));
         assert_eq!(
-            crate::render_html(source).matches("src=\"../../[Content_Types].xml\"").count(),
+            crate::render_html(source)
+                .matches("src=\"../../[Content_Types].xml\"")
+                .count(),
             2
         );
 
@@ -1402,41 +1521,97 @@ mod tests {
         let mut archive = zip::ZipArchive::new(Cursor::new(epub)).expect("zip");
         let mut names = archive.file_names().map(str::to_owned).collect::<Vec<_>>();
         names.sort();
-        assert_eq!(names.iter().filter(|name| name.contains("images/image1.png")).count(), 1);
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| name.contains("images/image1.png"))
+                .count(),
+            1
+        );
         assert!(names.iter().all(|name| !name.contains("..")));
         let mut opf = String::new();
-        archive.by_name("OEBPS/package.opf").expect("opf").read_to_string(&mut opf).expect("read");
+        archive
+            .by_name("OEBPS/package.opf")
+            .expect("opf")
+            .read_to_string(&mut opf)
+            .expect("read");
         assert_eq!(opf.matches("images/image1.png").count(), 1);
         assert!(opf.contains("version=\"3.0\""));
         let mut chapter = String::new();
-        archive.by_name("OEBPS/chapter-1.xhtml").expect("chapter").read_to_string(&mut chapter).expect("read");
+        archive
+            .by_name("OEBPS/chapter-1.xhtml")
+            .expect("chapter")
+            .read_to_string(&mut chapter)
+            .expect("read");
         assert!(chapter.contains("<img src=\"images/image1.png\""));
         assert!(chapter.contains("/>"));
         let mut chapter_two = String::new();
-        archive.by_name("OEBPS/chapter-2.xhtml").expect("chapter").read_to_string(&mut chapter_two).expect("read");
+        archive
+            .by_name("OEBPS/chapter-2.xhtml")
+            .expect("chapter")
+            .read_to_string(&mut chapter_two)
+            .expect("read");
         assert!(chapter_two.contains("images/image1.png"));
 
-        let docx = crate::render_docx_with_profile_and_assets(source, &profile, &assets, DEFAULT_MAX_IMAGE_BYTES)
-            .expect("docx");
+        let docx = crate::render_docx_with_profile_and_assets(
+            source,
+            &profile,
+            &assets,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("docx");
         let mut archive = zip::ZipArchive::new(Cursor::new(docx)).expect("zip");
         let names = archive.file_names().map(str::to_owned).collect::<Vec<_>>();
         assert!(names.iter().any(|name| name == "word/media/image1.png"));
         assert!(names.iter().all(|name| !name.contains("..")));
-        assert!(names.iter().filter(|name| name.starts_with("word/media/")).all(|name| {
-            name.strip_prefix("word/media/image").is_some_and(|rest| rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
-        }));
+        assert!(
+            names
+                .iter()
+                .filter(|name| name.starts_with("word/media/"))
+                .all(|name| {
+                    name.strip_prefix("word/media/image")
+                        .is_some_and(|rest| rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
+                })
+        );
         let mut document = String::new();
-        archive.by_name("word/document.xml").expect("document").read_to_string(&mut document).expect("read");
+        archive
+            .by_name("word/document.xml")
+            .expect("document")
+            .read_to_string(&mut document)
+            .expect("read");
         assert!(document.contains("r:embed=\"rImg"));
         assert!(document.contains("descr=\"a&lt;b\""));
         assert!(document.contains("w:eastAsianLayout"));
         let mut footnotes = String::new();
-        archive.by_name("word/footnotes.xml").expect("footnotes").read_to_string(&mut footnotes).expect("read");
+        archive
+            .by_name("word/footnotes.xml")
+            .expect("footnotes")
+            .read_to_string(&mut footnotes)
+            .expect("read");
         assert!(footnotes.contains("r:embed=\"rFnImg"));
         let mut footnote_rels = String::new();
-        archive.by_name("word/_rels/footnotes.xml.rels").expect("rels").read_to_string(&mut footnote_rels).expect("read");
+        archive
+            .by_name("word/_rels/footnotes.xml.rels")
+            .expect("rels")
+            .read_to_string(&mut footnote_rels)
+            .expect("read");
         assert!(footnote_rels.contains("wordprocessingml") || footnote_rels.contains("/image"));
         assert!(footnote_rels.contains("media/image"));
+        let mut types = String::new();
+        archive
+            .by_name("[Content_Types].xml")
+            .expect("types")
+            .read_to_string(&mut types)
+            .expect("read");
+        assert!(types.contains("Extension=\"png\""));
+        assert!(types.contains("ContentType=\"image/png\""));
+        let mut rels = String::new();
+        archive
+            .by_name("word/_rels/document.xml.rels")
+            .expect("rels")
+            .read_to_string(&mut rels)
+            .expect("read");
+        assert!(rels.contains("relationships/image"));
     }
 
     #[test]
@@ -1446,8 +1621,9 @@ mod tests {
         assets.insert("wide.png", asset(wide, "image/png"));
         let source = "![](wide.png)\n";
         let word = r#"{"layout":{"system":"word"}}"#;
-        let fitted = crate::render_html_with_assets(source, &assets, Some(word), DEFAULT_MAX_IMAGE_BYTES)
-            .expect("word");
+        let fitted =
+            crate::render_html_with_assets(source, &assets, Some(word), DEFAULT_MAX_IMAGE_BYTES)
+                .expect("word");
         assert!(fitted.contains("width=\"400\""));
         let shrunk = crate::render_html_with_assets(source, &assets, None, DEFAULT_MAX_IMAGE_BYTES)
             .expect("default");
@@ -1573,6 +1749,19 @@ mod tests {
         assert!(image.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
         assert_eq!(image.display_width_px, 1);
         assert_eq!(image.display_height_px, 1);
+        for target in [ImageTarget::Epub, ImageTarget::Docx] {
+            let prepared = prepare_images(
+                &parse_document("![](a.webp)\n"),
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("animated webp");
+            let image = prepared.get("a.webp").expect("image");
+            assert_eq!(image.media_type, "image/png");
+            assert!(image.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
     }
 
     #[test]
@@ -1666,14 +1855,325 @@ mod tests {
         let source = "Hello\n";
         let profile = "{}";
         let plain = crate::render_docx_with_profile(source, profile).expect("plain");
-        let embedded = crate::render_docx_with_profile_and_assets(
-            source,
-            profile,
+        let embedded =
+            crate::render_docx_with_profile_and_assets(source, profile, &ImageAssets::new(), 0)
+                .expect("embedded");
+        assert_eq!(zip_entries(&plain), zip_entries(&embedded));
+    }
+
+    #[test]
+    fn one_error_lists_every_failed_image() {
+        let document = parse_document("![](missing-a.png)\n\n![](missing-b.png)\n\n![]()\n");
+        let mut assets = ImageAssets::new();
+        assets.insert("unused.png", asset(png(), "image/png"));
+        let error = prepare_images(
+            &document,
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect_err("all images");
+        assert!(error.starts_with("image export failed:\n"));
+        assert!(error.contains("missing-a.png"));
+        assert!(error.contains("missing-b.png"));
+        assert!(error.contains("image URL is empty"));
+        assert!(!error.contains("unused.png"));
+    }
+
+    #[test]
+    fn zero_byte_limit_is_twenty_five_megabytes_and_data_urls_count() {
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(png(), "image/png"));
+        prepare_images(
+            &parse_document("![](a.png)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            0,
+        )
+        .expect("default limit");
+
+        let mut assets = ImageAssets::new();
+        assets.insert(
+            "big.bin",
+            asset(
+                vec![0; DEFAULT_MAX_IMAGE_BYTES + 1],
+                "application/octet-stream",
+            ),
+        );
+        let error = prepare_images(
+            &parse_document("![](big.bin)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            0,
+        )
+        .expect_err("default ceiling");
+        assert!(error.contains(&DEFAULT_MAX_IMAGE_BYTES.to_string()));
+
+        let bytes = png();
+        let url = format!("data:image/png;base64,{}", base64_encode(&bytes));
+        let mut assets = ImageAssets::new();
+        assets.insert(url.clone(), asset(vec![1, 2, 3], "image/png"));
+        let error = prepare_images(
+            &parse_document(&format!("![]({url})\n")),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            bytes.len() - 1,
+        )
+        .expect_err("data url limit");
+        assert!(error.contains("byte limit"));
+        assert!(error.contains(&bytes.len().to_string()));
+        assert!(!error.contains("missing image bytes"));
+    }
+
+    #[test]
+    fn raw_html_img_stays_escaped_text() {
+        let html =
+            crate::render_html_with_assets("<img src=\"pic.png\">\n", &ImageAssets::new(), None, 0)
+                .expect("html");
+        assert!(html.contains("&lt;img"));
+        assert!(html.contains("pic.png"));
+        assert!(!html.contains("<img"));
+        assert!(!html.contains("data:image"));
+    }
+
+    #[test]
+    fn image_title_is_omitted_and_empty_alt_stays_empty() {
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(png(), "image/png"));
+        let titled = crate::render_html_with_assets("![alt](a.png \"題\")\n", &assets, None, 0)
+            .expect("titled");
+        assert!(titled.contains("alt=\"alt\""));
+        assert!(!titled.contains("題"));
+        assert!(!titled.contains("title="));
+        let empty =
+            crate::render_html_with_assets("![](a.png)\n", &assets, None, 0).expect("empty");
+        assert!(empty.contains("alt=\"\""));
+    }
+
+    #[test]
+    fn list_image_is_embedded_in_each_package() {
+        let source = "# Chapter\n\n- ![item](a.png)\n";
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(png(), "image/png"));
+        let html = crate::render_html_with_assets(source, &assets, None, 0).expect("html");
+        assert!(html.contains("<li>"));
+        assert!(html.contains("data:image/png;base64,"));
+        assert!(!html.contains("a.png"));
+
+        let epub = crate::render_epub_with_profile_and_assets(source, "{}", None, &assets, 0)
+            .expect("epub");
+        let mut archive = zip::ZipArchive::new(Cursor::new(epub)).expect("zip");
+        let mut chapter = String::new();
+        archive
+            .by_name("OEBPS/chapter-1.xhtml")
+            .expect("chapter")
+            .read_to_string(&mut chapter)
+            .expect("read");
+        assert!(chapter.contains("<li>"));
+        assert!(chapter.contains("images/image1.png"));
+        assert!(!chapter.contains("a.png"));
+
+        let docx =
+            crate::render_docx_with_profile_and_assets(source, "{}", &assets, 0).expect("docx");
+        let mut archive = zip::ZipArchive::new(Cursor::new(docx)).expect("zip");
+        let mut document = String::new();
+        archive
+            .by_name("word/document.xml")
+            .expect("document")
+            .read_to_string(&mut document)
+            .expect("read");
+        assert!(document.contains("r:embed=\"rImg"));
+        assert!(!document.contains("a.png"));
+        assert!(archive.by_name("word/media/image1.png").is_ok());
+    }
+
+    #[test]
+    fn epub_linked_image_stays_inside_the_link() {
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(png(), "image/png"));
+        let epub = crate::render_epub_with_profile_and_assets(
+            "# Chapter\n\n[![alt](a.png)](https://example.test/page)\n",
+            "{}",
+            None,
+            &assets,
+            0,
+        )
+        .expect("epub");
+        let mut chapter = String::new();
+        let mut archive = zip::ZipArchive::new(Cursor::new(epub)).expect("zip");
+        archive
+            .by_name("OEBPS/chapter-1.xhtml")
+            .expect("chapter")
+            .read_to_string(&mut chapter)
+            .expect("read");
+        let anchor = chapter
+            .find("<a href=\"https://example.test/page\">")
+            .expect("anchor");
+        let image = chapter[anchor..].find("<img ").expect("image");
+        assert!(chapter[anchor + image..].contains("images/image1.png"));
+        assert!(!chapter.contains("a.png"));
+    }
+
+    #[test]
+    fn cover_is_not_deduplicated_with_body_bytes() {
+        let bytes = png();
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(bytes.clone(), "image/png"));
+        let cover = EpubCover {
+            data: bytes.clone(),
+            media_type: "image/png".to_owned(),
+        };
+        let epub = crate::render_epub_with_profile_and_assets(
+            "# Chapter\n\n![](a.png)\n",
+            "{}",
+            Some(&cover),
+            &assets,
+            0,
+        )
+        .expect("epub");
+        let mut archive = zip::ZipArchive::new(Cursor::new(epub)).expect("zip");
+        let mut cover_bytes = Vec::new();
+        archive
+            .by_name("OEBPS/cover.png")
+            .expect("cover")
+            .read_to_end(&mut cover_bytes)
+            .expect("read");
+        assert_eq!(cover_bytes, bytes);
+        let mut body = Vec::new();
+        archive
+            .by_name("OEBPS/images/image1.png")
+            .expect("body")
+            .read_to_end(&mut body)
+            .expect("read");
+        assert_eq!(body, bytes);
+
+        let rejected = crate::render_epub_with_profile_and_assets(
+            "Hello\n",
+            "{}",
+            Some(&EpubCover {
+                data: bytes,
+                media_type: "image/gif".to_owned(),
+            }),
             &ImageAssets::new(),
             0,
         )
-        .expect("embedded");
-        assert_eq!(zip_entries(&plain), zip_entries(&embedded));
+        .expect_err("gif cover");
+        assert!(rejected.contains("image/png or image/jpeg"));
+    }
+
+    #[test]
+    fn contract_webp_bytes_stay_in_epub() {
+        const WEBP: &[u8] = include_bytes!("../tests/fixtures/images/one-pixel.webp");
+        let mut assets = ImageAssets::new();
+        assets.insert("figure.webp", asset(WEBP.to_vec(), "image/webp"));
+        let prepared = prepare_images(
+            &parse_document("![](figure.webp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Epub,
+            0,
+        )
+        .expect("webp");
+        let image = prepared.get("figure.webp").expect("image");
+        assert_eq!(image.media_type, "image/webp");
+        assert_eq!(image.bytes, WEBP);
+    }
+
+    #[test]
+    fn svg_stays_markup_and_rasterizes_at_the_fitted_size() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="8"><script>alert(1)</script><rect width="4000" height="8" fill="black"/></svg>"#;
+        let mut assets = ImageAssets::new();
+        assets.insert("a.svg", asset(svg.to_vec(), "image/svg+xml"));
+        let document = parse_document("![](a.svg)\n");
+        let word_json: Map<String, serde_json::Value> =
+            serde_json::from_str(r#"{"layout":{"system":"word"}}"#).expect("json");
+        let word = resolve_export_profile(&word_json, None).expect("word");
+        for target in [ImageTarget::Html, ImageTarget::Epub] {
+            let prepared = prepare_images(
+                &document,
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("svg");
+            let image = prepared.get("a.svg").expect("image");
+            assert_eq!(image.media_type, "image/svg+xml");
+            let text = String::from_utf8(image.bytes.clone()).expect("utf8");
+            assert!(!text.to_ascii_lowercase().contains("script"));
+            assert!(text.contains("<svg"));
+        }
+        let fitted = prepare_images(
+            &document,
+            &assets,
+            &word,
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("word svg");
+        let shrunk = prepare_images(
+            &document,
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("default svg");
+        let fitted_image = fitted.get("a.svg").expect("image");
+        let shrunk_image = shrunk.get("a.svg").expect("image");
+        assert_eq!(fitted_image.media_type, "image/png");
+        assert_eq!(shrunk_image.media_type, "image/png");
+        assert_eq!(
+            png_size(&fitted_image.bytes),
+            (
+                fitted_image.display_width_px,
+                fitted_image.display_height_px
+            )
+        );
+        assert_eq!(
+            png_size(&shrunk_image.bytes),
+            (
+                shrunk_image.display_width_px,
+                shrunk_image.display_height_px
+            )
+        );
+        assert_ne!(fitted_image.display_width_px, shrunk_image.display_width_px);
+
+        let html = crate::render_html_with_assets("![](a.svg)\n", &assets, None, 0).expect("html");
+        assert!(html.contains("data:image/svg+xml"));
+        let epub = crate::render_epub_with_profile_and_assets(
+            "# Chapter\n\n![](a.svg)\n",
+            "{}",
+            None,
+            &assets,
+            0,
+        )
+        .expect("epub");
+        let mut archive = zip::ZipArchive::new(Cursor::new(epub)).expect("zip");
+        let mut stored = Vec::new();
+        archive
+            .by_name("OEBPS/images/image1.svg")
+            .expect("svg")
+            .read_to_end(&mut stored)
+            .expect("read");
+        assert!(
+            !String::from_utf8(stored)
+                .expect("utf8")
+                .to_ascii_lowercase()
+                .contains("script")
+        );
+    }
+
+    fn png_size(bytes: &[u8]) -> (u32, u32) {
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n") && bytes.len() >= 24);
+        (
+            u32::from_be_bytes(bytes[16..20].try_into().expect("width")),
+            u32::from_be_bytes(bytes[20..24].try_into().expect("height")),
+        )
     }
 
     fn wide_png(width: u32, height: u32) -> Vec<u8> {

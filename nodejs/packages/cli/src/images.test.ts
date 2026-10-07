@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { renderHtml } from "@illusions-lab/mdi";
 import { build } from "./index.js";
 
 const run = promisify(execFile);
@@ -25,6 +27,8 @@ See [^n].
 [^n]: ![note](note.png)
 
 [[warichu:![cut](cut.png)]]
+
+- ![item](list.png)
 `;
 
 describe("self-contained CLI images", () => {
@@ -33,19 +37,20 @@ describe("self-contained CLI images", () => {
     try {
       const input = join(directory, "book.mdi");
       await writeFile(input, illustrated);
-      for (const name of ["body.png", "table.png", "note.png", "cut.png"]) {
+      for (const name of ["body.png", "table.png", "note.png", "cut.png", "list.png"]) {
         await writeFile(join(directory, name), png);
       }
       const htmlPath = await build(input, "html");
       const docxPath = await build(input, "docx");
       const epubPath = await build(input, "epub");
       const pdfPath = await build(input, "pdf");
-      for (const name of ["body.png", "table.png", "note.png", "cut.png"]) {
+      for (const name of ["body.png", "table.png", "note.png", "cut.png", "list.png"]) {
         await rm(join(directory, name));
       }
       const html = await readFile(htmlPath, "utf8");
       expect(html).toContain("data:image/png;base64,");
-      for (const name of ["body.png", "table.png", "note.png", "cut.png"]) {
+      expect(html).toContain("<li>");
+      for (const name of ["body.png", "table.png", "note.png", "cut.png", "list.png"]) {
         expect(html).not.toContain(name);
       }
       const pdf = await readFile(pdfPath);
@@ -59,6 +64,7 @@ describe("self-contained CLI images", () => {
         "word/media/image2.png",
         "word/media/image3.png",
         "word/media/image4.png",
+        "word/media/image5.png",
       ]);
       const document = await docx.file("word/document.xml")!.async("string");
       expect(document).toContain("r:embed=\"rImg");
@@ -71,7 +77,7 @@ describe("self-contained CLI images", () => {
 
       const epub = await JSZip.loadAsync(await readFile(epubPath));
       const images = Object.keys(epub.files).filter((name) => name.startsWith("OEBPS/images/"));
-      expect(images).toHaveLength(4);
+      expect(images).toHaveLength(5);
       const chapter = await epub.file("OEBPS/chapter-1.xhtml")!.async("string");
       expect(chapter).toContain("images/image1.png");
       expect(chapter).not.toContain("body.png");
@@ -111,4 +117,74 @@ describe("self-contained CLI images", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("fits images with the default publication profile for each writing mode", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mdi-cli-fit-"));
+    const wide = widePng(2000, 1);
+    const assets = { "wide.png": { data: wide, mediaType: "image/png" } };
+    try {
+      const horizontalInput = join(directory, "horizontal.mdi");
+      const horizontalSource = "![wide](wide.png)\n";
+      await writeFile(horizontalInput, horizontalSource);
+      const horizontal = await readFile(await build(horizontalInput, "html", { assets }), "utf8");
+      expect(horizontal).toBe(renderHtml(horizontalSource, {
+        assets,
+        profile: { layout: { system: "word" }, typesetting: { writingMode: "horizontal" } },
+      }));
+
+      const verticalInput = join(directory, "vertical.mdi");
+      const verticalSource = "---\nwriting-mode: vertical\n---\n\n![wide](wide.png)\n";
+      await writeFile(verticalInput, verticalSource);
+      const vertical = await readFile(await build(verticalInput, "html", { assets }), "utf8");
+      expect(vertical).toBe(renderHtml(verticalSource, {
+        assets,
+        profile: { layout: { system: "japanese-publisher" }, typesetting: { writingMode: "vertical" } },
+      }));
+
+      const horizontalWidth = horizontal.match(/width="(\d+)"/)?.[1];
+      const verticalWidth = vertical.match(/width="(\d+)"/)?.[1];
+      expect(horizontalWidth).toBeTruthy();
+      expect(verticalWidth).toBeTruthy();
+      expect(horizontalWidth).not.toBe(verticalWidth);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
+
+function widePng(width: number, height: number): Buffer {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 2;
+  const row = Buffer.alloc(1 + width * 3);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const body = Buffer.concat([Buffer.from(type), data]);
+  const prefix = Buffer.alloc(4);
+  prefix.writeUInt32BE(data.length);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(crc32(body));
+  return Buffer.concat([prefix, body, checksum]);
+}
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
