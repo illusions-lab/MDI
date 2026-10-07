@@ -5,7 +5,6 @@
 //! parsed node. `data:` URLs are decoded here and are not taken from the map.
 
 use crate::{Document, ResolvedExportProfile, children, page_dimensions};
-use image::GenericImageView;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 
@@ -256,7 +255,8 @@ fn prepare_one(
         ));
     }
     let mut kind = sniffed;
-    let (raw_width, raw_height, orientation) = if kind == ImageKind::Svg {
+    let animated_webp = kind == ImageKind::WebP && webp_animated(&bytes);
+    let (width, height) = if kind == ImageKind::Svg {
         bytes = sanitize_svg(&bytes)?;
         if bytes.len() > max_bytes {
             return Err(format!(
@@ -264,33 +264,27 @@ fn prepare_one(
                 bytes.len()
             ));
         }
-        let (width, height) = svg_size(&bytes)?;
-        (width, height, 1)
+        svg_size(&bytes)?
     } else {
         let (width, height) = raster_dimensions(&bytes)?;
-        let orientation = image_orientation(kind, &bytes);
         if (width as u64) * (height as u64) > MAX_IMAGE_PIXELS {
             return Err(format!(
                 "image is {width} by {height} pixels, above the {MAX_IMAGE_PIXELS} pixel limit"
             ));
         }
-        (width, height, orientation)
+        (width, height)
     };
-    let (oriented_width, oriented_height) = if orientation_swaps(orientation) {
-        (raw_height, raw_width)
-    } else {
-        (raw_width, raw_height)
-    };
-    if oriented_width == 0 || oriented_height == 0 {
+    if width == 0 || height == 0 {
         return Err("image has no pixel dimensions".to_owned());
     }
-    let (display_width, display_height) =
-        fit_px(oriented_width, oriented_height, box_width, box_height);
-    if !kind.kept_by(target) {
+    let (display_width, display_height) = fit_px(width, height, box_width, box_height);
+    // Animated WebP is stored as one PNG of the first frame. GIF stays the
+    // original bytes, including later frames. Orientation is not applied.
+    if animated_webp || !kind.kept_by(target) {
         if kind == ImageKind::Svg {
             bytes = rasterize_svg(&bytes, display_width, display_height)?;
         } else {
-            bytes = transcode_png(&bytes, orientation)?;
+            bytes = transcode_png(&bytes)?;
         }
         if bytes.len() > max_bytes {
             return Err(format!(
@@ -299,6 +293,8 @@ fn prepare_one(
             ));
         }
         kind = ImageKind::Png;
+    } else if matches!(kind, ImageKind::Jpeg | ImageKind::Tiff) {
+        bytes = clear_stored_orientation(kind, &bytes);
     }
     Ok(PreparedImage {
         url: url.to_owned(),
@@ -466,19 +462,30 @@ fn header_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
         .map_err(|_| "image dimensions could not be read".to_owned())
 }
 
-fn image_orientation(kind: ImageKind, bytes: &[u8]) -> u16 {
+fn webp_animated(bytes: &[u8]) -> bool {
+    image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))
+        .map(|decoder| decoder.has_animation())
+        .unwrap_or(false)
+}
+
+/// Set a stored Orientation tag to 1 without moving pixels.
+fn clear_stored_orientation(kind: ImageKind, bytes: &[u8]) -> Vec<u8> {
+    let mut owned = bytes.to_vec();
     match kind {
-        ImageKind::Jpeg => jpeg_orientation(bytes).unwrap_or(1),
-        ImageKind::Tiff => tiff_orientation(bytes).unwrap_or(1),
-        _ => 1,
+        ImageKind::Jpeg => {
+            if let Some(tiff_at) = jpeg_exif_tiff_offset(&owned) {
+                let _ = write_orientation_one(&mut owned, tiff_at);
+            }
+        }
+        ImageKind::Tiff => {
+            let _ = write_orientation_one(&mut owned, 0);
+        }
+        _ => {}
     }
+    owned
 }
 
-fn orientation_swaps(orientation: u16) -> bool {
-    matches!(orientation, 5 | 6 | 7 | 8)
-}
-
-fn jpeg_orientation(bytes: &[u8]) -> Option<u16> {
+fn jpeg_exif_tiff_offset(bytes: &[u8]) -> Option<usize> {
     if bytes.len() < 4 || !bytes.starts_with(&[0xff, 0xd8]) {
         return None;
     }
@@ -506,9 +513,10 @@ fn jpeg_orientation(bytes: &[u8]) -> Option<u16> {
             return None;
         }
         if marker == 0xe1 {
-            let segment = &bytes[offset + 2..offset + length];
+            let segment_at = offset + 2;
+            let segment = &bytes[segment_at..offset + length];
             if segment.starts_with(b"Exif\0\0") {
-                return tiff_orientation(&segment[6..]);
+                return Some(segment_at + 6);
             }
         }
         if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc {
@@ -519,13 +527,13 @@ fn jpeg_orientation(bytes: &[u8]) -> Option<u16> {
     None
 }
 
-fn tiff_orientation(bytes: &[u8]) -> Option<u16> {
-    if bytes.len() < 8 {
-        return None;
+fn write_orientation_one(bytes: &mut [u8], tiff_start: usize) -> bool {
+    if tiff_start + 8 > bytes.len() {
+        return false;
     }
-    let little = bytes.starts_with(b"II");
-    if !little && !bytes.starts_with(b"MM") {
-        return None;
+    let little = bytes[tiff_start..].starts_with(b"II");
+    if !little && !bytes[tiff_start..].starts_with(b"MM") {
+        return false;
     }
     let read_u16 = |offset: usize| -> Option<u16> {
         let pair = bytes.get(offset..offset + 2)?;
@@ -543,28 +551,49 @@ fn tiff_orientation(bytes: &[u8]) -> Option<u16> {
             u32::from_be_bytes([quad[0], quad[1], quad[2], quad[3]])
         })
     };
-    let magic = read_u16(2)?;
+    let Some(magic) = read_u16(tiff_start + 2) else {
+        return false;
+    };
     if magic != 42 {
-        return None;
+        return false;
     }
-    let mut ifd = read_u32(4)? as usize;
-    if ifd + 2 > bytes.len() {
-        return None;
-    }
-    let count = read_u16(ifd)? as usize;
+    let Some(ifd_offset) = read_u32(tiff_start + 4) else {
+        return false;
+    };
+    let mut ifd = tiff_start + ifd_offset as usize;
+    let Some(entry_count) = read_u16(ifd) else {
+        return false;
+    };
+    let entry_count = entry_count as usize;
     ifd += 2;
-    for _ in 0..count {
+    for _ in 0..entry_count {
         if ifd + 12 > bytes.len() {
-            return None;
+            return false;
         }
-        let tag = read_u16(ifd)?;
-        let kind = read_u16(ifd + 2)?;
-        if tag == 0x0112 && kind == 3 {
-            return read_u16(ifd + 8);
+        let Some(tag) = read_u16(ifd) else {
+            return false;
+        };
+        let Some(field_type) = read_u16(ifd + 2) else {
+            return false;
+        };
+        let Some(count) = read_u32(ifd + 4) else {
+            return false;
+        };
+        if tag == 0x0112 && field_type == 3 && count == 1 {
+            let value = if little {
+                1u16.to_le_bytes()
+            } else {
+                1u16.to_be_bytes()
+            };
+            bytes[ifd + 8] = value[0];
+            bytes[ifd + 9] = value[1];
+            bytes[ifd + 10] = 0;
+            bytes[ifd + 11] = 0;
+            return true;
         }
         ifd += 12;
     }
-    None
+    false
 }
 
 pub fn content_box_px(profile: &ResolvedExportProfile) -> (u32, u32) {
@@ -612,37 +641,13 @@ pub fn emu(px: u32) -> u64 {
     u64::from(px) * EMU_PER_CSS_PIXEL
 }
 
-fn transcode_png(bytes: &[u8], orientation: u16) -> Result<Vec<u8>, String> {
+fn transcode_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let decoded = image::load_from_memory(bytes).map_err(|_| "image could not be decoded")?;
-    let (decoded_width, decoded_height) = decoded.dimensions();
-    let (header_width, header_height) = raster_dimensions(bytes)?;
-    let transformed = if orientation != 1
-        && decoded_width == header_width
-        && decoded_height == header_height
-    {
-        apply_orientation(decoded, orientation)
-    } else {
-        decoded
-    };
     let mut output = Cursor::new(Vec::new());
-    transformed
+    decoded
         .write_with_encoder(image::codecs::png::PngEncoder::new(&mut output))
         .map_err(|error| error.to_string())?;
     Ok(output.into_inner())
-}
-
-fn apply_orientation(image: image::DynamicImage, orientation: u16) -> image::DynamicImage {
-    use image::imageops::{flip_horizontal, flip_vertical, rotate180, rotate270, rotate90};
-    match orientation {
-        2 => image::DynamicImage::ImageRgba8(flip_horizontal(&image)),
-        3 => image::DynamicImage::ImageRgba8(rotate180(&image)),
-        4 => image::DynamicImage::ImageRgba8(flip_vertical(&image)),
-        5 => image::DynamicImage::ImageRgba8(flip_horizontal(&rotate270(&image))),
-        6 => image::DynamicImage::ImageRgba8(rotate90(&image)),
-        7 => image::DynamicImage::ImageRgba8(flip_horizontal(&rotate90(&image))),
-        8 => image::DynamicImage::ImageRgba8(rotate270(&image)),
-        _ => image,
-    }
 }
 
 fn svg_size(bytes: &[u8]) -> Result<(u32, u32), String> {
@@ -677,11 +682,33 @@ fn rasterize_svg(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Strin
 }
 
 fn usvg_tree(text: &str) -> Result<resvg::usvg::Tree, String> {
-    resvg::usvg::Tree::from_str(text, &resvg::usvg::Options::default())
+    resvg::usvg::Tree::from_str(text, &usvg_options())
         .map_err(|error| format!("SVG could not be parsed: {error}"))
 }
 
+fn usvg_options() -> resvg::usvg::Options<'static> {
+    let mut options = resvg::usvg::Options::default();
+    // The default resolver treats href strings as filesystem paths.
+    options.image_href_resolver.resolve_string = Box::new(|_href, _options| None);
+    options.image_href_resolver.resolve_data =
+        Box::new(|_mime, data, _options| match sniff(data.as_slice()) {
+            Some(ImageKind::Png) => Some(resvg::usvg::ImageKind::PNG(data)),
+            Some(ImageKind::Jpeg) => Some(resvg::usvg::ImageKind::JPEG(data)),
+            Some(ImageKind::Gif) => Some(resvg::usvg::ImageKind::GIF(data)),
+            Some(ImageKind::WebP) => Some(resvg::usvg::ImageKind::WEBP(data)),
+            _ => None,
+        });
+    options
+}
+
 fn sanitize_svg(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    sanitize_svg_at(bytes, 0)
+}
+
+fn sanitize_svg_at(bytes: &[u8], depth: u32) -> Result<Vec<u8>, String> {
+    if depth > 4 {
+        return Err("SVG external references are not allowed".to_owned());
+    }
     let text = std::str::from_utf8(bytes).map_err(|_| "SVG is not UTF-8".to_owned())?;
     let lowered = text.to_ascii_lowercase();
     if lowered.contains("<!doctype") || lowered.contains("<!entity") {
@@ -693,20 +720,34 @@ fn sanitize_svg(bytes: &[u8]) -> Result<Vec<u8>, String> {
         return Err("SVG root element is missing".to_owned());
     }
     let mut output = String::new();
-    write_svg_node(root, &mut output)?;
+    write_svg_node(root, depth, &mut output)?;
     Ok(output.into_bytes())
 }
 
-fn write_svg_node(node: roxmltree::Node<'_, '_>, output: &mut String) -> Result<(), String> {
+fn write_svg_node(
+    node: roxmltree::Node<'_, '_>,
+    depth: u32,
+    output: &mut String,
+) -> Result<(), String> {
     match node.node_type() {
         roxmltree::NodeType::Root => {
             for child in node.children() {
-                write_svg_node(child, output)?;
+                write_svg_node(child, depth, output)?;
             }
             Ok(())
         }
         roxmltree::NodeType::Text => {
-            output.push_str(&xml_escape(node.text().unwrap_or_default()));
+            let text = node.text().unwrap_or_default();
+            if node.parent().is_some_and(|parent| {
+                parent
+                    .tag_name()
+                    .name()
+                    .eq_ignore_ascii_case("style")
+            }) {
+                vet_style(text)?;
+            }
+            let rewritten = rewrite_nested_svgs(text, depth)?;
+            output.push_str(&xml_escape(&rewritten));
             Ok(())
         }
         roxmltree::NodeType::Element => {
@@ -733,7 +774,7 @@ fn write_svg_node(node: roxmltree::Node<'_, '_>, output: &mut String) -> Result<
                 output.push('"');
             }
             for attribute in node.attributes() {
-                match attribute_action(attribute)? {
+                match attribute_action(attribute, depth)? {
                     AttributeAction::Keep(value) => {
                         output.push(' ');
                         if let Some(prefix) = attribute.namespace().and_then(|uri| {
@@ -746,7 +787,7 @@ fn write_svg_node(node: roxmltree::Node<'_, '_>, output: &mut String) -> Result<
                         }
                         output.push_str(attribute.name());
                         output.push_str("=\"");
-                        output.push_str(&xml_escape(value));
+                        output.push_str(&xml_escape(&value));
                         output.push('"');
                     }
                     AttributeAction::Drop => {}
@@ -754,7 +795,7 @@ fn write_svg_node(node: roxmltree::Node<'_, '_>, output: &mut String) -> Result<
             }
             let mut children = String::new();
             for child in node.children() {
-                write_svg_node(child, &mut children)?;
+                write_svg_node(child, depth, &mut children)?;
             }
             if children.is_empty() {
                 output.push_str("/>");
@@ -771,31 +812,43 @@ fn write_svg_node(node: roxmltree::Node<'_, '_>, output: &mut String) -> Result<
     }
 }
 
-enum AttributeAction<'a> {
-    Keep(&'a str),
+enum AttributeAction {
+    Keep(String),
     Drop,
 }
 
-fn attribute_action<'a>(
-    attribute: roxmltree::Attribute<'a, '_>,
-) -> Result<AttributeAction<'a>, String> {
+fn attribute_action(
+    attribute: roxmltree::Attribute<'_, '_>,
+    depth: u32,
+) -> Result<AttributeAction, String> {
     let name = attribute.name();
-    if name.to_ascii_lowercase().starts_with("on") || name.eq_ignore_ascii_case("xml:base") {
+    if name.to_ascii_lowercase().starts_with("on")
+        || name.eq_ignore_ascii_case("base")
+        || name.eq_ignore_ascii_case("xml:base")
+    {
         return Ok(AttributeAction::Drop);
     }
-    let value = attribute.value();
+    let value = rewrite_nested_svgs(attribute.value(), depth)?;
     if name.eq_ignore_ascii_case("style") {
-        return style_action(value);
+        vet_style(&value)?;
+        return Ok(AttributeAction::Keep(value));
     }
     if is_reference_attribute(name) {
-        return match reference_action(value)? {
-            ReferenceAction::Keep => Ok(AttributeAction::Keep(value)),
-            ReferenceAction::Drop => Ok(AttributeAction::Drop),
+        return match reference_action(&value)? {
+            ReferenceDecision::Keep => Ok(AttributeAction::Keep(value)),
+            ReferenceDecision::Drop => Ok(AttributeAction::Drop),
         };
     }
-    if value.to_ascii_lowercase().contains("javascript:") {
+    if is_smil_value_attribute(name) {
+        return match smil_action(&value)? {
+            ReferenceDecision::Keep => Ok(AttributeAction::Keep(value)),
+            ReferenceDecision::Drop => Ok(AttributeAction::Drop),
+        };
+    }
+    if contains_javascript(&value) {
         return Ok(AttributeAction::Drop);
     }
+    vet_urls(&value)?;
     Ok(AttributeAction::Keep(value))
 }
 
@@ -806,43 +859,134 @@ fn is_reference_attribute(name: &str) -> bool {
     )
 }
 
-enum ReferenceAction {
+fn is_smil_value_attribute(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "to" | "from" | "values"
+    )
+}
+
+enum ReferenceDecision {
     Keep,
     Drop,
 }
 
-fn reference_action(value: &str) -> Result<ReferenceAction, String> {
+fn reference_action(value: &str) -> Result<ReferenceDecision, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
-        return Ok(ReferenceAction::Keep);
+        return Ok(ReferenceDecision::Keep);
     }
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("javascript:") {
-        return Ok(ReferenceAction::Drop);
+    if contains_javascript(trimmed) {
+        return Ok(ReferenceDecision::Drop);
     }
-    if lower.starts_with("data:") {
-        return Ok(ReferenceAction::Keep);
+    let compact = strip_url_whitespace(trimmed);
+    if compact.to_ascii_lowercase().starts_with("data:") {
+        vet_urls(trimmed)?;
+        return Ok(ReferenceDecision::Keep);
     }
     Err("SVG external references are not allowed".to_owned())
 }
 
-fn style_action(value: &str) -> Result<AttributeAction<'_>, String> {
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("javascript:") {
-        return Ok(AttributeAction::Drop);
+fn smil_action(value: &str) -> Result<ReferenceDecision, String> {
+    if contains_javascript(value) {
+        return Ok(ReferenceDecision::Drop);
     }
-    if lower.contains("url(") {
-        let mut rest = lower.as_str();
-        while let Some(start) = rest.find("url(") {
-            let after = &rest[start + 4..];
-            let body = after.trim_start_matches(['\'', '"', ' ']);
-            if !(body.starts_with('#') || body.starts_with("data:")) {
-                return Err("SVG external references are not allowed".to_owned());
-            }
-            rest = body;
+    vet_urls(value)?;
+    for part in value.split(';') {
+        let part = strip_url_whitespace(part);
+        let trimmed = part.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("data:") {
+            continue;
+        }
+        if trimmed.contains('/') || trimmed.contains("://") || trimmed.starts_with("//") {
+            return Err("SVG external references are not allowed".to_owned());
         }
     }
-    Ok(AttributeAction::Keep(value))
+    Ok(ReferenceDecision::Keep)
+}
+
+fn vet_style(value: &str) -> Result<(), String> {
+    let compact = strip_url_whitespace(value).to_ascii_lowercase();
+    if compact.contains("javascript:") || compact.contains("@import") {
+        return Err("SVG external references are not allowed".to_owned());
+    }
+    vet_urls(value)
+}
+
+fn vet_urls(value: &str) -> Result<(), String> {
+    let compact = strip_url_whitespace(value);
+    let lower = compact.to_ascii_lowercase();
+    let mut rest = lower.as_str();
+    while let Some(start) = rest.find("url(") {
+        let after = &rest[start + 4..];
+        let body = after.trim_start_matches(['\'', '"', ' ']);
+        if !(body.starts_with('#') || body.starts_with("data:")) {
+            return Err("SVG external references are not allowed".to_owned());
+        }
+        rest = body;
+    }
+    Ok(())
+}
+
+fn contains_javascript(value: &str) -> bool {
+    strip_url_whitespace(value)
+        .to_ascii_lowercase()
+        .contains("javascript:")
+}
+
+fn strip_url_whitespace(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !matches!(character, '\t' | '\n' | '\r' | '\0'))
+        .collect()
+}
+
+fn rewrite_nested_svgs(value: &str, depth: u32) -> Result<String, String> {
+    let needle = "data:image/svg+xml";
+    if !value.to_ascii_lowercase().contains(needle) {
+        return Ok(value.to_owned());
+    }
+    let mut output = String::new();
+    let mut rest = value;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(start) = lower.find(needle) else {
+            output.push_str(rest);
+            break;
+        };
+        output.push_str(&rest[..start]);
+        let after = &rest[start..];
+        let end = after
+            .find(|character: char| matches!(character, ' ' | '"' | '\'' | ')' | '>'))
+            .unwrap_or(after.len());
+        let rewritten = sanitized_svg_data_url(&after[..end], depth)?;
+        output.push_str(&rewritten);
+        rest = &after[end..];
+    }
+    Ok(output)
+}
+
+fn sanitized_svg_data_url(url: &str, depth: u32) -> Result<String, String> {
+    let Some(rest) = url.get("data:".len()..) else {
+        return Err("SVG external references are not allowed".to_owned());
+    };
+    let (media_type, bytes) = decode_data_url(rest, DEFAULT_MAX_IMAGE_BYTES)?;
+    if !media_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .eq_ignore_ascii_case("image/svg+xml")
+    {
+        return Ok(url.to_owned());
+    }
+    let clean = sanitize_svg_at(&bytes, depth + 1)?;
+    let encoded = base64_encode(&clean);
+    Ok(format!("data:image/svg+xml;base64,{encoded}"))
 }
 
 fn xml_escape(value: &str) -> String {
@@ -870,17 +1014,20 @@ pub fn error_label(url: &str) -> String {
 }
 
 fn strip_userinfo(url: &str) -> String {
-    let Some(scheme) = url.find("://") else {
+    let (prefix_len, rest) = if let Some(rest) = url.strip_prefix("//") {
+        (2, rest)
+    } else if let Some(index) = url.find("://") {
+        (index + 3, &url[index + 3..])
+    } else {
         return url.to_owned();
     };
-    let rest = &url[scheme + 3..];
     let Some(at) = rest.find('@') else {
         return url.to_owned();
     };
     if rest[..at].contains('/') {
         return url.to_owned();
     }
-    format!("{}{}", &url[..=scheme + 2], &rest[at + 1..])
+    format!("{}{}", &url[..prefix_len], &rest[at + 1..])
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
@@ -1096,6 +1243,19 @@ mod tests {
         let external = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><image href="https://example.test/a.png"/></svg>"#;
         assert!(sanitize_svg(external).expect_err("external").contains("external"));
         assert!(sanitize_svg(b"<!DOCTYPE svg [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><svg/>").is_err());
+        let styled = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><style>@import "https://evil.example/a.css"</style></svg>"#;
+        assert!(sanitize_svg(styled).is_err());
+        let fill = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><rect width="8" height="4" fill="url(https://evil.example/a.png)"/></svg>"#;
+        assert!(sanitize_svg(fill).is_err());
+        let obfuscated = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><set attributeName="href" to="java&#9;script:alert(1)"/></svg>"#;
+        let cleaned = String::from_utf8(sanitize_svg(obfuscated).expect("obfuscated")).expect("utf8");
+        assert!(!cleaned.to_ascii_lowercase().contains("javascript"));
+        assert!(!cleaned.contains("alert"));
+        let inner = base64_encode(b"<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"/etc/passwd\"/></svg>");
+        let nested = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"4\"><image href=\"data:image/svg+xml;base64,{inner}\"/></svg>"
+        );
+        assert!(sanitize_svg(nested.as_bytes()).is_err());
     }
 
     #[test]
@@ -1179,6 +1339,9 @@ mod tests {
         assert_eq!(docx.get("a.svg").expect("image").media_type, "image/png");
         assert!(error_label("https://user:secret@example.test/a.png").contains("example.test"));
         assert!(!error_label("https://user:secret@example.test/a.png").contains("secret"));
+        assert!(!error_label("//user:secret@example.test/a.png").contains("secret"));
+        assert!(error_label("//user:secret@example.test/a.png").contains("example.test"));
+        assert!(error_label("https://example.test/a@b.png").contains("a@b.png"));
         assert_eq!(error_label("data:image/png;base64,aaaa"), "data:image/png");
         let _ = (document, jpeg);
     }
@@ -1211,7 +1374,7 @@ mod tests {
         let mut assets = ImageAssets::new();
         assets.insert("../../[Content_Types].xml", asset(png(), "image/png"));
         assets.insert("note.png", asset(png(), "image/png"));
-        let html = crate::render_html_with_assets(source, &assets, DEFAULT_MAX_IMAGE_BYTES)
+        let html = crate::render_html_with_assets(source, &assets, None, DEFAULT_MAX_IMAGE_BYTES)
             .expect("html");
         assert!(html.contains("data:image/png;base64,"));
         assert!(html.contains("alt=\"a&lt;b\""));
@@ -1274,5 +1437,377 @@ mod tests {
         archive.by_name("word/_rels/footnotes.xml.rels").expect("rels").read_to_string(&mut footnote_rels).expect("read");
         assert!(footnote_rels.contains("wordprocessingml") || footnote_rels.contains("/image"));
         assert!(footnote_rels.contains("media/image"));
+    }
+
+    #[test]
+    fn word_profile_fits_a_wide_image_that_the_default_box_shrinks() {
+        let wide = wide_png(400, 2);
+        let mut assets = ImageAssets::new();
+        assets.insert("wide.png", asset(wide, "image/png"));
+        let source = "![](wide.png)\n";
+        let word = r#"{"layout":{"system":"word"}}"#;
+        let fitted = crate::render_html_with_assets(source, &assets, Some(word), DEFAULT_MAX_IMAGE_BYTES)
+            .expect("word");
+        assert!(fitted.contains("width=\"400\""));
+        let shrunk = crate::render_html_with_assets(source, &assets, None, DEFAULT_MAX_IMAGE_BYTES)
+            .expect("default");
+        assert!(!shrunk.contains("width=\"400\""));
+    }
+
+    #[test]
+    fn warichu_settle_html_keeps_the_fitted_size() {
+        let mut assets = ImageAssets::new();
+        assets.insert("wide.png", asset(wide_png(800, 4), "image/png"));
+        let html = crate::render_html_with_assets(
+            "[[warichu:![x](wide.png)]]\n",
+            &assets,
+            Some(r#"{"layout":{"system":"word"}}"#),
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("html");
+        let marker = "data-mdi-warichu-source=\"";
+        let start = html.find(marker).expect("attribute") + marker.len();
+        let end = html[start..].find('"').expect("end") + start;
+        let nodes = html[start..end]
+            .replace("&quot;", "\"")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">");
+        assert!(nodes.contains("displayWidth"));
+        assert!(!nodes.contains("wide.png"));
+        let layout = crate::layout_warichu_options_json(
+            &nodes,
+            r#"{"firstCapacity":80,"continuationCapacity":80}"#,
+        )
+        .expect("layout");
+        assert!(layout.contains("width="));
+        assert!(layout.contains("height="));
+        assert!(!layout.contains("wide.png"));
+    }
+
+    #[test]
+    fn linked_image_stays_inside_the_link() {
+        let mut assets = ImageAssets::new();
+        assets.insert("a.png", asset(png(), "image/png"));
+        let source = "[![alt](a.png)](https://example.test/page)\n";
+        let html = crate::render_html_with_assets(source, &assets, None, DEFAULT_MAX_IMAGE_BYTES)
+            .expect("html");
+        assert!(html.contains("<a href=\"https://example.test/page\">"));
+        assert!(html.contains("data:image/png;base64,"));
+        assert!(!html.contains("a.png"));
+        let profile = "{}";
+        let docx = crate::render_docx_with_profile_and_assets(
+            source,
+            profile,
+            &assets,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("docx");
+        let mut document = String::new();
+        let mut archive = zip::ZipArchive::new(Cursor::new(docx)).expect("zip");
+        archive
+            .by_name("word/document.xml")
+            .expect("document")
+            .read_to_string(&mut document)
+            .expect("read");
+        assert!(document.contains("<w:hyperlink"));
+        assert!(document.contains("r:embed=\"rImg"));
+        assert!(!document.contains("a.png"));
+    }
+
+    #[test]
+    fn gif_bytes_stay_and_animated_webp_becomes_the_first_frame() {
+        let gif = animated_gif();
+        let mut assets = ImageAssets::new();
+        assets.insert("a.gif", asset(gif.clone(), "image/gif"));
+        for target in [ImageTarget::Html, ImageTarget::Epub, ImageTarget::Docx] {
+            let prepared = prepare_images(
+                &parse_document("![](a.gif)\n"),
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("gif");
+            let image = prepared.get("a.gif").expect("image");
+            assert_eq!(image.media_type, "image/gif");
+            assert_eq!(image.bytes, gif);
+        }
+
+        let still = lossless_webp();
+        let mut assets = ImageAssets::new();
+        assets.insert("a.webp", asset(still.clone(), "image/webp"));
+        let html = prepare_images(
+            &parse_document("![](a.webp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("still");
+        assert_eq!(html.get("a.webp").expect("image").bytes, still);
+        let docx = prepare_images(
+            &parse_document("![](a.webp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("docx webp");
+        assert_eq!(docx.get("a.webp").expect("image").media_type, "image/png");
+
+        let animated = animated_webp(&still);
+        assert!(webp_animated(&animated));
+        let mut assets = ImageAssets::new();
+        assets.insert("a.webp", asset(animated, "image/webp"));
+        let prepared = prepare_images(
+            &parse_document("![](a.webp)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("animated");
+        let image = prepared.get("a.webp").expect("image");
+        assert_eq!(image.media_type, "image/png");
+        assert!(image.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(image.display_width_px, 1);
+        assert_eq!(image.display_height_px, 1);
+    }
+
+    #[test]
+    fn orientation_tag_is_cleared_without_swapping_the_stored_size() {
+        let jpeg = {
+            let image = image::RgbImage::from_pixel(2, 1, image::Rgb([9, 8, 7]));
+            let mut bytes = Cursor::new(Vec::new());
+            image
+                .write_with_encoder(image::codecs::jpeg::JpegEncoder::new(&mut bytes))
+                .expect("jpeg");
+            with_jpeg_orientation(&bytes.into_inner(), 6)
+        };
+        let mut assets = ImageAssets::new();
+        assets.insert("a.jpg", asset(jpeg, "image/jpeg"));
+        let prepared = prepare_images(
+            &parse_document("![](a.jpg)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Html,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("jpeg");
+        let image = prepared.get("a.jpg").expect("image");
+        assert_eq!(image.display_width_px, 2);
+        assert_eq!(image.display_height_px, 1);
+        assert_eq!(stored_orientation(ImageKind::Jpeg, &image.bytes), Some(1));
+
+        let mut synthetic = vec![
+            b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
+            0x01, 0x00, 0x00, 0x00, 6, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(stored_orientation(ImageKind::Tiff, &synthetic), Some(6));
+        assert!(write_orientation_one(&mut synthetic, 0));
+        assert_eq!(stored_orientation(ImageKind::Tiff, &synthetic), Some(1));
+
+        let tiff = {
+            let image = image::RgbImage::from_pixel(2, 1, image::Rgb([1, 1, 1]));
+            let mut bytes = Cursor::new(Vec::new());
+            image
+                .write_with_encoder(image::codecs::tiff::TiffEncoder::new(&mut bytes))
+                .expect("tiff");
+            bytes.into_inner()
+        };
+        let mut assets = ImageAssets::new();
+        assets.insert("a.tif", asset(tiff, "image/tiff"));
+        let prepared = prepare_images(
+            &parse_document("![](a.tif)\n"),
+            &assets,
+            &profile(),
+            ImageTarget::Docx,
+            DEFAULT_MAX_IMAGE_BYTES,
+        )
+        .expect("tiff");
+        let image = prepared.get("a.tif").expect("image");
+        assert_eq!(image.media_type, "image/tiff");
+        assert_eq!(image.display_width_px, 2);
+        assert_eq!(image.display_height_px, 1);
+        if stored_orientation(ImageKind::Tiff, &image.bytes).is_some() {
+            assert_eq!(stored_orientation(ImageKind::Tiff, &image.bytes), Some(1));
+        }
+    }
+
+    #[test]
+    fn unsupported_containers_fail_without_credentials() {
+        let samples = [
+            ("a.avif", b"\0\0\0\x18ftypavif\0\0\0\0avif".to_vec()),
+            ("a.heic", b"\0\0\0\x18ftypheic\0\0\0\0heic".to_vec()),
+            ("a.jxl", b"\0\0\0\x0cJXL \x0d\x0a\x87\x0a".to_vec()),
+        ];
+        for (name, bytes) in samples {
+            let url = format!("https://user:secret@example.test/{name}");
+            let mut assets = ImageAssets::new();
+            assets.insert(url.clone(), asset(bytes, "application/octet-stream"));
+            let source = format!("![]({url})\n");
+            let error = prepare_images(
+                &parse_document(&source),
+                &assets,
+                &profile(),
+                ImageTarget::Html,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect_err("unsupported");
+            assert!(error.contains("unsupported"));
+            assert!(!error.contains("secret"));
+            assert!(error.contains("example.test"));
+        }
+    }
+
+    #[test]
+    fn empty_assets_do_not_change_an_image_free_docx() {
+        let source = "Hello\n";
+        let profile = "{}";
+        let plain = crate::render_docx_with_profile(source, profile).expect("plain");
+        let embedded = crate::render_docx_with_profile_and_assets(
+            source,
+            profile,
+            &ImageAssets::new(),
+            0,
+        )
+        .expect("embedded");
+        assert_eq!(zip_entries(&plain), zip_entries(&embedded));
+    }
+
+    fn wide_png(width: u32, height: u32) -> Vec<u8> {
+        let image = image::RgbImage::from_pixel(width, height, image::Rgb([1, 2, 3]));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_with_encoder(image::codecs::png::PngEncoder::new(&mut bytes))
+            .expect("png");
+        bytes.into_inner()
+    }
+
+    fn animated_gif() -> Vec<u8> {
+        let mut bytes = Cursor::new(Vec::new());
+        let mut encoder = image::codecs::gif::GifEncoder::new(&mut bytes);
+        let red = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 255]));
+        let blue = image::RgbaImage::from_pixel(1, 1, image::Rgba([0, 0, 255, 255]));
+        encoder
+            .encode_frame(image::Frame::from_parts(
+                red,
+                0,
+                0,
+                image::Delay::from_numer_denom_ms(100, 1),
+            ))
+            .expect("frame");
+        encoder
+            .encode_frame(image::Frame::from_parts(
+                blue,
+                0,
+                0,
+                image::Delay::from_numer_denom_ms(100, 1),
+            ))
+            .expect("frame");
+        drop(encoder);
+        bytes.into_inner()
+    }
+
+    fn lossless_webp() -> Vec<u8> {
+        let mut bytes = Cursor::new(Vec::new());
+        image::codecs::webp::WebPEncoder::new_lossless(&mut bytes)
+            .encode(&[255, 0, 0], 1, 1, image::ExtendedColorType::Rgb8)
+            .expect("webp");
+        bytes.into_inner()
+    }
+
+    fn animated_webp(still: &[u8]) -> Vec<u8> {
+        assert!(still.starts_with(b"RIFF") && &still[8..12] == b"WEBP");
+        let payload_size = u32::from_le_bytes(still[16..20].try_into().expect("size")) as usize;
+        let vp8l = still[12..20 + payload_size].to_vec();
+        let mut anmf = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0];
+        anmf.extend_from_slice(&vp8l);
+        let mut body = b"WEBP".to_vec();
+        body.extend(riff_chunk(b"VP8X", &[0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        body.extend(riff_chunk(b"ANIM", &[0, 0, 0, 0, 0, 0]));
+        body.extend(riff_chunk(b"ANMF", &anmf));
+        let mut file = b"RIFF".to_vec();
+        file.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        file.extend(body);
+        file
+    }
+
+    fn riff_chunk(tag: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let mut chunk = tag.to_vec();
+        chunk.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        chunk.extend_from_slice(payload);
+        if payload.len() % 2 == 1 {
+            chunk.push(0);
+        }
+        chunk
+    }
+
+    fn with_jpeg_orientation(jpeg: &[u8], orientation: u16) -> Vec<u8> {
+        let mut tiff = vec![
+            b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
+            0x01, 0x00, 0x00, 0x00,
+        ];
+        tiff.extend_from_slice(&orientation.to_le_bytes());
+        tiff.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        let mut segment = b"Exif\0\0".to_vec();
+        segment.extend_from_slice(&tiff);
+        let length = (segment.len() + 2) as u16;
+        let mut out = vec![0xff, 0xd8, 0xff, 0xe1];
+        out.extend_from_slice(&length.to_be_bytes());
+        out.extend_from_slice(&segment);
+        out.extend_from_slice(&jpeg[2..]);
+        out
+    }
+
+    fn stored_orientation(kind: ImageKind, bytes: &[u8]) -> Option<u16> {
+        let tiff_at = match kind {
+            ImageKind::Jpeg => jpeg_exif_tiff_offset(bytes)?,
+            ImageKind::Tiff => 0,
+            _ => return None,
+        };
+        let little = bytes.get(tiff_at..)?.starts_with(b"II");
+        let read_u16 = |offset: usize| -> Option<u16> {
+            let pair = bytes.get(offset..offset + 2)?;
+            Some(if little {
+                u16::from_le_bytes([pair[0], pair[1]])
+            } else {
+                u16::from_be_bytes([pair[0], pair[1]])
+            })
+        };
+        let read_u32 = |offset: usize| -> Option<u32> {
+            let quad = bytes.get(offset..offset + 4)?;
+            Some(if little {
+                u32::from_le_bytes([quad[0], quad[1], quad[2], quad[3]])
+            } else {
+                u32::from_be_bytes([quad[0], quad[1], quad[2], quad[3]])
+            })
+        };
+        if read_u16(tiff_at + 2)? != 42 {
+            return None;
+        }
+        let mut ifd = tiff_at + read_u32(tiff_at + 4)? as usize;
+        let count = read_u16(ifd)? as usize;
+        ifd += 2;
+        for _ in 0..count {
+            if read_u16(ifd)? == 0x0112 && read_u16(ifd + 2)? == 3 && read_u32(ifd + 4)? == 1 {
+                return read_u16(ifd + 8);
+            }
+            ifd += 12;
+        }
+        None
+    }
+
+    fn zip_entries(bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("zip");
+        let mut entries = BTreeMap::new();
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).expect("entry");
+            let mut data = Vec::new();
+            file.read_to_end(&mut data).expect("read");
+            entries.insert(file.name().to_owned(), data);
+        }
+        entries
     }
 }

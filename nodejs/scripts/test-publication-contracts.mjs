@@ -302,6 +302,18 @@ try {
     pdfCases.push({ name: contractCase.name, profile: resolved });
   }
 
+  const bodyImageEpubPath = join(outputDirectory, "body-image.epub");
+  writeFileSync(
+    bodyImageEpubPath,
+    await renderEpubWithProfile(`${source}\n\n![図](figure.png)\n`, {
+      profile: contractCases[0].profile,
+      assets: {
+        "figure.png": { data: onePixelPng, mediaType: "image/png" },
+      },
+    }),
+  );
+  epubPaths.push(bodyImageEpubPath);
+
   for (const htmlCase of [
     {
       name: "html-horizontal",

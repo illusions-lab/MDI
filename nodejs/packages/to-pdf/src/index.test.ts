@@ -40,7 +40,7 @@ const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN
 describe("self-contained PDF resources", () => {
   it("embeds a data-url image and rejects network or file requests", async () => {
     const pdf = await renderHtmlToPdf(
-      `<html><head></head><body><img src="data:image/png;base64,${onePixelPng}" width="1" height="1"></body></html>`,
+      `<html><head></head><body><a href="https://example.com/page">page</a><img src="data:image/png;base64,${onePixelPng}" width="1" height="1"></body></html>`,
     );
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     expect(pdf.toString("latin1")).toContain("/Image");
@@ -70,6 +70,37 @@ describe("self-contained PDF resources", () => {
       { deadlineMs: 1 },
     )).rejects.toThrow("PDF export timed out");
   }, 30_000);
+
+  it("rejects file and nested SVG resources before launch, and does not wait on a hung launch", async () => {
+    let launched = false;
+    const launchBrowser = () => {
+      launched = true;
+      return new Promise<never>(() => undefined);
+    };
+    await expect(renderHtmlToPdf(
+      '<html><head></head><body><img src="file:///etc/passwd"></body></html>',
+      undefined,
+      undefined,
+      { deadlineMs: 1_000, launchBrowser },
+    )).rejects.toThrow("PDF export blocked a resource request: file:///etc/passwd");
+    const svg = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><image href="https://alice:s3cret-token@example.test/a.png"/></svg>');
+    const nested = await renderHtmlToPdf(
+      `<html><head></head><body><img src="data:image/svg+xml,${svg}"></body></html>`,
+      undefined,
+      undefined,
+      { deadlineMs: 1_000, launchBrowser },
+    ).then(() => "", (error: Error) => error.message);
+    expect(nested).toContain("PDF export blocked a resource request");
+    expect(nested).not.toMatch(/s3cret-token|alice/);
+    expect(launched).toBe(false);
+
+    await expect(renderHtmlToPdf(
+      "<html><head></head><body><p>hung</p></body></html>",
+      undefined,
+      undefined,
+      { deadlineMs: 30, launchBrowser: () => new Promise(() => undefined) },
+    )).rejects.toThrow("PDF export timed out");
+  });
 });
 
 describe("renderHtmlToPdf", () =>

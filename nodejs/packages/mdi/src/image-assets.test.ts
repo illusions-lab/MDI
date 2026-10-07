@@ -142,6 +142,73 @@ describe("loadImageAssets", () => {
 		await expect(rejected).rejects.toThrow(/unsupported URL scheme javascript/);
 	});
 
+	it("strips percent-encoded passwords, redirect secrets, and file userinfo", async () => {
+		const percent = await loadImageAssets("![](https://alice:100%@example.test/a.png)", {
+			directory: "/tmp",
+			fetch: async () => { throw new Error("failed password 100% at https://alice:100%@example.test/a.png"); },
+		}).then(() => "", (error: Error) => error.message);
+		expect(percent).not.toContain("100%");
+		expect(percent).not.toContain("alice");
+		expect(percent).toContain("example.test");
+
+		const redirected = await loadImageAssets("![](https://example.test/start)", {
+			directory: "/tmp",
+			fetch: async (input) => {
+				if (String(input).endsWith("/start")) {
+					return response(null, { status: 302, headers: { location: "https://bob:other-secret@example.test/next" } });
+				}
+				throw new Error(`failed at ${String(input)} and https://bob:other-secret@example.test/next`);
+			},
+		}).then(() => "", (error: Error) => error.message);
+		expect(redirected).not.toContain("other-secret");
+		expect(redirected).not.toContain("bob");
+		expect(redirected).toContain("example.test");
+
+		const fileUrl = "file://alice:s3cret@localhost/no/such/image.png";
+		const fileError = await loadImageAssets(`![](${fileUrl})`, {
+			directory: "/tmp",
+			fetch: async () => { throw new Error(`fetch must not run ${fileUrl}`); },
+		}).then(() => "", (error: Error) => error.message);
+		expect(fileError).not.toMatch(/alice|s3cret/);
+	});
+
+	it("loads at most four images at once and reuses one timeout across redirects", async () => {
+		let active = 0;
+		let maxActive = 0;
+		const source = Array.from({ length: 6 }, (_, index) => `![](https://example.test/${index}.png)`).join("\n\n");
+		await loadImageAssets(source, {
+			directory: "/tmp",
+			fetch: async () => {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				await new Promise((resolve) => setTimeout(resolve, 40));
+				active -= 1;
+				return response(png);
+			},
+		});
+		expect(maxActive).toBe(4);
+
+		const signals: AbortSignal[] = [];
+		await Promise.race([
+			loadImageAssets("![](https://example.test/start)", {
+				directory: "/tmp",
+				timeoutMs: 2_000,
+				fetch: async (input, init) => {
+					if (init?.signal) signals.push(init.signal);
+					if (String(input).endsWith("/start")) {
+						return response(null, { status: 302, headers: { location: "https://example.test/next" } });
+					}
+					return response(png);
+				},
+			}),
+			new Promise<never>((_, reject) => {
+				setTimeout(() => reject(new Error("redirects did not share one timeout")), 500);
+			}),
+		]);
+		expect(signals).toHaveLength(2);
+		expect(signals[0]).toBe(signals[1]);
+	});
+
 	it("omits credentials from errors and leaves data urls for the core", async () => {
 		const statusError = await loadImageAssets("![](https://alice:s3cret-token@example.test/a.png)", {
 			directory: "/tmp",

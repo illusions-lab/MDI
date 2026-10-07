@@ -331,8 +331,18 @@ fn rewrite_embedded_image_urls(node: &mut Value, images: &crate::PreparedImages)
             .unwrap_or_default()
             .to_owned();
         let src = images.embedded_src(&url).unwrap_or_default();
+        let fitted = images.get(&url).map(|image| {
+            (
+                image.display_width_px,
+                image.display_height_px,
+            )
+        });
         if let Some(object) = node.as_object_mut() {
             object.insert("url".to_owned(), Value::String(src));
+            if let Some((width, height)) = fitted {
+                object.insert("displayWidth".to_owned(), json!(width));
+                object.insert("displayHeight".to_owned(), json!(height));
+            }
         }
     }
     if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {

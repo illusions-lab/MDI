@@ -317,6 +317,8 @@ export interface MdiHtmlRenderOptions extends MdiParseOptions {
 	bodyOnly?: boolean;
 	/** When set, embed these bytes instead of leaving manuscript URLs in the HTML. */
 	assets?: MdiImageAssets;
+	/** Content box used to fit embedded images. Omission uses the document default. */
+	profile?: ExportProfile;
 	/** Per-image byte limit passed to the core. Omission or `0` uses the 25MB default. */
 	maxImageBytes?: number;
 }
@@ -565,7 +567,12 @@ export function renderHtml(source: string, options?: MdiHtmlRenderOptions): stri
 	assertHtmlOptions(options);
 	const html = options?.assets === undefined
 		? renderHtmlFromRust(source)
-		: renderHtmlWithAssetsFromRust(source, assetEntries(options.assets), maxImageBytes(options.maxImageBytes));
+		: renderHtmlWithAssetsFromRust(
+			source,
+			assetEntries(options.assets),
+			JSON.stringify(options.profile ?? {}),
+			maxImageBytes(options.maxImageBytes),
+		);
 	return options?.bodyOnly ? htmlBody(html) : html;
 }
 
@@ -857,6 +864,7 @@ function assertHtmlOptions(options: unknown): asserts options is MdiHtmlRenderOp
 		throw new TypeError("options.bodyOnly must be a boolean");
 	}
 	if (options.assets !== undefined) assertImageAssets(options.assets);
+	if (options.profile !== undefined) assertPlainObject(options.profile, "options.profile");
 	assertMaxImageBytes(options.maxImageBytes);
 }
 

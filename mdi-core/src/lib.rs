@@ -1519,22 +1519,31 @@ pub fn render_html_document(document: &Document) -> String {
 
 /// Render standalone HTML with caller-supplied body images.
 ///
-/// `data:` images are decoded from the manuscript. Every other image URL must
-/// be present in `assets`. A failure names each image and returns no document.
+/// `profile_json` selects the content box used to fit images. `None` or an
+/// empty string uses the document's default profile. `data:` images are
+/// decoded from the manuscript. Every other image URL must be present in
+/// `assets`. A failure names each image and returns no document.
 pub fn render_html_with_assets(
     source: &str,
     assets: &ImageAssets,
+    profile_json: Option<&str>,
     max_bytes: usize,
 ) -> Result<String, String> {
-    render_html_document_with_assets(&parse_document(source), assets, max_bytes)
+    render_html_document_with_assets(&parse_document(source), assets, profile_json, max_bytes)
 }
 
 pub fn render_html_document_with_assets(
     document: &Document,
     assets: &ImageAssets,
+    profile_json: Option<&str>,
     max_bytes: usize,
 ) -> Result<String, String> {
-    let profile = default_profile_for_document(document)?;
+    let profile = match profile_json {
+        Some(profile_json) if !profile_json.is_empty() => {
+            resolved_profile_for_document(document, profile_json, false)?
+        }
+        _ => default_profile_for_document(document)?,
+    };
     let images = prepare_images(document, assets, &profile, ImageTarget::Html, max_bytes)?;
     Ok(render_html_document_inner(document, Some(&images)))
 }
@@ -3992,7 +4001,16 @@ fn render_html_image(
     out.push_str(&escape_html(url));
     out.push_str("\" alt=\"");
     out.push_str(&escape_html(alt));
-    out.push_str("\">");
+    out.push('"');
+    // Present only on a rewritten warichu image, so PDF settle keeps the fitted size.
+    if let (Some(width), Some(height)) = (
+        node.get("displayWidth").and_then(serde_json::Value::as_u64),
+        node.get("displayHeight").and_then(serde_json::Value::as_u64),
+    ) {
+        let size = format!(" width=\"{width}\" height=\"{height}\"");
+        out.push_str(&size);
+    }
+    out.push('>');
 }
 
 fn wrapped(out: &mut String, tag: &str, children: impl FnOnce(&mut String)) {
@@ -4662,15 +4680,28 @@ mod wasm {
         serde_json::to_string(&image_urls(&parse_document(source))).expect("image urls are strings")
     }
 
-    /// Render HTML with caller-supplied image bytes. `max_bytes` of 0 uses the default limit.
+    /// Render HTML with caller-supplied image bytes.
+    ///
+    /// An empty `profile_json` uses the document default. `max_bytes` of 0 uses the default limit.
     #[wasm_bindgen(js_name = renderHtmlWithAssets)]
     pub fn wasm_render_html_with_assets(
         source: &str,
         assets: JsValue,
+        profile_json: &str,
         max_bytes: u32,
     ) -> Result<String, JsValue> {
-        render_html_with_assets(source, &image_assets_from_js(assets)?, usize::try_from(max_bytes).unwrap_or(0))
-            .map_err(|message| JsValue::from_str(&message))
+        let profile = if profile_json.is_empty() {
+            None
+        } else {
+            Some(profile_json)
+        };
+        render_html_with_assets(
+            source,
+            &image_assets_from_js(assets)?,
+            profile,
+            usize::try_from(max_bytes).unwrap_or(0),
+        )
+        .map_err(|message| JsValue::from_str(&message))
     }
 
     /// Build a configured EPUB with caller-supplied image bytes.

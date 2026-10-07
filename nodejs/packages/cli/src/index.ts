@@ -110,6 +110,7 @@ export async function build(
     await writeFile(destination, assets === undefined ? renderHtml(source) : renderHtml(source, {
       assets,
       maxImageBytes: resolvedOptions.imageMaxBytes,
+      profile: publicationProfile,
     }));
     return resolve(destination);
   }
@@ -127,7 +128,11 @@ export async function build(
         ).renderHtmlToPdf(
           assets === undefined
             ? renderHtml(source)
-            : renderHtml(source, { assets, maxImageBytes: resolvedOptions.imageMaxBytes }),
+            : renderHtml(source, {
+                assets,
+                maxImageBytes: resolvedOptions.imageMaxBytes,
+                profile: publicationProfile,
+              }),
           publicationProfile,
         )
       : format === "epub"

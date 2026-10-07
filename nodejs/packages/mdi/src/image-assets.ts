@@ -101,36 +101,44 @@ async function fetchBytes(
 	fetchImpl: typeof fetch,
 ): Promise<Uint8Array> {
 	const signal = AbortSignal.timeout(timeoutMs);
+	const seen = [startUrl];
 	let current = startUrl;
 	let redirects = 0;
-	while (true) {
-		let response: Response;
-		try {
-			response = await fetchImpl(current, { redirect: "manual", signal });
-		} catch (error) {
-			if (signal.aborted) throw new Error("timed out");
-			throw error;
-		}
-		if (isRedirect(response.status)) {
-			redirects += 1;
-			const location = response.headers.get("location");
-			await response.body?.cancel().catch(() => undefined);
-			if (redirects > MAX_REDIRECTS) throw new Error(`followed more than ${MAX_REDIRECTS} redirects`);
-			if (location === null || location.length === 0) throw new Error("redirect is missing a location");
-			let next: URL;
+	try {
+		while (true) {
+			let response: Response;
 			try {
-				next = new URL(location, current);
-			} catch {
-				throw new Error("redirect location is not a URL");
+				response = await fetchImpl(current, { redirect: "manual", signal });
+			} catch (error) {
+				if (signal.aborted) throw new Error("timed out");
+				throw error;
 			}
-			if (next.protocol !== "http:" && next.protocol !== "https:") {
-				throw new Error("redirect left http(s)");
+			if (isRedirect(response.status)) {
+				redirects += 1;
+				const location = response.headers.get("location");
+				await response.body?.cancel().catch(() => undefined);
+				if (location !== null && location.length > 0) seen.push(location);
+				if (redirects > MAX_REDIRECTS) throw new Error(`followed more than ${MAX_REDIRECTS} redirects`);
+				if (location === null || location.length === 0) throw new Error("redirect is missing a location");
+				let next: URL;
+				try {
+					next = new URL(location, current);
+				} catch {
+					throw new Error("redirect location is not a URL");
+				}
+				seen.push(next.toString());
+				if (next.protocol !== "http:" && next.protocol !== "https:") {
+					throw new Error("redirect left http(s)");
+				}
+				current = next.toString();
+				continue;
 			}
-			current = next.toString();
-			continue;
+			if (!response.ok) throw new Error(`request failed with status ${response.status}`);
+			return await readLimitedBody(response, maxBytes, signal);
 		}
-		if (!response.ok) throw new Error(`request failed with status ${response.status}`);
-		return readLimitedBody(response, maxBytes, signal);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "request failed";
+		throw new Error(scrubSecrets(message, seen));
 	}
 }
 
@@ -204,38 +212,72 @@ function positiveInteger(value: number | undefined, fallback: number, name: stri
 	return value;
 }
 
-/** Manuscript URL with any http(s) userinfo removed. */
+/** Manuscript URL with userinfo removed. Non-URL paths stay unchanged. */
 function resourceLabel(value: string): string {
+	return withoutUserinfo(value);
+}
+
+function publicMessage(error: unknown, url: string): string {
+	const message = error instanceof Error ? error.message : "request failed";
+	return scrubSecrets(message, [url]);
+}
+
+/** Drop credentials from every URL that was requested or named in a redirect. */
+function scrubSecrets(message: string, urls: readonly string[]): string {
+	let text = message;
+	for (const url of urls) {
+		const cleaned = withoutUserinfo(url);
+		if (cleaned !== url) text = text.split(url).join(cleaned);
+		const candidate = url.startsWith("//") ? `https:${url}` : url;
+		const raw = rawUserinfo(candidate);
+		try {
+			const parsed = new URL(candidate);
+			const serialized = url.startsWith("//") ? parsed.toString().slice("https:".length) : parsed.toString();
+			if (serialized !== cleaned) text = text.split(serialized).join(cleaned);
+			if (parsed.password) text = text.split(parsed.password).join("");
+			if (parsed.username) text = text.split(parsed.username).join("");
+		} catch {
+			// The raw userinfo below still covers URLs the parser rejects.
+		}
+		if (raw?.password) text = text.split(raw.password).join("");
+		if (raw?.username) text = text.split(raw.username).join("");
+	}
+	return text;
+}
+
+function withoutUserinfo(value: string): string {
 	const schemeRelative = value.startsWith("//");
 	const candidate = schemeRelative ? `https:${value}` : value;
 	try {
 		const url = new URL(candidate);
-		if (url.protocol !== "http:" && url.protocol !== "https:") return value;
 		url.username = "";
 		url.password = "";
 		const text = url.toString();
 		return schemeRelative ? text.slice("https:".length) : text;
 	} catch {
-		return value;
+		// Node rejects some file URLs that still carry userinfo. Remove that
+		// authority text so the password cannot survive in a label.
+		return value.replace(
+			/^((?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\/)([^/?#]*)/,
+			(_match, prefix: string, authority: string) => {
+				const at = authority.lastIndexOf("@");
+				return at < 0 ? `${prefix}${authority}` : `${prefix}${authority.slice(at + 1)}`;
+			},
+		);
 	}
 }
 
-function publicMessage(error: unknown, url: string): string {
-	const message = error instanceof Error ? error.message : "request failed";
-	return stripUserinfo(message, url);
-}
-
-function stripUserinfo(message: string, url: string): string {
-	const candidate = url.startsWith("//") ? `https:${url}` : url;
-	try {
-		const parsed = new URL(candidate);
-		let text = message;
-		if (parsed.username) text = text.split(decodeURIComponent(parsed.username)).join("").split(parsed.username).join("");
-		if (parsed.password) text = text.split(decodeURIComponent(parsed.password)).join("").split(parsed.password).join("");
-		return text;
-	} catch {
-		return message;
-	}
+/** Userinfo as it appears in the URL text, before the URL parser decodes it. */
+function rawUserinfo(candidate: string): { username: string; password: string } | undefined {
+	const match = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\/([^/?#]*)/.exec(candidate);
+	if (!match) return undefined;
+	const authority = match[1] ?? "";
+	const at = authority.lastIndexOf("@");
+	if (at < 0) return undefined;
+	const userinfo = authority.slice(0, at);
+	const colon = userinfo.indexOf(":");
+	if (colon < 0) return { username: userinfo, password: "" };
+	return { username: userinfo.slice(0, colon), password: userinfo.slice(colon + 1) };
 }
 
 async function mapLimited<T>(items: readonly T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {

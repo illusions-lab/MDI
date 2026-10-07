@@ -58,7 +58,7 @@ export function preparePdfExport(
 	return {
 		html: assets === undefined
 			? renderHtml(source)
-			: renderHtml(source, { assets, maxImageBytes: imageByteLimit }),
+			: renderHtml(source, { assets, maxImageBytes: imageByteLimit, profile }),
 		profile,
 		sourceWritingMode:
 			writingMode === "vertical" || writingMode === "horizontal"
@@ -88,7 +88,7 @@ export function preparePdfExportWithDiagnostics(
 		output: {
 			html: assets === undefined
 				? renderHtml(source)
-				: renderHtml(source, { assets, maxImageBytes: imageByteLimit }),
+				: renderHtml(source, { assets, maxImageBytes: imageByteLimit, profile }),
 			profile,
 			sourceWritingMode:
 				writingMode === "vertical" || writingMode === "horizontal"

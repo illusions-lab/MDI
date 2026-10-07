@@ -17,6 +17,11 @@ const DEFAULT_PDF_DEADLINE_MS = 120_000;
 export interface RenderHtmlToPdfOptions extends MdiWarichuSettleOptions {
   /** Time limit for the whole Chromium lifecycle. The browser process is closed when it expires. */
   deadlineMs?: number;
+  /**
+   * Replacement for Playwright's browser launch. Tests use this to prove a
+   * deadline does not wait on a launch that never settles.
+   */
+  launchBrowser?: (timeoutMs: number) => Promise<Browser>;
 }
 
 /**
@@ -43,13 +48,15 @@ export async function renderHtmlToPdf(
     signal: options?.signal,
   };
   const prepared = prepareChromiumPrintProfile(html, profile, sourceWritingMode);
+  assertSelfContainedHtml(prepared.html);
   let browser: Browser | undefined;
   let rejectDeadline: (error: Error) => void = () => undefined;
   const deadline = new Promise<never>((_, reject) => {
     rejectDeadline = reject;
   });
   const timer = setTimeout(() => rejectDeadline(new Error("PDF export timed out")), deadlineMs);
-  const launch = chromium.launch({ headless: true }).then((launched) => {
+  const launchBrowser = options?.launchBrowser ?? ((timeoutMs: number) => chromium.launch({ headless: true, timeout: timeoutMs }));
+  const launch = launchBrowser(deadlineMs).then((launched) => {
     browser = launched;
     return launched;
   });
@@ -103,8 +110,12 @@ export async function renderHtmlToPdf(
     return await Promise.race([work, deadline]);
   } finally {
     clearTimeout(timer);
-    const instance = browser ?? await launch.catch(() => undefined);
-    await closeBrowser(instance);
+    if (browser !== undefined) {
+      await closeBrowser(browser);
+    } else {
+      // A launch that is still pending must not hold the deadline. Close it if it later succeeds.
+      void launch.then((launched) => closeBrowser(launched)).catch(() => undefined);
+    }
   }
 }
 
@@ -143,14 +154,280 @@ function errorCode(error: unknown): string | undefined {
 }
 
 function resourceLabel(value: string): string {
+  const schemeRelative = value.startsWith("//");
+  const candidate = schemeRelative ? `https:${value}` : value;
   try {
-    const url = new URL(value);
+    const url = new URL(candidate);
     url.username = "";
     url.password = "";
-    return url.toString();
+    const text = url.toString();
+    return schemeRelative ? text.slice("https:".length) : text;
   } catch {
-    return value;
+    return value.replace(
+      /^((?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\/)([^/?#]*)/,
+      (_match, prefix: string, authority: string) => {
+        const at = authority.lastIndexOf("@");
+        return at < 0 ? `${prefix}${authority}` : `${prefix}${authority.slice(at + 1)}`;
+      },
+    );
   }
+}
+
+const RESOURCE_TAGS = new Set([
+  "img", "image", "source", "iframe", "embed", "object", "link", "use", "script", "video", "audio",
+]);
+const RESOURCE_ATTRIBUTES = new Set(["src", "href", "data", "srcset"]);
+const MAX_SVG_DEPTH = 4;
+
+/**
+ * Reject file, network, and relative subresources before Chromium parses the document.
+ * Document anchors are not subresources. A `data:image/svg+xml` payload is scanned again.
+ */
+function assertSelfContainedHtml(html: string): void {
+  scanMarkup(html, 0);
+}
+
+function scanMarkup(html: string, depth: number): void {
+  if (depth > MAX_SVG_DEPTH) rejectResource("data:image/svg+xml");
+  let index = 0;
+  while (index < html.length) {
+    const start = html.indexOf("<", index);
+    if (start < 0) break;
+    if (html.startsWith("<!--", start)) {
+      const end = html.indexOf("-->", start + 4);
+      index = end < 0 ? html.length : end + 3;
+      continue;
+    }
+    if (html.startsWith("<!", start) || html.startsWith("<?", start) || html.startsWith("</", start)) {
+      const end = html.indexOf(">", start + 2);
+      index = end < 0 ? html.length : end + 1;
+      continue;
+    }
+    const tag = readTag(html, start);
+    if (tag === undefined) {
+      index = start + 1;
+      continue;
+    }
+    inspectTag(tag, depth);
+    const name = localName(tag.name);
+    if (name === "style" || name === "script") {
+      const close = indexOfEndTag(html, tag.end, name);
+      if (name === "style") scanCss(html.slice(tag.end, close ?? html.length), depth);
+      index = close ?? html.length;
+      continue;
+    }
+    index = tag.end;
+  }
+}
+
+function inspectTag(tag: MarkupTag, depth: number): void {
+  const name = localName(tag.name);
+  for (const attribute of tag.attributes) {
+    const attributeName = localName(attribute.name);
+    const value = decodeHtmlAttribute(attribute.value);
+    if (attributeName === "style") scanCss(value, depth);
+    if (attributeName === "srcdoc") scanMarkup(value, depth);
+    if (!RESOURCE_TAGS.has(name) || !RESOURCE_ATTRIBUTES.has(attributeName)) continue;
+    const candidates = attributeName === "srcset" ? srcsetCandidates(value) : [value];
+    for (const candidate of candidates) vetResource(candidate, depth);
+  }
+}
+
+function vetResource(url: string, depth: number): void {
+  const value = url.trim();
+  if (value.startsWith("#")) return;
+  if (/^data:/i.test(value)) {
+    vetDataUrl(value, depth);
+    return;
+  }
+  rejectResource(value);
+}
+
+function vetDataUrl(value: string, depth: number): void {
+  const comma = value.indexOf(",");
+  if (comma < 0) rejectResource(value);
+  const header = value.slice(0, comma);
+  if (!/^data:/i.test(header)) rejectResource(value);
+  if (!/^data:image\/svg\+xml\b/i.test(header)) return;
+  const payload = value.slice(comma + 1);
+  let text: string;
+  try {
+    const bytes = /;base64/i.test(header)
+      ? decodeBase64(payload)
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    rejectResource(value);
+  }
+  scanMarkup(text, depth + 1);
+}
+
+function decodeBase64(payload: string): Uint8Array {
+  const compact = payload.replace(/\s/g, "");
+  if (compact.length === 0 || /[^A-Za-z0-9+/=]/.test(compact)) {
+    throw new Error("invalid base64");
+  }
+  return Buffer.from(compact, "base64");
+}
+
+function scanCss(css: string, depth: number): void {
+  for (const url of cssResourceUrls(css)) vetResource(url, depth);
+}
+
+function cssResourceUrls(css: string): string[] {
+  const urls: string[] = [];
+  const lower = css.toLowerCase();
+  let index = 0;
+  while (index < css.length) {
+    const at = lower.indexOf("url(", index);
+    const imported = lower.indexOf("@import", index);
+    if (at < 0 && imported < 0) break;
+    if (imported >= 0 && (at < 0 || imported < at)) {
+      const quoted = readQuoted(css, imported + "@import".length);
+      if (quoted !== undefined) urls.push(quoted.value);
+      index = quoted === undefined ? imported + "@import".length : quoted.end;
+      continue;
+    }
+    const body = readCssUrlBody(css, at + 4);
+    if (body === undefined) break;
+    urls.push(body.value);
+    index = body.end;
+  }
+  return urls;
+}
+
+function readCssUrlBody(css: string, start: number): { value: string; end: number } | undefined {
+  let index = start;
+  while (index < css.length && /\s/.test(css[index] ?? "")) index += 1;
+  if (index >= css.length) return undefined;
+  const quote = css[index];
+  if (quote === "'" || quote === '"') {
+    const end = css.indexOf(quote, index + 1);
+    if (end < 0) return { value: css.slice(index + 1), end: css.length };
+    return { value: css.slice(index + 1, end), end };
+  }
+  const valueStart = index;
+  let depth = 1;
+  while (index < css.length && depth > 0) {
+    const character = css[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth -= 1;
+    if (depth > 0) index += 1;
+  }
+  return { value: css.slice(valueStart, index).trim(), end: Math.min(css.length, index + 1) };
+}
+
+function readQuoted(css: string, start: number): { value: string; end: number } | undefined {
+  let index = start;
+  while (index < css.length && /\s/.test(css[index] ?? "")) index += 1;
+  const quote = css[index];
+  if (quote !== "'" && quote !== '"') return undefined;
+  const end = css.indexOf(quote, index + 1);
+  if (end < 0) return { value: css.slice(index + 1), end: css.length };
+  return { value: css.slice(index + 1, end), end };
+}
+
+function srcsetCandidates(value: string): string[] {
+  const candidates: string[] = [];
+  let index = 0;
+  while (index < value.length) {
+    while (index < value.length && /[\s,]/.test(value[index] ?? "")) index += 1;
+    if (index >= value.length) break;
+    const start = index;
+    if (value.slice(index).toLowerCase().startsWith("data:")) {
+      while (index < value.length && !/\s/.test(value[index] ?? "")) index += 1;
+      candidates.push(value.slice(start, index));
+      while (index < value.length && value[index] !== ",") index += 1;
+      continue;
+    }
+    while (index < value.length && !/[\s,]/.test(value[index] ?? "")) index += 1;
+    candidates.push(value.slice(start, index));
+    while (index < value.length && value[index] !== ",") index += 1;
+  }
+  return candidates;
+}
+
+interface MarkupTag {
+  name: string;
+  attributes: Array<{ name: string; value: string }>;
+  end: number;
+}
+
+function readTag(html: string, start: number): MarkupTag | undefined {
+  if (html[start] !== "<") return undefined;
+  let index = start + 1;
+  const nameStart = index;
+  while (index < html.length && /[A-Za-z0-9:_-]/.test(html[index] ?? "")) index += 1;
+  if (index === nameStart) return undefined;
+  const name = html.slice(nameStart, index);
+  const attributes: Array<{ name: string; value: string }> = [];
+  while (index < html.length) {
+    while (index < html.length && /\s/.test(html[index] ?? "")) index += 1;
+    if (index >= html.length) break;
+    if (html[index] === ">") return { name, attributes, end: index + 1 };
+    if (html[index] === "/" && html[index + 1] === ">") return { name, attributes, end: index + 2 };
+    const attributeStart = index;
+    while (index < html.length && /[A-Za-z0-9:_-]/.test(html[index] ?? "")) index += 1;
+    if (index === attributeStart) {
+      index += 1;
+      continue;
+    }
+    const attributeName = html.slice(attributeStart, index);
+    while (index < html.length && /\s/.test(html[index] ?? "")) index += 1;
+    let value = "";
+    if (html[index] === "=") {
+      index += 1;
+      while (index < html.length && /\s/.test(html[index] ?? "")) index += 1;
+      const quote = html[index];
+      if (quote === '"' || quote === "'") {
+        index += 1;
+        const valueStart = index;
+        while (index < html.length && html[index] !== quote) index += 1;
+        value = html.slice(valueStart, index);
+        if (index < html.length) index += 1;
+      } else {
+        const valueStart = index;
+        while (index < html.length && !/[\s>\/]/.test(html[index] ?? "")) index += 1;
+        value = html.slice(valueStart, index);
+      }
+    }
+    attributes.push({ name: attributeName, value });
+  }
+  return { name, attributes, end: index };
+}
+
+function indexOfEndTag(html: string, start: number, name: string): number | undefined {
+  const needle = `</${name}`;
+  const lower = html.toLowerCase();
+  const at = lower.indexOf(needle, start);
+  if (at < 0) return undefined;
+  const end = html.indexOf(">", at + needle.length);
+  return end < 0 ? undefined : end + 1;
+}
+
+function localName(name: string): string {
+  const colon = name.lastIndexOf(":");
+  return (colon >= 0 ? name.slice(colon + 1) : name).toLowerCase();
+}
+
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => character(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, digits: string) => character(Number.parseInt(digits, 10)))
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&apos;/gi, "'")
+    .replace(/&amp;/gi, "&");
+}
+
+function character(code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return "";
+  return String.fromCodePoint(code);
+}
+
+function rejectResource(url: string): never {
+  throw new Error(`PDF export blocked a resource request: ${resourceLabel(url)}`);
 }
 
 function delay(ms: number): Promise<void> {

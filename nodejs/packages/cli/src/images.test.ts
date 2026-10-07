@@ -103,6 +103,10 @@ describe("self-contained CLI images", () => {
       const note = await readFile(notePath, "utf8");
       expect(note).toContain("missing.png");
       expect(note).not.toContain("data:image");
+      const jsonPath = await build(input, "json");
+      const json = await readFile(jsonPath, "utf8");
+      expect(json).toContain("missing.png");
+      expect(json).not.toContain("data:image");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
