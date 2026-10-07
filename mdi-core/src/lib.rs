@@ -17,7 +17,12 @@ use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 mod comments;
 mod docx;
+mod image_assets;
 mod warichu;
+pub use image_assets::{
+    ImageAsset, ImageAssets, ImageTarget, PreparedImages, DEFAULT_MAX_IMAGE_BYTES,
+    MAX_IMAGE_PIXELS, image_urls, prepare_images,
+};
 pub use warichu::{
     WarichuFragment, WarichuOptions, WarichuSource, layout_warichu, layout_warichu_options_json,
     layout_warichu_with_options,
@@ -1509,6 +1514,32 @@ pub fn render_html(source: &str) -> String {
 
 /// Render a previously parsed document to standalone HTML.
 pub fn render_html_document(document: &Document) -> String {
+    render_html_document_inner(document, None)
+}
+
+/// Render standalone HTML with caller-supplied body images.
+///
+/// `data:` images are decoded from the manuscript. Every other image URL must
+/// be present in `assets`. A failure names each image and returns no document.
+pub fn render_html_with_assets(
+    source: &str,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<String, String> {
+    render_html_document_with_assets(&parse_document(source), assets, max_bytes)
+}
+
+pub fn render_html_document_with_assets(
+    document: &Document,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<String, String> {
+    let profile = default_profile_for_document(document)?;
+    let images = prepare_images(document, assets, &profile, ImageTarget::Html, max_bytes)?;
+    Ok(render_html_document_inner(document, Some(&images)))
+}
+
+fn render_html_document_inner(document: &Document, images: Option<&PreparedImages>) -> String {
     let frontmatter = document.frontmatter.as_ref();
     let field = |key: &str| {
         frontmatter
@@ -1540,7 +1571,7 @@ pub fn render_html_document(document: &Document) -> String {
         if child.get("type").and_then(serde_json::Value::as_str) == Some("footnoteDefinition") {
             footnotes.push(child);
         } else {
-            render_html_node(child, &mut body);
+            render_html_node(child, &mut body, images);
         }
     }
     if !footnotes.is_empty() {
@@ -1554,7 +1585,7 @@ pub fn render_html_document(document: &Document) -> String {
             body.push_str("<li id=\"user-content-fn-");
             body.push_str(&escape_html(&identifier));
             body.push_str("\">");
-            render_html_children(footnote, &mut body);
+            render_html_children(footnote, &mut body, images);
             body.push_str(" <a href=\"#user-content-fnref-");
             body.push_str(&escape_html(&identifier));
             body.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a>");
@@ -3050,9 +3081,50 @@ pub fn render_epub_document_with_profile(
     profile: &ResolvedExportProfile,
     cover: Option<&EpubCover>,
 ) -> Result<Vec<u8>, String> {
+    render_epub_document_prepared(document, profile, cover, None)
+}
+
+/// Embed caller-supplied body images in a configured EPUB.
+///
+/// `max_bytes` is the per-image limit. Zero selects the 25MB default.
+pub fn render_epub_with_profile_and_assets(
+    source: &str,
+    profile_json: &str,
+    cover: Option<&EpubCover>,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    render_epub_document_with_profile_and_assets(
+        &document,
+        profile_json,
+        cover,
+        assets,
+        max_bytes,
+    )
+}
+
+pub fn render_epub_document_with_profile_and_assets(
+    document: &Document,
+    profile_json: &str,
+    cover: Option<&EpubCover>,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let profile = resolved_profile_for_document(document, profile_json, false)?;
+    let images = prepare_images(document, assets, &profile, ImageTarget::Epub, max_bytes)?;
+    render_epub_document_prepared(document, &profile, cover, Some(&images))
+}
+
+fn render_epub_document_prepared(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+    cover: Option<&EpubCover>,
+    images: Option<&PreparedImages>,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    write_epub_document_with_profile(document, &mut zip, profile, cover)?;
+    write_epub_document_with_profile(document, &mut zip, profile, cover, images)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
@@ -3064,7 +3136,7 @@ fn write_epub_document<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
 ) -> Result<(), String> {
     let profile = default_profile_for_document(document)?;
-    write_epub_document_with_profile(document, zip, &profile, None)
+    write_epub_document_with_profile(document, zip, &profile, None, None)
 }
 
 fn write_epub_document_with_profile<W: Write + Seek>(
@@ -3072,6 +3144,7 @@ fn write_epub_document_with_profile<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
     profile: &ResolvedExportProfile,
     cover: Option<&EpubCover>,
+    images: Option<&PreparedImages>,
 ) -> Result<(), String> {
     let field = |key: &str| {
         document
@@ -3100,7 +3173,7 @@ fn write_epub_document_with_profile<W: Write + Seek>(
         .unwrap_or("urn:mdi:document");
     let vertical = profile.typesetting.writing_mode == "vertical";
     let modified = epub_modified_timestamp()?;
-    let chapters = epub_chapters(document, &profile.epub.chapter_split_level);
+    let chapters = epub_chapters(document, &profile.epub.chapter_split_level, images);
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     epub_file(zip, "mimetype", "application/epub+zip", stored)?;
     let compressed = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -3200,6 +3273,32 @@ fn write_epub_document_with_profile<W: Write + Seek>(
             compressed,
         )?;
     }
+    if let Some(images) = images {
+        for (index, image) in images.iter() {
+            zip.start_file(
+                format!("OEBPS/images/{}", image.filename(index)),
+                compressed,
+            )
+            .map_err(|error| error.to_string())?;
+            zip.write_all(&image.bytes)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    let image_manifest = images
+        .map(|images| {
+            images
+                .iter()
+                .map(|(index, image)| {
+                    format!(
+                        "<item id=\"img-{}\" href=\"images/{}\" media-type=\"{}\"/>",
+                        index + 1,
+                        image.filename(index),
+                        escape_html(&image.media_type)
+                    )
+                })
+                .collect::<String>()
+        })
+        .unwrap_or_default();
     let cover_manifest = match (cover, cover_extension) {
         (Some(cover), Some(extension)) => format!(
             "<item id=\"cover-image\" href=\"cover.{extension}\" media-type=\"{}\" properties=\"cover-image\"/><item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>",
@@ -3219,7 +3318,7 @@ fn write_epub_document_with_profile<W: Write + Seek>(
         })
         .collect::<String>();
     let manifest = format!(
-        "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{cover_manifest}{chapter_manifest}"
+        "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>{image_manifest}{cover_manifest}{chapter_manifest}"
     );
     let chapter_spine = chapters
         .iter()
@@ -3286,9 +3385,41 @@ pub fn render_docx_document_with_profile(
     document: &Document,
     profile: &ResolvedExportProfile,
 ) -> Result<Vec<u8>, String> {
+    render_docx_document_prepared(document, profile, None)
+}
+
+/// Embed caller-supplied body images in a configured DOCX.
+///
+/// `max_bytes` is the per-image limit. Zero selects the 25MB default.
+pub fn render_docx_with_profile_and_assets(
+    source: &str,
+    profile_json: &str,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let document = parse_document(source);
+    render_docx_document_with_profile_and_assets(&document, profile_json, assets, max_bytes)
+}
+
+pub fn render_docx_document_with_profile_and_assets(
+    document: &Document,
+    profile_json: &str,
+    assets: &ImageAssets,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let profile = resolved_profile_for_document(document, profile_json, false)?;
+    let images = prepare_images(document, assets, &profile, ImageTarget::Docx, max_bytes)?;
+    render_docx_document_prepared(document, &profile, Some(&images))
+}
+
+fn render_docx_document_prepared(
+    document: &Document,
+    profile: &ResolvedExportProfile,
+    images: Option<&PreparedImages>,
+) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    docx::write(document, profile, &mut zip)?;
+    docx::write(document, profile, &mut zip, images)?;
     zip.finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|error| error.to_string())
@@ -3300,7 +3431,7 @@ fn write_docx_document<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
 ) -> Result<(), String> {
     let profile = default_profile_for_document(document)?;
-    docx::write(document, &profile, zip)
+    docx::write(document, &profile, zip, None)
 }
 
 /// Native configuration for Chromium PDF layout. WebAssembly deliberately
@@ -3384,7 +3515,11 @@ struct EpubChapter {
     html: String,
     footnote_ids: Vec<String>,
 }
-fn epub_chapters(document: &Document, split_level: &str) -> Vec<EpubChapter> {
+fn epub_chapters(
+    document: &Document,
+    split_level: &str,
+    images: Option<&PreparedImages>,
+) -> Vec<EpubChapter> {
     let split_depth = match split_level {
         "h1" => Some(1),
         "h2" => Some(2),
@@ -3446,7 +3581,7 @@ fn epub_chapters(document: &Document, split_level: &str) -> Vec<EpubChapter> {
             chapter.title = plain_node_text(node);
         }
         collect_footnote_references(node, &mut chapter.footnote_ids);
-        render_html_node(node, &mut chapter.html);
+        render_html_node(node, &mut chapter.html, images);
     }
     let mut chapters: Vec<_> = chapters
         .into_iter()
@@ -3468,7 +3603,7 @@ fn epub_chapters(document: &Document, split_level: &str) -> Vec<EpubChapter> {
             chapter.html.push_str("<li id=\"user-content-fn-");
             chapter.html.push_str(&escape_html(identifier));
             chapter.html.push_str("\">");
-            render_html_children(definition, &mut chapter.html);
+            render_html_children(definition, &mut chapter.html, images);
             chapter.html.push_str(" <a href=\"#user-content-fnref-");
             chapter.html.push_str(&escape_html(identifier));
             chapter.html.push_str("\" data-footnote-backref=\"\" aria-label=\"Back to reference\" class=\"data-footnote-backref\">↩</a></li>");
@@ -3576,11 +3711,15 @@ fn epub_file<W: Write + Seek>(
         .map_err(|error| error.to_string())
 }
 
-fn render_html_node(node: &serde_json::Value, out: &mut String) {
+fn render_html_node(
+    node: &serde_json::Value,
+    out: &mut String,
+    images: Option<&PreparedImages>,
+) {
     let Some(kind) = node.get("type").and_then(serde_json::Value::as_str) else {
         return;
     };
-    let children = |out: &mut String| render_html_children(node, out);
+    let children = |out: &mut String| render_html_children(node, out, images);
     match kind {
         "text" => out.push_str(&escape_html(
             node.get("value")
@@ -3690,21 +3829,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             children(out);
             out.push_str("</a>");
         }
-        "image" => {
-            out.push_str("<img src=\"");
-            out.push_str(&escape_html(
-                node.get("url")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default(),
-            ));
-            out.push_str("\" alt=\"");
-            out.push_str(&escape_html(
-                node.get("alt")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default(),
-            ));
-            out.push_str("\">");
-        }
+        "image" => render_html_image(node, out, images),
         "table" => {
             out.push_str("<table>");
             for (row_index, row) in crate::children(node).iter().enumerate() {
@@ -3722,7 +3847,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
                         "<td>"
                     });
                     for child in crate::children(cell) {
-                        render_html_node(child, out);
+                        render_html_node(child, out, images);
                     }
                     out.push_str(if row_index == 0 { "</th>" } else { "</td>" });
                 }
@@ -3787,7 +3912,7 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
             children(out);
             out.push_str("</span>");
         }
-        "warichu" => warichu::render(crate::children(node), out),
+        "warichu" => warichu::render(crate::children(node), out, images),
         "kern" => {
             out.push_str("<span class=\"mdi-kern\" style=\"--mdi-kern:");
             out.push_str(&escape_html(
@@ -3812,12 +3937,62 @@ fn render_html_node(node: &serde_json::Value, out: &mut String) {
     }
 }
 
-fn render_html_children(node: &serde_json::Value, out: &mut String) {
+fn render_html_children(
+    node: &serde_json::Value,
+    out: &mut String,
+    images: Option<&PreparedImages>,
+) {
     if let Some(children) = node.get("children").and_then(serde_json::Value::as_array) {
         for child in children {
-            render_html_node(child, out);
+            render_html_node(child, out, images);
         }
     }
+}
+
+fn render_html_image(
+    node: &serde_json::Value,
+    out: &mut String,
+    images: Option<&PreparedImages>,
+) {
+    let url = node
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let alt = node
+        .get("alt")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if let Some(images) = images {
+        let Some(image) = images.get(url) else {
+            return;
+        };
+        let src = if images.target == ImageTarget::Epub {
+            let index = images.index_of(url).unwrap_or(0);
+            format!("images/{}", image.filename(index))
+        } else {
+            image.html_src()
+        };
+        out.push_str("<img src=\"");
+        out.push_str(&escape_html(&src));
+        out.push_str("\" alt=\"");
+        out.push_str(&escape_html(alt));
+        out.push_str(&format!(
+            "\" width=\"{}\" height=\"{}\"{}",
+            image.display_width_px,
+            image.display_height_px,
+            if images.target == ImageTarget::Epub {
+                "/>"
+            } else {
+                ">"
+            }
+        ));
+        return;
+    }
+    out.push_str("<img src=\"");
+    out.push_str(&escape_html(url));
+    out.push_str("\" alt=\"");
+    out.push_str(&escape_html(alt));
+    out.push_str("\">");
 }
 
 fn wrapped(out: &mut String, tag: &str, children: impl FnOnce(&mut String)) {
@@ -4367,12 +4542,15 @@ fn classify_block_macro(source: &str) -> BlockMacroClass {
 #[cfg(feature = "wasm")]
 mod wasm {
     use super::{
-        BlockMacroClass, EpubCover, PagebreakVariant, RubyReading, SourceSpan, TextFormat,
-        apply_pdf_profile_json, classify_block_macro, get_mdi_text_blocks_json,
-        page_size_catalog_json, parse_json, parse_mdast_json, prepare_chromium_print_profile_json,
-        render_docx, render_docx_with_profile, render_epub, render_epub_with_profile, render_html,
-        render_text, render_text_format, resolve_export_profile_json, resolve_mdi_source_span_json,
-        resolve_mdi_source_spans_json, serialize_mdi, split_ruby, unescape_mdi, unescape_ruby,
+        BlockMacroClass, EpubCover, ImageAsset, ImageAssets, PagebreakVariant, RubyReading,
+        SourceSpan, TextFormat, apply_pdf_profile_json, classify_block_macro,
+        get_mdi_text_blocks_json, image_urls, page_size_catalog_json, parse_document, parse_json,
+        parse_mdast_json, prepare_chromium_print_profile_json, render_docx,
+        render_docx_with_profile, render_docx_with_profile_and_assets, render_epub,
+        render_epub_with_profile, render_epub_with_profile_and_assets, render_html,
+        render_html_with_assets, render_text, render_text_format, resolve_export_profile_json,
+        resolve_mdi_source_span_json, resolve_mdi_source_spans_json, serialize_mdi, split_ruby,
+        unescape_mdi, unescape_ruby,
     };
     use wasm_bindgen::prelude::*;
 
@@ -4476,6 +4654,66 @@ mod wasm {
     #[wasm_bindgen(js_name = renderHtml)]
     pub fn wasm_render_html(source: &str) -> String {
         render_html(source)
+    }
+
+    /// JSON array of reference-resolved image URLs, in document order.
+    #[wasm_bindgen(js_name = imageUrlsJson)]
+    pub fn wasm_image_urls_json(source: &str) -> String {
+        serde_json::to_string(&image_urls(&parse_document(source))).expect("image urls are strings")
+    }
+
+    /// Render HTML with caller-supplied image bytes. `max_bytes` of 0 uses the default limit.
+    #[wasm_bindgen(js_name = renderHtmlWithAssets)]
+    pub fn wasm_render_html_with_assets(
+        source: &str,
+        assets: JsValue,
+        max_bytes: u32,
+    ) -> Result<String, JsValue> {
+        render_html_with_assets(source, &image_assets_from_js(assets)?, usize::try_from(max_bytes).unwrap_or(0))
+            .map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Build a configured EPUB with caller-supplied image bytes.
+    #[wasm_bindgen(js_name = renderEpubWithProfileAndAssets)]
+    pub fn wasm_render_epub_with_profile_and_assets(
+        source: &str,
+        profile_json: &str,
+        cover_data: &[u8],
+        cover_media_type: Option<String>,
+        assets: JsValue,
+        max_bytes: u32,
+    ) -> Result<Box<[u8]>, JsValue> {
+        let cover = cover_media_type.map(|media_type| EpubCover {
+            data: cover_data.to_vec(),
+            media_type,
+        });
+        render_epub_with_profile_and_assets(
+            source,
+            profile_json,
+            cover.as_ref(),
+            &image_assets_from_js(assets)?,
+            usize::try_from(max_bytes).unwrap_or(0),
+        )
+        .map(Vec::into_boxed_slice)
+        .map_err(|message| JsValue::from_str(&message))
+    }
+
+    /// Build a configured DOCX with caller-supplied image bytes.
+    #[wasm_bindgen(js_name = renderDocxWithProfileAndAssets)]
+    pub fn wasm_render_docx_with_profile_and_assets(
+        source: &str,
+        profile_json: &str,
+        assets: JsValue,
+        max_bytes: u32,
+    ) -> Result<Box<[u8]>, JsValue> {
+        render_docx_with_profile_and_assets(
+            source,
+            profile_json,
+            &image_assets_from_js(assets)?,
+            usize::try_from(max_bytes).unwrap_or(0),
+        )
+        .map(Vec::into_boxed_slice)
+        .map_err(|message| JsValue::from_str(&message))
     }
 
     /// Validate and resolve the language-neutral configured-export profile.
@@ -4633,6 +4871,39 @@ mod wasm {
             _ => "",
         }
         .to_owned()
+    }
+
+    fn image_assets_from_js(value: JsValue) -> Result<ImageAssets, JsValue> {
+        if value.is_null() || value.is_undefined() {
+            return Ok(ImageAssets::new());
+        }
+        let entries = js_sys::Array::from(&value);
+        let mut assets = ImageAssets::new();
+        for entry in entries.iter() {
+            let url = js_sys::Reflect::get(&entry, &JsValue::from_str("url"))
+                .map_err(|_| JsValue::from_str("image asset url is missing"))?;
+            let url = url
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("image asset url must be a string"))?;
+            let media_type = js_sys::Reflect::get(&entry, &JsValue::from_str("mediaType"))
+                .ok()
+                .and_then(|value| value.as_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "application/octet-stream".to_owned());
+            let data = js_sys::Reflect::get(&entry, &JsValue::from_str("data"))
+                .map_err(|_| JsValue::from_str("image asset data is missing"))?;
+            if !js_sys::Uint8Array::instanceof(&data) {
+                return Err(JsValue::from_str("image asset data must be a Uint8Array"));
+            }
+            assets.insert(
+                url,
+                ImageAsset {
+                    data: js_sys::Uint8Array::new(&data).to_vec(),
+                    media_type,
+                },
+            );
+        }
+        Ok(assets)
     }
 }
 
@@ -6189,12 +6460,13 @@ First line [[br]] second line with ~~strike~~, <span>raw</span>, ![cover](cover.
         );
 
         let mut html = String::new();
-        render_html_node(&serde_json::json!({}), &mut html);
+        render_html_node(&serde_json::json!({}), &mut html, None);
         render_html_node(
             &serde_json::json!({"type":"unknown", "children":[{"type":"text", "value":"ok"}]}),
             &mut html,
+            None,
         );
-        render_html_children(&serde_json::json!({"type":"root"}), &mut html);
+        render_html_children(&serde_json::json!({"type":"root"}), &mut html, None);
         assert_eq!(html, "ok");
 
         let stacked = parse_document("[[indent:2]]\n[[bottom:3]]\ntext");

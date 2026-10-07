@@ -6,11 +6,15 @@ import { parse as parseYaml } from "yaml";
 
 const {
 	resolveMdiSourceSpansJson,
+	imageUrlsJson,
 	renderHtml: renderHtmlFromRust,
+	renderHtmlWithAssets: renderHtmlWithAssetsFromRust,
 	renderEpub: renderEpubFromRust,
 	renderEpubWithProfile: renderEpubWithProfileFromRust,
+	renderEpubWithProfileAndAssets: renderEpubWithProfileAndAssetsFromRust,
 	renderDocx: renderDocxFromRust,
 	renderDocxWithProfile: renderDocxWithProfileFromRust,
+	renderDocxWithProfileAndAssets: renderDocxWithProfileAndAssetsFromRust,
 	renderText: renderTextFromRust,
 	renderTextFormat: renderTextFormatFromRust,
 	resolveExportProfileJson: resolveExportProfileJsonFromRust,
@@ -65,6 +69,10 @@ export type MdiEpubExportOptions = EpubExportOptions & {
 	/** Shorthand for `cover: { data: coverImage, mediaType: coverMediaType }`. */
 	coverImage?: Uint8Array;
 	coverMediaType?: EpubCover["mediaType"];
+	/** When set, embed these bytes instead of the EPUB image fallback. */
+	assets?: MdiImageAssets;
+	/** Per-image byte limit passed to the core. Omission or `0` uses the 25MB default. */
+	maxImageBytes?: number;
 };
 
 /**
@@ -280,10 +288,37 @@ export interface MdiHeading {
 	node: MdiNode;
 }
 
+/** Bytes for one body image. The core sniffs the payload and does not trust a transport header. */
+export interface MdiImageAsset {
+	data: Uint8Array;
+	/**
+	 * Declared media type. An empty string or `application/octet-stream` means
+	 * sniff only. A specific type that disagrees with the bytes fails the export.
+	 */
+	mediaType: string;
+}
+
+/**
+ * Body images keyed by the reference-resolved URL exactly as {@link imageUrls} lists it.
+ * Passing this object, including an empty one, selects self-contained export.
+ */
+export type MdiImageAssets = Record<string, MdiImageAsset>;
+
+/** One image entry accepted by the WASM asset functions. */
+interface MdiImageAssetEntry {
+	url: string;
+	mediaType: string;
+	data: Uint8Array;
+}
+
 /** HTML output controls that do not alter MDI semantics. */
 export interface MdiHtmlRenderOptions extends MdiParseOptions {
 	/** Return the semantic contents of `<body>` rather than a standalone page. */
 	bodyOnly?: boolean;
+	/** When set, embed these bytes instead of leaving manuscript URLs in the HTML. */
+	assets?: MdiImageAssets;
+	/** Per-image byte limit passed to the core. Omission or `0` uses the 25MB default. */
+	maxImageBytes?: number;
 }
 
 /** A parsed document retained with renderer output for UI diagnostics. */
@@ -509,11 +544,28 @@ function isPositiveSafeInteger(value: unknown): value is number {
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
 
+/**
+ * List reference-resolved Markdown image URLs in document order.
+ *
+ * Loaders and packagers share this list. `data:` URLs are included; a loader
+ * leaves those for the core to decode and must not put them in the asset map.
+ */
+export function imageUrls(source: string): string[] {
+	assertSource(source);
+	const urls = JSON.parse(imageUrlsJson(source)) as unknown;
+	if (!Array.isArray(urls) || urls.some((url) => typeof url !== "string")) {
+		throw new Error("Rust image URL list has an unexpected shape");
+	}
+	return urls;
+}
+
 /** Render complete `.mdi` source to standalone semantic HTML in Rust. */
 export function renderHtml(source: string, options?: MdiHtmlRenderOptions): string {
 	assertSource(source);
 	assertHtmlOptions(options);
-	const html = renderHtmlFromRust(source);
+	const html = options?.assets === undefined
+		? renderHtmlFromRust(source)
+		: renderHtmlWithAssetsFromRust(source, assetEntries(options.assets), maxImageBytes(options.maxImageBytes));
 	return options?.bodyOnly ? htmlBody(html) : html;
 }
 
@@ -590,19 +642,28 @@ export function renderDocx(source: string): Uint8Array;
 /**
  * Build a profile-configured DOCX archive. This overload is asynchronous
  * for backward compatibility; validation and OOXML generation run in Rust.
+ *
+ * `assets` is a separate argument so it cannot be mistaken for a profile.
+ * Pass `{}` as the profile when the document defaults should apply.
  */
 export function renderDocx(
 	source: string,
 	profile: MdiDocxExportProfile,
+	assets?: MdiImageAssets,
+	maxImageBytes?: number,
 ): Promise<Uint8Array>;
 export function renderDocx(
 	source: string,
 	profile?: MdiDocxExportProfile,
+	assets?: MdiImageAssets,
+	imageByteLimit?: number,
 ): Uint8Array | Promise<Uint8Array> {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
-	if (profile !== undefined) {
-		assertPlainObject(profile, "profile");
-		return renderDocxWithProfile(source, profile);
+	if (profile !== undefined || assets !== undefined) {
+		assertPlainObject(profile === undefined ? {} : profile, "profile");
+		if (assets !== undefined) assertImageAssets(assets);
+		maxImageBytes(imageByteLimit);
+		return renderDocxWithProfile(source, profile ?? {}, assets, imageByteLimit);
 	}
 	return renderDocxFromRust(source);
 }
@@ -639,27 +700,49 @@ export async function renderEpubWithProfile(
 	const normalized = normalizeEpubOptions(options);
 	requireLayoutSystem(normalized.profile!);
 	const cover = normalized.cover;
-	return renderEpubWithProfileFromRust(
-		source,
-		JSON.stringify(normalized.profile),
-		cover?.data ?? new Uint8Array(),
-		cover?.mediaType,
-	);
+	const profileJson = JSON.stringify(normalized.profile);
+	const coverData = cover?.data ?? new Uint8Array();
+	if (options.assets !== undefined) {
+		return renderEpubWithProfileAndAssetsFromRust(
+			source,
+			profileJson,
+			coverData,
+			cover?.mediaType,
+			assetEntries(options.assets),
+			maxImageBytes(options.maxImageBytes),
+		);
+	}
+	return renderEpubWithProfileFromRust(source, profileJson, coverData, cover?.mediaType);
 }
 
 /**
  * Build a configured DOCX in Rust using the shared print profile. The profile
  * supports metadata, writing mode, paper size, margins and page numbers.
+ *
+ * When `assets` is set, body images are embedded from those bytes. The core
+ * still computes the content box from `profile`.
  */
 export async function renderDocxWithProfile(
 	source: string,
 	profile: MdiDocxExportProfile = {},
+	assets?: MdiImageAssets,
+	imageByteLimit?: number,
 ): Promise<Uint8Array> {
 	assertSource(source);
 	assertPlainObject(profile, "profile");
+	if (assets !== undefined) assertImageAssets(assets);
 	const normalized = normalizeDocxProfile(profile);
 	requireLayoutSystem(normalized);
-	return renderDocxWithProfileFromRust(source, JSON.stringify(normalized));
+	const profileJson = JSON.stringify(normalized);
+	if (assets !== undefined) {
+		return renderDocxWithProfileAndAssetsFromRust(
+			source,
+			profileJson,
+			assetEntries(assets),
+			maxImageBytes(imageByteLimit),
+		);
+	}
+	return renderDocxWithProfileFromRust(source, profileJson);
 }
 
 /**
@@ -773,6 +856,47 @@ function assertHtmlOptions(options: unknown): asserts options is MdiHtmlRenderOp
 	if (options.bodyOnly !== undefined && typeof options.bodyOnly !== "boolean") {
 		throw new TypeError("options.bodyOnly must be a boolean");
 	}
+	if (options.assets !== undefined) assertImageAssets(options.assets);
+	assertMaxImageBytes(options.maxImageBytes);
+}
+
+/** Copy a caller asset map into the array shape the WASM boundary accepts. */
+function assetEntries(assets: MdiImageAssets): MdiImageAssetEntry[] {
+	assertImageAssets(assets);
+	return Object.entries(assets).map(([url, asset]) => ({
+		url,
+		mediaType: asset.mediaType,
+		data: asset.data,
+	}));
+}
+
+function assertImageAssets(assets: unknown): asserts assets is MdiImageAssets {
+	assertPlainObject(assets, "assets");
+	for (const [url, asset] of Object.entries(assets)) {
+		const label = `assets[${JSON.stringify(url)}]`;
+		assertPlainObject(asset, label);
+		if (!(asset.data instanceof Uint8Array)) {
+			throw new TypeError(`${label}.data must be a Uint8Array`);
+		}
+		if (typeof asset.mediaType !== "string") {
+			throw new TypeError(`${label}.mediaType must be a string`);
+		}
+	}
+}
+
+function assertMaxImageBytes(value: unknown): void {
+	if (value === undefined) return;
+	if (typeof value !== "number") throw new RangeError("maxImageBytes must be a uint32");
+	maxImageBytes(value);
+}
+
+/** `0` and omission both ask the core to apply its default per-image limit. */
+function maxImageBytes(value: number | undefined): number {
+	if (value === undefined || value === 0) return 0;
+	if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
+		throw new RangeError("maxImageBytes must be a uint32");
+	}
+	return value;
 }
 
 function htmlBody(html: string): string {
@@ -822,6 +946,8 @@ function assertPlainObject(value: unknown, label: string): asserts value is Reco
 
 function assertEpubOptions(options: unknown): asserts options is MdiEpubExportOptions {
 	assertPlainObject(options, "options");
+	if (options.assets !== undefined) assertImageAssets(options.assets);
+	assertMaxImageBytes(options.maxImageBytes);
 	if (options.cover !== undefined) {
 		assertPlainObject(options.cover, "options.cover");
 		if (!(options.cover.data instanceof Uint8Array)) {

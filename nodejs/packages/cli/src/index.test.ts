@@ -683,9 +683,14 @@ describe("vertical Kitchen Sink export artifacts", () => {
         // fixture inside that repertoire; the dedicated contract test above
         // verifies that unsupported literal glyphs fail instead of becoming ?.
         .replace("（既定記号 ﹅）", "（既定記号）")
-        .replace("[[em:﹆:ここぞ]]", "[[em:○:ここぞ]]");
+        .replace("[[em:﹆:ここぞ]]", "[[em:○:ここぞ]]")
+        .replace("https://example.com/image.png", "pixel.png");
       const input = join(directory, "kitchen-sink.mdi");
       await writeFile(input, source);
+      await writeFile(join(directory, "pixel.png"), Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ));
       const [html, pdf, docx, epub, textOutputs] = await Promise.all([
         build(input, "html"),
         build(input, "pdf"),

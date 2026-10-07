@@ -26,11 +26,15 @@ export const resolveMdiSourceSpansJson = (...args) => (requireInitialized(), bin
 export const parseMdiSyntaxJson = (...args) => (requireInitialized(), bindings.parseMdiSyntaxJson(...args));
 export const parseMdiMdastJson = (...args) => (requireInitialized(), bindings.parseMdiMdastJson(...args));
 export const prepareChromiumPrintProfileJson = (...args) => (requireInitialized(), bindings.prepareChromiumPrintProfileJson(...args));
+export const imageUrlsJson = (...args) => (requireInitialized(), bindings.imageUrlsJson(...args));
 export const renderDocx = (...args) => (requireInitialized(), bindings.renderDocx(...args));
 export const renderDocxWithProfile = (...args) => (requireInitialized(), bindings.renderDocxWithProfile(...args));
+export const renderDocxWithProfileAndAssets = (...args) => (requireInitialized(), bindings.renderDocxWithProfileAndAssets(...args));
 export const renderEpub = (...args) => (requireInitialized(), bindings.renderEpub(...args));
 export const renderEpubWithProfile = (...args) => (requireInitialized(), bindings.renderEpubWithProfile(...args));
+export const renderEpubWithProfileAndAssets = (...args) => (requireInitialized(), bindings.renderEpubWithProfileAndAssets(...args));
 export const renderHtml = (...args) => (requireInitialized(), bindings.renderHtml(...args));
+export const renderHtmlWithAssets = (...args) => (requireInitialized(), bindings.renderHtmlWithAssets(...args));
 export const renderText = (...args) => (requireInitialized(), bindings.renderText(...args));
 export const renderTextFormat = (...args) => (requireInitialized(), bindings.renderTextFormat(...args));
 export const resolveExportProfileJson = (...args) => (requireInitialized(), bindings.resolveExportProfileJson(...args));

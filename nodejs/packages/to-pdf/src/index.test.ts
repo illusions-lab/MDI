@@ -35,6 +35,43 @@ describe("mdiToPdf edge cases", () => {
   }, 30_000);
 });
 
+const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+describe("self-contained PDF resources", () => {
+  it("embeds a data-url image and rejects network or file requests", async () => {
+    const pdf = await renderHtmlToPdf(
+      `<html><head></head><body><img src="data:image/png;base64,${onePixelPng}" width="1" height="1"></body></html>`,
+    );
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.toString("latin1")).toContain("/Image");
+
+    const blocked = await renderHtmlToPdf(
+      '<html><head></head><body><img src="http://alice:s3cret-token@127.0.0.1:9/secret.png"></body></html>',
+      undefined,
+      undefined,
+      { deadlineMs: 15_000 },
+    ).then(() => "", (error: Error) => error.message);
+    expect(blocked).toContain("PDF export blocked a resource request");
+    expect(blocked).not.toMatch(/s3cret-token/);
+
+    await expect(renderHtmlToPdf(
+      '<html><head></head><body><img src="file:///etc/passwd"></body></html>',
+      undefined,
+      undefined,
+      { deadlineMs: 15_000 },
+    )).rejects.toThrow("PDF export blocked a resource request");
+  }, 60_000);
+
+  it("closes Chromium when the export exceeds its deadline", async () => {
+    await expect(renderHtmlToPdf(
+      "<html><head></head><body><p>timeout</p></body></html>",
+      undefined,
+      undefined,
+      { deadlineMs: 1 },
+    )).rejects.toThrow("PDF export timed out");
+  }, 30_000);
+});
+
 describe("renderHtmlToPdf", () =>
   it("acts as a Chromium-only layout adapter for Rust-owned HTML", async () => {
     const pdf = await renderHtmlToPdf(

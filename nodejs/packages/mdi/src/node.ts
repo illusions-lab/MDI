@@ -2,11 +2,15 @@ import {
 	parse,
 	renderHtml,
 	type MdiDocument,
+	type MdiImageAssets,
 	type MdiParseOptions,
 	type MdiHeading,
 	type MdiNode,
 	type MdiRenderResult,
 } from "./index.js";
+export { loadImageAssets, DEFAULT_IMAGE_TIMEOUT_MS, DEFAULT_MAX_IMAGE_BYTES } from "./image-assets.js";
+export type { LoadImageAssetsOptions } from "./image-assets.js";
+export type { MdiImageAsset, MdiImageAssets } from "./index.js";
 import {
 	requireLayoutSystem,
 	type ExportProfile,
@@ -37,10 +41,14 @@ export interface MdiPdfExportRequest {
  *
  * This browser-safe helper does not load Playwright or launch Chromium.
  * Electron callers may print the returned HTML with their own BrowserWindow.
+ * When `assets` is set, the HTML already contains those images, so the print
+ * step must not fetch them again.
  */
 export function preparePdfExport(
 	source: string,
 	profile?: ExportProfile,
+	assets?: MdiImageAssets,
+	imageByteLimit?: number,
 ): MdiPdfExportRequest {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
 	if (profile !== undefined) requireLayoutSystem(profile);
@@ -48,7 +56,9 @@ export function preparePdfExport(
 		(entry) => entry.key === "writing-mode" || entry.key === "writingMode",
 	)?.value;
 	return {
-		html: renderHtml(source),
+		html: assets === undefined
+			? renderHtml(source)
+			: renderHtml(source, { assets, maxImageBytes: imageByteLimit }),
 		profile,
 		sourceWritingMode:
 			writingMode === "vertical" || writingMode === "horizontal"
@@ -65,6 +75,8 @@ export function preparePdfExportWithDiagnostics(
 	source: string,
 	profile?: ExportProfile,
 	options: MdiParseOptions = {},
+	assets?: MdiImageAssets,
+	imageByteLimit?: number,
 ): MdiRenderResult<MdiPdfExportRequest> {
 	if (typeof source !== "string") throw new TypeError("source must be a string");
 	if (profile !== undefined) requireLayoutSystem(profile);
@@ -74,7 +86,9 @@ export function preparePdfExportWithDiagnostics(
 	)?.value;
 	return {
 		output: {
-			html: renderHtml(source),
+			html: assets === undefined
+				? renderHtml(source)
+				: renderHtml(source, { assets, maxImageBytes: imageByteLimit }),
 			profile,
 			sourceWritingMode:
 				writingMode === "vertical" || writingMode === "horizontal"
@@ -95,8 +109,9 @@ export async function renderPdfWithChromium(
 	source: string,
 	profile?: ExportProfile,
 	adapter?: MdiPdfChromiumAdapter,
+	images?: { assets?: MdiImageAssets; maxImageBytes?: number },
 ): Promise<Uint8Array> {
-	const request = preparePdfExport(source, profile);
+	const request = preparePdfExport(source, profile, images?.assets, images?.maxImageBytes);
 	const chromiumAdapter = adapter ?? (await loadPlaywrightPdfAdapter());
 	return chromiumAdapter.renderHtmlToPdf(
 		request.html,
@@ -111,8 +126,15 @@ export async function renderPdfWithChromiumWithDiagnostics(
 	profile?: ExportProfile,
 	adapter?: MdiPdfChromiumAdapter,
 	options: MdiParseOptions = {},
+	images?: { assets?: MdiImageAssets; maxImageBytes?: number },
 ): Promise<MdiRenderResult<Uint8Array>> {
-	const prepared = preparePdfExportWithDiagnostics(source, profile, options);
+	const prepared = preparePdfExportWithDiagnostics(
+		source,
+		profile,
+		options,
+		images?.assets,
+		images?.maxImageBytes,
+	);
 	const chromiumAdapter = adapter ?? (await loadPlaywrightPdfAdapter());
 	return {
 		...prepared,
