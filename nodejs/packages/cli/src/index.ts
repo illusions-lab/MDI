@@ -13,7 +13,9 @@ import {
   renderTextFormat,
   parse,
   type EpubCover,
+  type MdiImageAssets,
 } from "@illusions-lab/mdi";
+import { loadImageAssets } from "@illusions-lab/mdi/node";
 
 export {
   CACHE_TTL_MS,
@@ -47,6 +49,15 @@ export interface BuildOptions {
   includeComments?: boolean;
   output?: string;
   profile?: ExportProfile;
+  /** Per-image fetch budget for the default loader. Omission uses 30 seconds. */
+  imageTimeoutMs?: number;
+  /** Per-image byte budget shared by the loader and the core. Omission uses 25MB. */
+  imageMaxBytes?: number;
+  /**
+   * When set, including `{}`, the CLI does not read image files or the network.
+   * The core embeds these bytes. Text and JSON exports ignore this field.
+   */
+  assets?: MdiImageAssets;
 }
 
 export function build(
@@ -95,7 +106,12 @@ export async function build(
   if (format === "html") {
     const destination =
       resolvedOptions.output ?? defaultOutputPath(input, format, format);
-    await writeFile(destination, renderHtml(source));
+    const assets = await bodyImages(input, source, resolvedOptions);
+    await writeFile(destination, assets === undefined ? renderHtml(source) : renderHtml(source, {
+      assets,
+      maxImageBytes: resolvedOptions.imageMaxBytes,
+      profile: publicationProfile,
+    }));
     return resolve(destination);
   }
   if (format === "json") {
@@ -104,18 +120,34 @@ export async function build(
     await writeFile(destination, `${JSON.stringify(parse(source, { includeComments: resolvedOptions.includeComments }), null, 2)}\n`, "utf8");
     return resolve(destination);
   }
+  const assets = await bodyImages(input, source, resolvedOptions);
   const result =
     format === "pdf"
       ? await (
           await import("@illusions-lab/mdi-to-pdf")
-        ).renderHtmlToPdf(renderHtml(source), publicationProfile)
+        ).renderHtmlToPdf(
+          assets === undefined
+            ? renderHtml(source)
+            : renderHtml(source, {
+                assets,
+                maxImageBytes: resolvedOptions.imageMaxBytes,
+                profile: publicationProfile,
+              }),
+          publicationProfile,
+        )
       : format === "epub"
       ? await renderEpubWithProfile(source, {
           profile: publicationProfile,
           cover: await loadEpubCover(publicationProfile),
+          ...(assets === undefined ? {} : { assets, maxImageBytes: resolvedOptions.imageMaxBytes }),
         })
       : format === "docx"
-      ? await renderDocxWithProfile(source, publicationProfile)
+      ? await renderDocxWithProfile(
+          source,
+          publicationProfile,
+          assets,
+          resolvedOptions.imageMaxBytes,
+        )
       : (() => {
           throw new Error(`Unsupported output format: ${format}`);
         })();
@@ -125,6 +157,25 @@ export async function build(
     defaultOutputPath(input, format, extension);
   await writeFile(destination, result);
   return resolve(destination);
+}
+
+/**
+ * Body images for a self-contained export.
+ *
+ * An explicit `assets` value skips disk and network. Otherwise the loader
+ * reads whatever the manuscript names, relative to the manuscript directory.
+ */
+async function bodyImages(
+  input: string,
+  source: string,
+  options: BuildOptions,
+): Promise<MdiImageAssets | undefined> {
+  if (options.assets !== undefined) return options.assets;
+  return loadImageAssets(source, {
+    directory: dirname(input),
+    ...(options.imageTimeoutMs === undefined ? {} : { timeoutMs: options.imageTimeoutMs }),
+    ...(options.imageMaxBytes === undefined ? {} : { maxBytes: options.imageMaxBytes }),
+  });
 }
 
 /** CLI publication defaults: Japanese A4 manuscript for vertical, Word A4 for horizontal. */

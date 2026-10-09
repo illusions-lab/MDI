@@ -1,5 +1,10 @@
 # @illusions-lab/mdi-core
 
+## 2.1.1
+
+- Ship the core that embeds caller-supplied body images in HTML, EPUB, and DOCX, keeps static WebP where the container allows it, and bakes JPEG and TIFF EXIF orientation into the pixels.
+- Stay source-only when the caller does not supply an asset map.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

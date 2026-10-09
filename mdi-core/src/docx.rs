@@ -1,3 +1,4 @@
+use crate::image_assets::{PreparedImages, emu};
 use crate::{Document, ResolvedExportProfile, children, escape_xml, page_dimensions};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ pub(crate) fn write<W: Write + Seek>(
     document: &Document,
     profile: &ResolvedExportProfile,
     zip: &mut ZipWriter<W>,
+    images: Option<&PreparedImages>,
 ) -> Result<(), String> {
     let (natural_width, natural_height) = page_dimensions(&profile.pagination.page_size)
         .ok_or_else(|| format!("Unsupported page size: {}", profile.pagination.page_size))?;
@@ -40,6 +42,11 @@ pub(crate) fn write<W: Write + Seek>(
         footnote_ids,
         hyperlinks: Vec::new(),
         next_warichu_id: 0,
+        images,
+        in_footnote: false,
+        document_images: Vec::new(),
+        footnote_images: Vec::new(),
+        next_doc_pr: 1,
     };
     let content = document
         .children
@@ -128,8 +135,13 @@ pub(crate) fn write<W: Write + Seek>(
         ));
     }
 
+    let drawing_ns = if images.is_some_and(|images| !images.is_empty()) {
+        " xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\""
+    } else {
+        ""
+    };
     let document_xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"{WORD_NS}\" xmlns:r=\"{REL_NS}\"><w:body>{content}<w:sectPr>{section}</w:sectPr></w:body></w:document>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"{WORD_NS}\" xmlns:r=\"{REL_NS}\"{drawing_ns}><w:body>{content}<w:sectPr>{section}</w:sectPr></w:body></w:document>"
     );
     let styles_xml = styles_xml(profile, &font, body_font_half_points, line_twips);
     let settings_xml = if profile.layout.margin_mode == "mirror" {
@@ -150,6 +162,7 @@ pub(crate) fn write<W: Write + Seek>(
             !definitions.is_empty(),
             header_relationship.is_some(),
             footer_relationship.is_some(),
+            images,
         ),
         options,
     )?;
@@ -194,23 +207,49 @@ pub(crate) fn write<W: Write + Seek>(
         )?;
     }
     if !definitions.is_empty() {
-        file(
-            zip,
-            "word/footnotes.xml",
-            &footnotes_xml(&definitions, &mut context),
-            options,
-        )?;
+        context.in_footnote = true;
+        let footnotes = footnotes_xml(&definitions, &mut context, drawing_ns);
+        context.in_footnote = false;
+        file(zip, "word/footnotes.xml", &footnotes, options)?;
+        if !context.footnote_images.is_empty() {
+            file(
+                zip,
+                "word/_rels/footnotes.xml.rels",
+                &image_relationships(&context.footnote_images),
+                options,
+            )?;
+        }
+    }
+    if let Some(images) = images {
+        for (index, image) in images.iter() {
+            file_bytes(
+                zip,
+                &format!("word/media/{}", image.filename(index)),
+                &image.bytes,
+                options,
+            )?;
+        }
     }
     Ok(())
 }
 
-struct Context {
+struct Context<'a> {
     footnote_ids: HashMap<String, usize>,
     hyperlinks: Vec<String>,
     next_warichu_id: usize,
+    images: Option<&'a PreparedImages>,
+    in_footnote: bool,
+    document_images: Vec<ImageRelationship>,
+    footnote_images: Vec<ImageRelationship>,
+    next_doc_pr: usize,
 }
 
-fn block_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context) -> String {
+struct ImageRelationship {
+    id: String,
+    target: String,
+}
+
+fn block_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context<'_>) -> String {
     match node.get("type").and_then(Value::as_str).unwrap_or_default() {
         "heading" => {
             let depth = node
@@ -283,7 +322,7 @@ fn block_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Contex
 fn paragraph_xml(
     nodes: &[Value],
     profile: &ResolvedExportProfile,
-    context: &mut Context,
+    context: &mut Context<'_>,
     style: Option<&str>,
     source_indent: Option<&Value>,
 ) -> String {
@@ -333,7 +372,7 @@ struct RunProperties {
 
 fn inline_xml(
     nodes: &[Value],
-    context: &mut Context,
+    context: &mut Context<'_>,
     properties: &RunProperties,
     base_size: i64,
 ) -> String {
@@ -394,15 +433,17 @@ fn inline_xml(
                     properties,
                 ),
                 "image" => {
-                    let alt = node.get("alt").and_then(Value::as_str).unwrap_or_default();
-                    run_xml(
-                        if alt.is_empty() {
-                            "[Image]"
+                    if context.images.is_some() {
+                        image_drawing(node, context, properties)
+                    } else {
+                        let alt = node.get("alt").and_then(Value::as_str).unwrap_or_default();
+                        let label = if alt.is_empty() {
+                            "[Image]".to_owned()
                         } else {
-                            return run_xml(&format!("[Image: {alt}]"), properties);
-                        },
-                        properties,
-                    )
+                            format!("[Image: {alt}]")
+                        };
+                        run_xml(&label, properties)
+                    }
                 }
                 "link" => {
                     let url = node.get("url").and_then(Value::as_str).unwrap_or_default();
@@ -557,7 +598,7 @@ fn ruby_xml(node: &Value, base_size: i64, properties: &RunProperties) -> String 
     )
 }
 
-fn table_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context) -> String {
+fn table_xml(node: &Value, profile: &ResolvedExportProfile, context: &mut Context<'_>) -> String {
     let vertical = profile.typesetting.writing_mode == "vertical";
     let rows = children(node);
     let columns = rows
@@ -680,9 +721,9 @@ fn styles_xml(profile: &ResolvedExportProfile, font: &str, size: i64, line_twips
     )
 }
 
-fn footnotes_xml(definitions: &[&Value], context: &mut Context) -> String {
+fn footnotes_xml(definitions: &[&Value], context: &mut Context<'_>, drawing_ns: &str) -> String {
     let mut xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:footnotes xmlns:w=\"{WORD_NS}\" xmlns:r=\"{REL_NS}\"><w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:footnotes xmlns:w=\"{WORD_NS}\" xmlns:r=\"{REL_NS}\"{drawing_ns}><w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>"
     );
     for (index, definition) in definitions.iter().enumerate() {
         let content = children(definition)
@@ -698,7 +739,7 @@ fn footnotes_xml(definitions: &[&Value], context: &mut Context) -> String {
     xml
 }
 
-fn hyperlink_id(context: &mut Context, url: &str) -> String {
+fn hyperlink_id(context: &mut Context<'_>, url: &str) -> String {
     if let Some(index) = context.hyperlinks.iter().position(|value| value == url) {
         return format!("rId{}", index + 1);
     }
@@ -707,7 +748,7 @@ fn hyperlink_id(context: &mut Context, url: &str) -> String {
 }
 
 fn document_relationships(
-    context: &Context,
+    context: &Context<'_>,
     header_id: Option<&str>,
     footer_id: Option<&str>,
     styles_id: &str,
@@ -732,12 +773,18 @@ fn document_relationships(
     if let Some(id) = footnotes_id {
         relationships.push_str(&format!("<Relationship Id=\"{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes\" Target=\"footnotes.xml\"/>", escape_xml(id)));
     }
+    relationships.push_str(&image_relationship_elements(&context.document_images));
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{relationships}</Relationships>"
     )
 }
 
-fn content_types(footnotes: bool, header: bool, footer: bool) -> String {
+fn content_types(
+    footnotes: bool,
+    header: bool,
+    footer: bool,
+    images: Option<&PreparedImages>,
+) -> String {
     let mut overrides = "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/><Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>".to_owned();
     if footnotes {
         overrides.push_str("<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>");
@@ -748,9 +795,106 @@ fn content_types(footnotes: bool, header: bool, footer: bool) -> String {
     if footer {
         overrides.push_str("<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
     }
+    let mut image_defaults = String::new();
+    if let Some(images) = images {
+        let mut seen = std::collections::BTreeSet::new();
+        for (_, image) in images.iter() {
+            if seen.insert(image.extension.clone()) {
+                image_defaults.push_str(&format!(
+                    "<Default Extension=\"{}\" ContentType=\"{}\"/>",
+                    escape_xml(&image.extension),
+                    escape_xml(&image.media_type)
+                ));
+            }
+        }
+    }
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/>{overrides}</Types>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/>{image_defaults}{overrides}</Types>"
     )
+}
+
+fn image_relationships(images: &[ImageRelationship]) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{}</Relationships>",
+        image_relationship_elements(images)
+    )
+}
+
+fn image_relationship_elements(images: &[ImageRelationship]) -> String {
+    images
+        .iter()
+        .map(|image| {
+            format!(
+                "<Relationship Id=\"{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"{}\"/>",
+                escape_xml(&image.id),
+                escape_xml(&image.target)
+            )
+        })
+        .collect()
+}
+
+fn image_drawing(node: &Value, context: &mut Context<'_>, properties: &RunProperties) -> String {
+    let url = node.get("url").and_then(Value::as_str).unwrap_or_default();
+    let alt = node.get("alt").and_then(Value::as_str).unwrap_or_default();
+    let placed = context.images.and_then(|images| {
+        let image = images.get(url)?;
+        let index = images.index_of(url).unwrap_or(0);
+        Some((
+            image.display_width_px,
+            image.display_height_px,
+            format!("media/{}", image.filename(index)),
+        ))
+    });
+    let Some((width, height, target)) = placed else {
+        let label = if alt.is_empty() {
+            "[Image]".to_owned()
+        } else {
+            format!("[Image: {alt}]")
+        };
+        return run_xml(&label, properties);
+    };
+    let relationship_id = image_relationship_id(context, &target);
+    let doc_pr = context.next_doc_pr;
+    context.next_doc_pr += 1;
+    let mut run_properties = String::new();
+    if let Some(id) = properties.warichu_id {
+        run_properties.push_str(&format!(
+            "<w:eastAsianLayout w:id=\"{id}\" w:combine=\"1\" w:combineBrackets=\"none\"/>"
+        ));
+    }
+    let properties_xml = if run_properties.is_empty() {
+        String::new()
+    } else {
+        format!("<w:rPr>{run_properties}</w:rPr>")
+    };
+    let cx = emu(width);
+    let cy = emu(height);
+    format!(
+        "<w:r>{properties_xml}<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:docPr id=\"{doc_pr}\" name=\"Picture {doc_pr}\" descr=\"{}\"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect=\"1\"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{doc_pr}\" name=\"Picture {doc_pr}\"/><pic:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"{}\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>",
+        escape_xml(alt),
+        escape_xml(&relationship_id)
+    )
+}
+
+fn image_relationship_id(context: &mut Context<'_>, target: &str) -> String {
+    let relationships = if context.in_footnote {
+        &mut context.footnote_images
+    } else {
+        &mut context.document_images
+    };
+    if let Some(existing) = relationships.iter().find(|image| image.target == target) {
+        return existing.id.clone();
+    }
+    let id = if context.in_footnote {
+        format!("rFnImg{}", relationships.len() + 1)
+    } else {
+        format!("rImg{}", relationships.len() + 1)
+    };
+    relationships.push(ImageRelationship {
+        id: id.clone(),
+        target: target.to_owned(),
+    });
+    id
 }
 
 fn core_properties(document: &Document, profile: &ResolvedExportProfile) -> String {
@@ -816,6 +960,17 @@ fn assert_page_size(page_size: &str, width_mm: f64, height_mm: f64) -> Result<()
 
 fn mm_to_twips(value: f64) -> i64 {
     (value / 25.4 * 1440.0).round() as i64
+}
+
+fn file_bytes<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    path: &str,
+    content: &[u8],
+    options: SimpleFileOptions,
+) -> Result<(), String> {
+    zip.start_file(path, options)
+        .map_err(|error| error.to_string())?;
+    zip.write_all(content).map_err(|error| error.to_string())
 }
 
 fn file<W: Write + Seek>(

@@ -323,11 +323,37 @@ pub fn layout_warichu_with_options(
     out
 }
 
+fn rewrite_embedded_image_urls(node: &mut Value, images: &crate::PreparedImages) {
+    if node.get("type").and_then(Value::as_str) == Some("image") {
+        let url = node
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let src = images.embedded_src(&url).unwrap_or_default();
+        let fitted = images
+            .get(&url)
+            .map(|image| (image.display_width_px, image.display_height_px));
+        if let Some(object) = node.as_object_mut() {
+            object.insert("url".to_owned(), Value::String(src));
+            if let Some((width, height)) = fitted {
+                object.insert("displayWidth".to_owned(), json!(width));
+                object.insert("displayHeight".to_owned(), json!(height));
+            }
+        }
+    }
+    if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {
+        for child in children {
+            rewrite_embedded_image_urls(child, images);
+        }
+    }
+}
+
 fn render_units(units: &[Unit]) -> String {
     let mut out = String::new();
     for unit in units {
         for node in &unit.nodes {
-            crate::render_html_node(node, &mut out);
+            crate::render_html_node(node, &mut out, None);
         }
     }
     // Nested notes already live at note size. Normalize only the renderer's
@@ -344,9 +370,21 @@ pub fn layout_warichu_options_json(nodes: &str, options: &str) -> Result<String,
     serde_json::to_string(&layout_warichu_with_options(&nodes, &options)).map_err(|e| e.to_string())
 }
 
-pub(crate) fn render(nodes: &[Value], out: &mut String) {
-    out.push_str("<span class=\"mdi-warichu\" style=\"font-size:.5em;line-height:1\" data-mdi-warichu-source=\"");
-    let source = serde_json::to_string(nodes).unwrap();
+pub(crate) fn render(nodes: &[Value], out: &mut String, images: Option<&crate::PreparedImages>) {
+    out.push_str("<span class=\"mdi-warichu\" style=\"font-size:.5em;line-height:1\"");
+    // The browser measures this attribute and lays the note out again. Rewrite
+    // image URLs to the embedded reference so that second pass cannot fetch
+    // the manuscript address or put it back into the document.
+    let source = if let Some(images) = images {
+        let mut cloned = nodes.to_vec();
+        for node in &mut cloned {
+            rewrite_embedded_image_urls(node, images);
+        }
+        serde_json::to_string(&cloned).unwrap()
+    } else {
+        serde_json::to_string(nodes).unwrap()
+    };
+    out.push_str(" data-mdi-warichu-source=\"");
     out.push_str(
         &source
             .replace('&', "&amp;")
@@ -354,14 +392,33 @@ pub(crate) fn render(nodes: &[Value], out: &mut String) {
             .replace('<', "&lt;")
             .replace('>', "&gt;"),
     );
-    out.push_str("\">");
+    out.push('"');
+    out.push('>');
     for fragment in layout_warichu(nodes, 40) {
         out.push_str("<span class=\"mdi-warichu-fragment\" style=\"display:inline-flex;flex-direction:column;vertical-align:middle;text-align:start\"");
         if fragment.overflow {
             out.push_str(" data-mdi-overflow=\"indivisible\"");
         }
         out.push('>');
-        for line in fragment.html {
+        let lines = if images.is_some() {
+            fragment
+                .lines
+                .iter()
+                .map(|line| {
+                    let mut html = String::new();
+                    for node in line {
+                        crate::render_html_node(node, &mut html, images);
+                    }
+                    html.replace(
+                        "<span class=\"mdi-warichu\" style=\"font-size:.5em;line-height:1\"",
+                        "<span class=\"mdi-warichu\" style=\"font-size:1em;line-height:1\"",
+                    )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            fragment.html.to_vec()
+        };
+        for line in lines {
             out.push_str("<span class=\"mdi-warichu-line\" style=\"display:block;white-space:nowrap;min-block-size:1em\">");
             out.push_str(&line);
             out.push_str("</span>");

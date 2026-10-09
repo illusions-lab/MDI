@@ -441,4 +441,60 @@ describe("Rust MDI JavaScript binding", () => {
 		expect(() => renderEpub("text", { coverImage: "not-bytes" as never })).toThrow("options.coverImage");
 		expect(() => renderEpub("text", { coverMediaType: "image/gif" as never })).toThrow("options.coverMediaType");
 	});
+
+	it("embeds body image bytes in epub and docx and drops the manuscript url", async () => {
+		const png = Uint8Array.from(Buffer.from(
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+			"base64",
+		));
+		const source = "![alt](pic.png)";
+		const assets = { "pic.png": { data: png, mediaType: "application/octet-stream" } };
+		const profile = { layout: { system: "word" as const } };
+
+		const epub = await renderEpubWithProfile(source, { profile, assets });
+		const epubZip = await JSZip.loadAsync(epub);
+		const epubImages = Object.keys(epubZip.files).filter((name) => name.startsWith("OEBPS/images/") && !epubZip.files[name]!.dir);
+		expect(epubImages).toHaveLength(1);
+		expect(await epubZip.file(epubImages[0]!)!.async("uint8array")).toEqual(png);
+		const epubText = await packagedText(epubZip);
+		expect(epubText).not.toContain("pic.png");
+		expect(epubText).toContain("alt");
+
+		for (const docx of [
+			await renderDocx(source, profile, assets),
+			await renderDocxWithProfile(source, profile, assets),
+		]) {
+			const zip = await JSZip.loadAsync(docx);
+			const media = Object.keys(zip.files).filter((name) => name.startsWith("word/media/") && !zip.files[name]!.dir);
+			expect(media).toHaveLength(1);
+			expect(await zip.file(media[0]!)!.async("uint8array")).toEqual(png);
+			const text = await packagedText(zip);
+			expect(text).not.toContain("pic.png");
+			expect(text).toContain("alt");
+		}
+	});
+
+	it("rejects an asset map or byte limit the core binding cannot accept", () => {
+		const source = "![alt](pic.png)";
+		const png = new Uint8Array([137, 80, 78, 71]);
+		expect(() => renderHtml(source, {
+			assets: { "pic.png": { data: "nope" as never, mediaType: "image/png" } },
+		})).toThrow('assets["pic.png"].data must be a Uint8Array');
+		expect(() => renderHtml(source, {
+			assets: { "pic.png": { data: png, mediaType: 1 as never } },
+		})).toThrow('assets["pic.png"].mediaType must be a string');
+		expect(() => renderHtml(source, { maxImageBytes: "8" as never })).toThrow("maxImageBytes must be a uint32");
+		expect(() => renderHtml(source, { maxImageBytes: 1.5 })).toThrow("maxImageBytes must be a uint32");
+		expect(() => renderHtml(source, { maxImageBytes: -1 })).toThrow("maxImageBytes must be a uint32");
+		expect(() => renderHtml(source, { maxImageBytes: 0x1_0000_0000 })).toThrow("maxImageBytes must be a uint32");
+	});
 });
+
+async function packagedText(zip: JSZip): Promise<string> {
+	const parts: string[] = [];
+	for (const name of Object.keys(zip.files)) {
+		if (zip.files[name]!.dir || !/\.(xml|xhtml|html|opf|css|rels)$/.test(name)) continue;
+		parts.push(await zip.files[name]!.async("string"));
+	}
+	return parts.join("\n");
+}

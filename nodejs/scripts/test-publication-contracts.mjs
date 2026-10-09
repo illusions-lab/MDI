@@ -89,6 +89,7 @@ const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const onePixelWebp = readFileSync(join(repositoryRoot, "mdi-core/tests/fixtures/images/one-pixel.webp"));
 const onePixelJpeg = Buffer.from(
   "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z",
   "base64",
@@ -302,6 +303,42 @@ try {
     pdfCases.push({ name: contractCase.name, profile: resolved });
   }
 
+  const bodyImageSource = `${source}\n\n![図](figure.png)\n`;
+  const bodyImageEpubPath = join(outputDirectory, "body-image.epub");
+  const bodyWebpEpubPath = join(outputDirectory, "body-webp.epub");
+  writeFileSync(
+    bodyImageEpubPath,
+    await renderEpubWithProfile(bodyImageSource, {
+      profile: contractCases[0].profile,
+      assets: {
+        "figure.png": { data: onePixelPng, mediaType: "image/png" },
+      },
+    }),
+  );
+  writeFileSync(
+    bodyWebpEpubPath,
+    await renderEpubWithProfile(`${bodyImageSource}\n\n![webp](figure.webp)\n`, {
+      profile: contractCases[0].profile,
+      cover: { data: onePixelPng, mediaType: "image/png" },
+      assets: {
+        "figure.png": { data: onePixelPng, mediaType: "image/png" },
+        "figure.webp": { data: onePixelWebp, mediaType: "image/webp" },
+      },
+    }),
+  );
+  assertBodyWebpEpub(bodyWebpEpubPath);
+  epubPaths.push(bodyImageEpubPath, bodyWebpEpubPath);
+
+  const bodyImageDocxPath = join(outputDirectory, "body-image.docx");
+  writeFileSync(
+    bodyImageDocxPath,
+    await renderDocxWithProfile(bodyImageSource, contractCases[0].profile, {
+      "figure.png": { data: onePixelPng, mediaType: "image/png" },
+    }),
+  );
+  docxPaths.push(bodyImageDocxPath);
+  libreOfficeDocxPaths.push(bodyImageDocxPath);
+
   for (const htmlCase of [
     {
       name: "html-horizontal",
@@ -326,9 +363,25 @@ lang: "ja"
 Raw <em>markup</em> and {東京|とうきょう}.
 `,
     },
+    {
+      name: "html-body-image",
+      html: renderHtml(bodyImageSource, {
+        assets: {
+          "figure.png": { data: onePixelPng, mediaType: "image/png" },
+        },
+        profile: contractCases[0].profile,
+      }),
+    },
   ]) {
     const path = join(outputDirectory, `${htmlCase.name}.html`);
-    writeFileSync(path, renderHtml(htmlCase.source));
+    const html = htmlCase.html ?? renderHtml(htmlCase.source);
+    if (htmlCase.name === "html-body-image") {
+      assert.match(html, /data:image\/png;base64,/);
+      assert.match(html, /width="\d+"/);
+      assert.match(html, /height="\d+"/);
+      assert.ok(!html.includes("figure.png"), `${htmlCase.name}: source URL leaked`);
+    }
+    writeFileSync(path, html);
     htmlPaths.push(path);
   }
 
@@ -363,6 +416,17 @@ Raw <em>markup</em> and {東京|とうきょう}.
       source: "紙面契約",
     });
   }
+
+  pdfCases.push({
+    name: "body-image",
+    profile: resolveExportProfile(contractCases[0].profile),
+    html: renderHtml(bodyImageSource, {
+      assets: {
+        "figure.png": { data: onePixelPng, mediaType: "image/png" },
+      },
+      profile: contractCases[0].profile,
+    }),
+  });
 
   for (const path of [...docxPaths, ...epubPaths]) {
     assert.ok(!execFileSync("unzip", ["-p", path], { maxBuffer: 64 * 1024 * 1024 }).includes(commentSentinel), `${path}: comment leaked into archive`);
@@ -432,8 +496,8 @@ async function validateLibreOfficeDocx(paths) {
 async function validatePdfs(cases) {
   const browser = await chromium.launch({ headless: true });
   try {
-    for (const { name, profile, source: caseSource = source } of cases) {
-      const prepared = prepareChromiumPrintProfile(renderHtml(caseSource), profile);
+    for (const { name, profile, source: caseSource = source, html } of cases) {
+      const prepared = prepareChromiumPrintProfile(html ?? renderHtml(caseSource), profile);
       const page = await browser.newPage();
       try {
         await page.setContent(prepared.html);
@@ -451,6 +515,9 @@ async function validatePdfs(cases) {
         );
         const path = join(outputDirectory, `${name}.pdf`);
         writeFileSync(path, pdf);
+        if (name === "body-image") {
+          assert.ok(pdf.includes(Buffer.from("/Image")), `${name}: PDF has no image`);
+        }
         await validatePdf(path, pdf);
       } finally {
         await page.close();
@@ -502,6 +569,25 @@ async function validatePdf(path, bytes) {
   } finally {
     await loadingTask.destroy();
   }
+}
+
+function assertBodyWebpEpub(path) {
+  const listing = execFileSync("unzip", ["-l", path], { encoding: "utf8" });
+  const names = listing
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/).at(-1))
+    .filter((name) => name?.startsWith("OEBPS/"));
+  const bodyPng = names.find((name) => name.startsWith("OEBPS/images/") && name.endsWith(".png"));
+  const bodyWebp = names.find((name) => name.startsWith("OEBPS/images/") && name.endsWith(".webp"));
+  assert.ok(names.includes("OEBPS/cover.png"), `${path}: cover entry is missing`);
+  assert.ok(bodyPng, `${path}: body PNG entry is missing`);
+  assert.ok(bodyWebp, `${path}: body WebP entry is missing`);
+  assert.notEqual(bodyPng, "OEBPS/cover.png");
+  const opf = execFileSync("unzip", ["-p", path, "OEBPS/package.opf"], { encoding: "utf8" });
+  assert.match(opf, /media-type="image\/webp"/);
+  assert.deepEqual(execFileSync("unzip", ["-p", path, bodyWebp]), onePixelWebp);
+  assert.deepEqual(execFileSync("unzip", ["-p", path, bodyPng]), onePixelPng);
+  assert.deepEqual(execFileSync("unzip", ["-p", path, "OEBPS/cover.png"]), onePixelPng);
 }
 
 function validateEpubs(paths) {

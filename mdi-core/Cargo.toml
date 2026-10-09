@@ -1,6 +1,6 @@
 [package]
 name = "mdi-core"
-version = "2.1.0"
+version = "2.1.1"
 description = "Language-neutral parser for MDI 2.1 syntax"
 edition = "2024"
 rust-version = "1.85"
@@ -22,6 +22,9 @@ serde_yaml = "0.9"
 time = { version = "=0.3.41", features = ["formatting"] }
 unicode-segmentation = "1.12.0"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
+resvg = "0.45"
+roxmltree = "0.20"
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 

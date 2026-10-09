@@ -83,6 +83,32 @@ describe("@illusions-lab/mdi/node PDF boundary", () => {
 		});
 	});
 
+	it("embeds assets in the diagnostics handoff and passes that html to chromium", async () => {
+		const png = Uint8Array.from(Buffer.from(
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+			"base64",
+		));
+		const source = "![alt](pic.png)\n\n# Title";
+		const assets = { "pic.png": { data: png, mediaType: "application/octet-stream" } };
+		const prepared = preparePdfExportWithDiagnostics(source, undefined, {}, assets);
+		expect(prepared.output.html).toContain("data:image/png;base64,");
+		expect(prepared.output.html).not.toContain("pic.png");
+		expect(prepared.diagnostics).toEqual([]);
+		expect(prepared.headings).toMatchObject([{ depth: 1, text: "Title" }]);
+
+		let html = "";
+		const renderHtmlToPdf = vi.fn(async (value: string) => {
+			html = value;
+			return new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+		});
+		const adapter: MdiPdfChromiumAdapter = { renderHtmlToPdf };
+		await expect(renderPdfWithChromium(source, undefined, adapter, { assets })).resolves.toEqual(
+			new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+		);
+		expect(html).toContain("data:image/png;base64,");
+		expect(html).not.toContain("pic.png");
+	});
+
 	it("gives an actionable error when the optional PDF adapter cannot load", async () => {
 		vi.resetModules();
 		vi.doMock("@illusions-lab/mdi-to-pdf", () => {

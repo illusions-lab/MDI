@@ -3,8 +3,10 @@ export {
   getMdiTextBlocksJson, pageSizeCatalogJson, parseMdiSyntaxJson, parseMdiMdastJson, prepareChromiumPrintProfileJson,
   resolveMdiSourceSpanJson,
   resolveMdiSourceSpansJson,
-  renderDocx, renderDocxWithProfile, renderEpub, renderEpubWithProfile,
-  renderHtml, renderText, renderTextFormat, resolveExportProfileJson,
+  imageUrlsJson,
+  renderDocx, renderDocxWithProfile, renderDocxWithProfileAndAssets,
+  renderEpub, renderEpubWithProfile, renderEpubWithProfileAndAssets,
+  renderHtml, renderHtmlWithAssets, renderText, renderTextFormat, resolveExportProfileJson,
   resolveRuby, serializeMdi, unescapeMdi, unescapeRubyText,
 } from "../generated/web/mdi_core.js";
 export type { InitInput, InitOutput, SyncInitInput } from "../generated/web/mdi_core.js";

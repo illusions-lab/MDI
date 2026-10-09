@@ -1,5 +1,9 @@
 # @illusions-lab/mdi-remark
 
+## 2.1.2
+
+- Republish with mdi-core 2.1.1. This package does not embed images itself; the shared core now does when a caller supplies bytes.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.
