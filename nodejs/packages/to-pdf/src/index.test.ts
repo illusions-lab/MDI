@@ -1,5 +1,6 @@
+import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { chromium } from "playwright";
+import { chromium, type Browser } from "playwright";
 import { renderHtml } from "@illusions-lab/mdi";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
@@ -101,7 +102,231 @@ describe("self-contained PDF resources", () => {
       { deadlineMs: 30, launchBrowser: () => new Promise(() => undefined) },
     )).rejects.toThrow("PDF export timed out");
   });
+
+  it("rejects a deadline that is not a positive number before launch", async () => {
+    for (const deadlineMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      let launched = false;
+      await expect(renderHtmlToPdf("<html></html>", undefined, undefined, {
+        deadlineMs,
+        launchBrowser: () => {
+          launched = true;
+          return new Promise(() => undefined);
+        },
+      })).rejects.toThrow(new RangeError("deadlineMs must be a positive number"));
+      expect(launched).toBe(false);
+    }
+  });
+
+  it("rejects subresources before Chromium launches", async () => {
+    const secret = "https://alice:s3cret@example.test/a.png";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="${secret}"/></svg>`;
+    const spaced = Buffer.from(svg).toString("base64").replace(/(.{8})/g, "$1\n");
+    let nested = "data:image/svg+xml,%3Csvg%3E%3C/svg%3E";
+    for (let depth = 0; depth < 4; depth += 1) {
+      nested = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg"><image href="${nested}"/></svg>`)}`;
+    }
+    const blocked = [
+      `<div style="background:url(${secret})"></div>`,
+      `<div style="background: url( '${secret}' )"></div>`,
+      `<style>body{background:url(${secret})}</style>`,
+      `<style>@import "${secret}";</style>`,
+      `<style>@import '${secret}';</style>`,
+      `<style>@import "${secret}</style>`,
+      `<style>url(https://example.test/a.png)@import "${secret}";</style>`,
+      `<style>url('${secret}</style>`,
+      `<img srcset="data:image/png;base64,${onePixelPng} 1x, ${secret} 2x">`,
+      `<iframe srcdoc="<img src='${secret}'>"></iframe>`,
+      `<script src="${secret}"></script>`,
+      `<link href="${secret}">`,
+      `<video src="${secret}"></video>`,
+      `<audio src="${secret}"></audio>`,
+      `<source src="${secret}">`,
+      `<embed src="${secret}">`,
+      `<object data="${secret}"></object>`,
+      `<svg><use href="${secret}"></use></svg>`,
+      `<svg:image href="${secret}"></svg:image>`,
+      `<img src="images/a.png">`,
+      `<img src="//alice:s3cret@assets.example/a.png">`,
+      `<img src="data:image/png;base64">`,
+      `<img src="data:image/svg+xml;base64,%%%%">`,
+      `<img src="data:image/svg+xml,%">`,
+      `<img src="data:image/svg+xml;base64,${spaced}">`,
+      `<img src="${nested}">`,
+      `<img src="http&#58;//example.test/a.png">`,
+      `<img src="http&#x3a;//example.test/a.png">`,
+      `<img src=https://example.test/a.png>`,
+      `<img src="https://example.test/a.png" alt>`,
+      `<img src="http://alice:s3cret@exa mple/a.png">`,
+      `<img src="//alice:s3cret@exa mple/a.png">`,
+      `<img src="http://exa mple/a.png">`,
+      `<img srcset="https://example.test/a.png 1x,">`,
+      `<img @ src="${secret}">`,
+      `<img src="data:image/svg+xml,${encodeURIComponent('<img src="https://example.test/a.png"')}">`,
+    ];
+    for (const body of blocked) {
+      const message = await rejectionBeforeLaunch(`<html><body>${body}</body></html>`);
+      expect(message).toContain("PDF export blocked a resource request");
+      expect(message).not.toMatch(/alice|s3cret/);
+    }
+  });
+
+  it("prints markup that cannot fetch a subresource", async () => {
+    const { browser, record } = pdfPageDouble({
+      duringSetContent: (fire) => fire("about:blank", true),
+    });
+    const pdf = await renderHtmlToPdf(
+      `<html><body>
+        <!-- <img src="https://example.test/secret.png"> -->
+        <!DOCTYPE html><?xml version="1.0"?><p></p>
+        <@ href="https://example.test/not-a-tag.png">
+        <img src="#fragment">
+        <img src="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"></svg> tail')}">
+        <img src="data:image/svg+xml,${encodeURIComponent("<!DOCTYPE html")}">
+        <img src="data:image/svg+xml,${encodeURIComponent("<img ")}">
+        <img src="data:image/svg+xml,${encodeURIComponent("<style>a</style")}">
+        <img srcset="data:image/png;base64,${onePixelPng} 1x,">
+        <script>url(https://example.test/a.png)</script>
+        <style>body{color:black}@import nope;</style>
+        <style>url(</style>
+        <abbr title="&#x110000;&#9999999999;">x</abbr>
+        <style>color:red
+        <img src="data:image/svg+xml,${encodeURIComponent("<!-- <img src=\"https://example.test/unclosed.png\">")}">
+      </body></html>`,
+      undefined,
+      undefined,
+      { deadlineMs: 1_000, launchBrowser: async () => browser },
+    );
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(record.pdf).toBe(true);
+    expect(record.continued).toEqual(["about:blank"]);
+  });
+
+  it("aborts a non-navigation request and a request that arrives during printing", async () => {
+    const duringLoad = pdfPageDouble({
+      duringSetContent: async (fire) => {
+        await fire("about:blank", true);
+        await fire("https://example.test/late.png", false);
+      },
+    });
+    const loaded = await renderHtmlToPdf("<html><body><p>clean</p></body></html>", undefined, undefined, {
+      deadlineMs: 1_000,
+      launchBrowser: async () => duringLoad.browser,
+    }).then(() => "", (error: Error) => error.message);
+    expect(loaded).toContain("PDF export blocked a resource request: https://example.test/late.png");
+    expect(duringLoad.record.continued).toEqual(["about:blank"]);
+    expect(duringLoad.record.aborted).toEqual(["blockedbyclient"]);
+    expect(duringLoad.record.pdf).toBe(false);
+
+    const duringPrint = pdfPageDouble({
+      duringSetContent: (fire) => fire("about:blank", true),
+      duringPdf: (fire) => fire("https://alice:s3cret@example.test/late.png", false),
+    });
+    const printed = await renderHtmlToPdf("<html><body><p>clean</p></body></html>", undefined, undefined, {
+      deadlineMs: 1_000,
+      launchBrowser: async () => duringPrint.browser,
+    }).then(() => "", (error: Error) => error.message);
+    expect(printed).toContain("PDF export blocked a resource request");
+    expect(printed).not.toMatch(/alice|s3cret/);
+    expect(duringPrint.record.pdf).toBe(true);
+    expect(duringPrint.record.aborted).toEqual(["blockedbyclient"]);
+  });
+
+  it("returns once the launched browser process has exited", async () => {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 100)"]);
+    const pid = child.pid;
+    if (pid === undefined) throw new Error("browser process has no pid");
+    try {
+      const { browser, record } = pdfPageDouble({
+        duringSetContent: (fire) => fire("about:blank", true),
+      }, pid);
+      const pdf = await renderHtmlToPdf("<html><body><p>clean</p></body></html>", undefined, undefined, {
+        deadlineMs: 1_000,
+        launchBrowser: async () => browser,
+      });
+      expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+      expect(record.pdf).toBe(true);
+    } finally {
+      child.kill();
+    }
+  });
 });
+
+function rejectionBeforeLaunch(html: string): Promise<string> {
+  let launched = false;
+  return renderHtmlToPdf(html, undefined, undefined, {
+    deadlineMs: 1_000,
+    launchBrowser: () => {
+      launched = true;
+      return new Promise(() => undefined);
+    },
+  }).then(() => {
+    throw new Error("export succeeded");
+  }, (error: Error) => {
+    expect(launched).toBe(false);
+    return error.message;
+  });
+}
+
+function pdfPageDouble(hooks: {
+  duringSetContent?: (fire: (url: string, navigation: boolean) => Promise<void>) => Promise<void> | void;
+  duringPdf?: (fire: (url: string, navigation: boolean) => Promise<void>) => Promise<void> | void;
+}, pid?: number): { browser: Browser; record: { continued: string[]; aborted: string[]; pdf: boolean } } {
+  const frame = {};
+  const record = { continued: [] as string[], aborted: [] as string[], pdf: false };
+  let onRequest: ((request: { url(): string; isNavigationRequest(): boolean; frame(): object }) => void) | undefined;
+  let onRoute: ((route: {
+    request(): { url(): string; isNavigationRequest(): boolean; frame(): object };
+    continue(): Promise<void>;
+    abort(errorCode: string): Promise<void>;
+  }) => Promise<void>) | undefined;
+  const fire = async (url: string, navigation: boolean) => {
+    const request = {
+      url: () => url,
+      isNavigationRequest: () => navigation,
+      frame: () => frame,
+    };
+    onRequest?.(request);
+    if (!onRoute) return;
+    let action = "";
+    await onRoute({
+      request: () => request,
+      continue: async () => { action = "continue"; },
+      abort: async (errorCode: string) => { action = errorCode; },
+    });
+    if (action === "continue") record.continued.push(url);
+    else if (action) record.aborted.push(action);
+  };
+  const page = {
+    setDefaultTimeout() {},
+    mainFrame: () => frame,
+    context: () => ({ setOffline: async () => undefined }),
+    on(event: string, handler: NonNullable<typeof onRequest>) {
+      if (event === "request") onRequest = handler;
+    },
+    async route(_pattern: string, handler: NonNullable<typeof onRoute>) {
+      onRoute = handler;
+    },
+    async setContent() {
+      await hooks.duringSetContent?.(fire);
+    },
+    async emulateMedia() {},
+    async evaluate(code: string) {
+      if (code.includes("document.body,undefined")) return [];
+      return undefined;
+    },
+    async pdf() {
+      await hooks.duringPdf?.(fire);
+      record.pdf = true;
+      return Buffer.from("%PDF-1.4\n");
+    },
+  };
+  const browser = {
+    async newPage() { return page; },
+    async close() {},
+    process: () => (pid === undefined ? null : { pid }),
+  };
+  return { browser: browser as unknown as Browser, record };
+}
 
 describe("renderHtmlToPdf", () =>
   it("acts as a Chromium-only layout adapter for Rust-owned HTML", async () => {

@@ -211,9 +211,9 @@ function scanMarkup(html: string, depth: number): void {
     inspectTag(tag, depth);
     const name = localName(tag.name);
     if (name === "style" || name === "script") {
-      const close = indexOfEndTag(html, tag.end, name);
-      if (name === "style") scanCss(html.slice(tag.end, close ?? html.length), depth);
-      index = close ?? html.length;
+      const boundary = endTagBoundary(html, tag.end, name);
+      if (name === "style") scanCss(html.slice(tag.end, boundary.contentEnd), depth);
+      index = boundary.resume;
       continue;
     }
     index = tag.end;
@@ -396,13 +396,13 @@ function readTag(html: string, start: number): MarkupTag | undefined {
   return { name, attributes, end: index };
 }
 
-function indexOfEndTag(html: string, start: number, name: string): number | undefined {
-  const needle = `</${name}`;
-  const lower = html.toLowerCase();
-  const at = lower.indexOf(needle, start);
-  if (at < 0) return undefined;
-  const end = html.indexOf(">", at + needle.length);
-  return end < 0 ? undefined : end + 1;
+/** Style and script bodies stop before their end tag. The scan resumes after it. */
+function endTagBoundary(html: string, start: number, name: string): { contentEnd: number; resume: number } {
+  const at = html.toLowerCase().indexOf(`</${name}`, start);
+  if (at < 0) return { contentEnd: html.length, resume: html.length };
+  const end = html.indexOf(">", at);
+  if (end < 0) return { contentEnd: at, resume: html.length };
+  return { contentEnd: at, resume: end + 1 };
 }
 
 function localName(name: string): string {
