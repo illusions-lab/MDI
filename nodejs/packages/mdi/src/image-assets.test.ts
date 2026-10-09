@@ -232,6 +232,201 @@ describe("loadImageAssets", () => {
 		expect(html).toContain("data:image/png;base64,");
 		expect(html).toContain('width="1"');
 	});
+
+	it("rejects a missing directory, a bad limit, and a fetch that is not a function", async () => {
+		await expect(loadImageAssets("![](a.png)", undefined as never)).rejects.toThrow(
+			"directory must be a non-empty string",
+		);
+		await expect(loadImageAssets("![](a.png)", { directory: "" })).rejects.toThrow(
+			"directory must be a non-empty string",
+		);
+		await expect(loadImageAssets("![](a.png)", { directory: 1 as never })).rejects.toThrow(
+			"directory must be a non-empty string",
+		);
+		await expect(loadImageAssets("text", {
+			directory: "/tmp",
+			timeoutMs: 0,
+			fetch: async () => response(png),
+		})).rejects.toThrow("timeoutMs must be a positive integer");
+		await expect(loadImageAssets("text", {
+			directory: "/tmp",
+			timeoutMs: 1.5,
+			fetch: async () => response(png),
+		})).rejects.toThrow("timeoutMs must be a positive integer");
+		await expect(loadImageAssets("text", {
+			directory: "/tmp",
+			maxBytes: 0,
+			fetch: async () => response(png),
+		})).rejects.toThrow("maxBytes must be a positive integer");
+		await expect(loadImageAssets("text", {
+			directory: "/tmp",
+			maxBytes: 1.5,
+			fetch: async () => response(png),
+		})).rejects.toThrow("maxBytes must be a positive integer");
+		await expect(loadImageAssets("text", {
+			directory: "/tmp",
+			fetch: 1 as never,
+		})).rejects.toThrow("fetch must be a function");
+	});
+
+	it("uses global fetch when the option is omitted", async () => {
+		const original = globalThis.fetch;
+		const seen: string[] = [];
+		globalThis.fetch = (async (input) => {
+			seen.push(String(input));
+			return response(png);
+		}) as typeof fetch;
+		try {
+			const assets = await loadImageAssets("![](https://example.test/a.png)", { directory: "/tmp" });
+			expect(seen).toEqual(["https://example.test/a.png"]);
+			expect(assets["https://example.test/a.png"]?.data).toEqual(new Uint8Array(png));
+		} finally {
+			globalThis.fetch = original;
+		}
+	});
+
+	it("reports an empty image url without fetching", async () => {
+		let called = false;
+		await expect(loadImageAssets("![]()", {
+			directory: "/tmp",
+			fetch: async () => {
+				called = true;
+				return response(png);
+			},
+		})).rejects.toThrow("image URL is empty");
+		expect(called).toBe(false);
+	});
+
+	it("rejects a missing file, a directory, an oversized file, and a drive-letter path", async () => {
+		const root = await mkdtemp(join(tmpdir(), "mdi-images-"));
+		try {
+			await mkdir(join(root, "dir"));
+			await writeFile(join(root, "big.png"), Buffer.alloc(32));
+			await expect(loadImageAssets("![](missing.png)", {
+				directory: root,
+				fetch: async () => { throw new Error("fetch must not run"); },
+			})).rejects.toThrow("file not found");
+			await expect(loadImageAssets("![](dir)", {
+				directory: root,
+				fetch: async () => { throw new Error("fetch must not run"); },
+			})).rejects.toThrow("not a file");
+			await expect(loadImageAssets("![](big.png)", {
+				directory: root,
+				maxBytes: 8,
+				fetch: async () => { throw new Error("fetch must not run"); },
+			})).rejects.toThrow("exceeds the 8 byte limit");
+			await expect(loadImageAssets("![](C:/a.png)", {
+				directory: root,
+				fetch: async () => { throw new Error("fetch must not run"); },
+			})).rejects.toThrow("file not found");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("stops before reading a body whose content-length is over the limit", async () => {
+		let cancelled = false;
+		// Node's Response drops Content-Length on a stream. A real fetch keeps it.
+		const declared = {
+			ok: true,
+			status: 200,
+			headers: new Headers({ "content-length": "100" }),
+			body: {
+				cancel: async () => { cancelled = true; },
+				getReader() { throw new Error("body was read"); },
+			},
+		} as unknown as Response;
+		await expect(loadImageAssets("![](https://example.test/big.png)", {
+			directory: "/tmp",
+			maxBytes: 10,
+			fetch: async () => declared,
+		})).rejects.toThrow("exceeds the 10 byte limit");
+		expect(cancelled).toBe(true);
+	});
+
+	it("returns an empty body when the response has no stream", async () => {
+		const assets = await loadImageAssets("![](https://example.test/empty)", {
+			directory: "/tmp",
+			fetch: async () => new Response(null),
+		});
+		expect(assets["https://example.test/empty"]?.data).toEqual(new Uint8Array());
+	});
+
+	it("rejects a redirect with no location, an empty location, or a location that is not a url", async () => {
+		await expect(loadImageAssets("![](https://example.test/start)", {
+			directory: "/tmp",
+			fetch: async () => response(null, { status: 302 }),
+		})).rejects.toThrow("redirect is missing a location");
+		await expect(loadImageAssets("![](https://example.test/start)", {
+			directory: "/tmp",
+			fetch: async () => response(null, { status: 302, headers: { location: "" } }),
+		})).rejects.toThrow("redirect is missing a location");
+		await expect(loadImageAssets("![](https://example.test/start)", {
+			directory: "/tmp",
+			fetch: async () => response(null, { status: 302, headers: { location: "http://[" } }),
+		})).rejects.toThrow("redirect location is not a URL");
+	});
+
+	it("follows every http redirect status to the next url", async () => {
+		for (const status of [301, 303, 307, 308]) {
+			const seen: string[] = [];
+			const assets = await loadImageAssets("![](https://example.test/start)", {
+				directory: "/tmp",
+				fetch: async (input) => {
+					seen.push(String(input));
+					if (String(input).endsWith("/start")) {
+						return response(null, { status, headers: { location: "https://example.test/next" } });
+					}
+					return response(png);
+				},
+			});
+			expect(seen).toEqual(["https://example.test/start", "https://example.test/next"]);
+			expect(assets["https://example.test/start"]?.data).toEqual(new Uint8Array(png));
+		}
+	});
+
+	it("strips a username without a password and scheme-relative userinfo", async () => {
+		const username = await loadImageAssets("![](https://alice@example.test/a.png)", {
+			directory: "/tmp",
+			fetch: async () => { throw new Error("failed at https://alice@example.test/a.png"); },
+		}).then(() => "", (error: Error) => error.message);
+		expect(username).not.toContain("alice");
+		expect(username).toContain("example.test");
+
+		const relative = await loadImageAssets("![](//alice:s3cret@assets.example/a.png)", {
+			directory: "/tmp",
+			fetch: async (input) => { throw new Error(`failed at ${String(input)}`); },
+		}).then(() => "", (error: Error) => error.message);
+		expect(relative).not.toMatch(/alice|s3cret/);
+		expect(relative).toContain("assets.example");
+	});
+
+	it("replaces a non-error failure with a scrubbed request failed message", async () => {
+		const message = await loadImageAssets("![](https://alice:s3cret@example.test/a.png)", {
+			directory: "/tmp",
+			fetch: async () => {
+				throw "down https://alice:s3cret@example.test/a.png";
+			},
+		}).then(() => "", (error: Error) => error.message);
+		expect(message).toContain("request failed");
+		expect(message).not.toMatch(/alice|s3cret/);
+	});
+
+	it("times out while reading the body on the same signal", async () => {
+		await expect(loadImageAssets("![](https://example.test/slow-body.png)", {
+			directory: "/tmp",
+			timeoutMs: 30,
+			fetch: async (_input, init) => response(new ReadableStream({
+				async pull(controller) {
+					await new Promise<void>((resolve) => {
+						if (init?.signal?.aborted) resolve();
+						else init?.signal?.addEventListener("abort", () => resolve(), { once: true });
+					});
+					controller.enqueue(new Uint8Array([1]));
+				},
+			})),
+		})).rejects.toThrow("timed out");
+	});
 });
 
 describe("self-contained render boundary", () => {
