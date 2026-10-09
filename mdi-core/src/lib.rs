@@ -20,8 +20,8 @@ mod docx;
 mod image_assets;
 mod warichu;
 pub use image_assets::{
-    ImageAsset, ImageAssets, ImageTarget, PreparedImages, DEFAULT_MAX_IMAGE_BYTES,
-    MAX_IMAGE_PIXELS, image_urls, prepare_images,
+    DEFAULT_MAX_IMAGE_BYTES, ImageAsset, ImageAssets, ImageTarget, MAX_IMAGE_PIXELS,
+    PreparedImages, image_urls, prepare_images,
 };
 pub use warichu::{
     WarichuFragment, WarichuOptions, WarichuSource, layout_warichu, layout_warichu_options_json,
@@ -3104,13 +3104,7 @@ pub fn render_epub_with_profile_and_assets(
     max_bytes: usize,
 ) -> Result<Vec<u8>, String> {
     let document = parse_document(source);
-    render_epub_document_with_profile_and_assets(
-        &document,
-        profile_json,
-        cover,
-        assets,
-        max_bytes,
-    )
+    render_epub_document_with_profile_and_assets(&document, profile_json, cover, assets, max_bytes)
 }
 
 pub fn render_epub_document_with_profile_and_assets(
@@ -3720,11 +3714,7 @@ fn epub_file<W: Write + Seek>(
         .map_err(|error| error.to_string())
 }
 
-fn render_html_node(
-    node: &serde_json::Value,
-    out: &mut String,
-    images: Option<&PreparedImages>,
-) {
+fn render_html_node(node: &serde_json::Value, out: &mut String, images: Option<&PreparedImages>) {
     let Some(kind) = node.get("type").and_then(serde_json::Value::as_str) else {
         return;
     };
@@ -3958,11 +3948,7 @@ fn render_html_children(
     }
 }
 
-fn render_html_image(
-    node: &serde_json::Value,
-    out: &mut String,
-    images: Option<&PreparedImages>,
-) {
+fn render_html_image(node: &serde_json::Value, out: &mut String, images: Option<&PreparedImages>) {
     let url = node
         .get("url")
         .and_then(serde_json::Value::as_str)
@@ -4005,7 +3991,8 @@ fn render_html_image(
     // Present only on a rewritten warichu image, so PDF settle keeps the fitted size.
     if let (Some(width), Some(height)) = (
         node.get("displayWidth").and_then(serde_json::Value::as_u64),
-        node.get("displayHeight").and_then(serde_json::Value::as_u64),
+        node.get("displayHeight")
+            .and_then(serde_json::Value::as_u64),
     ) {
         let size = format!(" width=\"{width}\" height=\"{height}\"");
         out.push_str(&size);
