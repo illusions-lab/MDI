@@ -1,5 +1,9 @@
 # @illusions-lab/mdi-to-html
 
+## 2.1.1
+
+- Republish with mdi-core 2.1.1. HTML output embeds caller-supplied body images, keeps static WebP, converts TIFF to PNG, and bakes JPEG and TIFF EXIF orientation before choosing the display size.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

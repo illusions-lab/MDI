@@ -898,7 +898,7 @@ fn rewrite_nested_svgs(value: &str, depth: u32) -> Result<String, String> {
         output.push_str(&rest[..start]);
         let after = &rest[start..];
         let end = after
-            .find(|character: char| matches!(character, ' ' | '"' | '\'' | ')' | '>'))
+            .find([' ', '"', '\'', ')', '>'])
             .unwrap_or(after.len());
         let rewritten = sanitized_svg_data_url(&after[..end], depth)?;
         output.push_str(&rewritten);

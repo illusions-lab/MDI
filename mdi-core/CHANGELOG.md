@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1 — Body images
+
+- Embed caller-supplied body image bytes in HTML, PDF, EPUB, and DOCX. Omitting the asset map keeps source-only output.
+- Keep PNG, JPEG, GIF, WebP, BMP, and sanitized SVG in HTML and PDF, and convert TIFF to PNG. EPUB keeps static WebP and converts BMP and TIFF. DOCX keeps TIFF and converts WebP and SVG to PNG.
+- Bake JPEG and TIFF EXIF orientations 2–8 into the pixels before fitting the image to the content box. Orientation 1, and images with no orientation tag, keep their original bytes.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

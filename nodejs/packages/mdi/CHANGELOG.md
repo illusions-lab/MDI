@@ -1,5 +1,10 @@
 # @illusions-lab/mdi
 
+## 2.1.2
+
+- Load body images from the manuscript directory, or accept caller-supplied bytes, and pass them to the core for HTML, EPUB, DOCX, and PDF.
+- Stay source-only when no asset map is provided. The core decodes `data:` URLs, so those URLs are not fetched.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

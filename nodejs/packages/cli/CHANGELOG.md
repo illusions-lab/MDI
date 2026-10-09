@@ -1,5 +1,9 @@
 # @illusions-lab/mdi-cli
 
+## 2.1.2
+
+- Load body images from the manuscript directory for HTML, PDF, EPUB, and DOCX export.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

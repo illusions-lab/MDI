@@ -1,5 +1,9 @@
 # @illusions-lab/mdi-to-pdf
 
+## 2.1.2
+
+- Print self-contained HTML. File, network, and relative resource requests are rejected before Chromium launches, and again if a request gets past that scan.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.1
+
+- Rebuild against mdi-core 2.1.1. This binding still does not read body-image bytes: HTML keeps the source URL, and EPUB and DOCX keep their source-only image fallbacks. EXIF orientation is baked only when a caller supplies image bytes to the core.
+
 ## 2.1.0 — Editorial comments
 
 - Preserve `<!-- ... -->` in canonical source, including older 2.0 documents.
