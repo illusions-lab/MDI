@@ -5,6 +5,7 @@
 //! parsed node. `data:` URLs are decoded here and are not taken from the map.
 
 use crate::{Document, ResolvedExportProfile, children, page_dimensions};
+use image::ImageDecoder;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 
@@ -262,6 +263,7 @@ fn prepare_one(
     }
     let mut kind = sniffed;
     let animated_webp = kind == ImageKind::WebP && webp_animated(&bytes);
+    let mut orientation = image::metadata::Orientation::NoTransforms;
     let (width, height) = if kind == ImageKind::Svg {
         bytes = sanitize_svg(&bytes)?;
         if bytes.len() > max_bytes {
@@ -272,20 +274,24 @@ fn prepare_one(
         }
         svg_size(&bytes)?
     } else {
-        let (width, height) = raster_dimensions(&bytes)?;
-        if (width as u64) * (height as u64) > MAX_IMAGE_PIXELS {
+        let (stored_width, stored_height) = raster_dimensions(&bytes)?;
+        if (stored_width as u64) * (stored_height as u64) > MAX_IMAGE_PIXELS {
             return Err(format!(
-                "image is {width} by {height} pixels, above the {MAX_IMAGE_PIXELS} pixel limit"
+                "image is {stored_width} by {stored_height} pixels, above the {MAX_IMAGE_PIXELS} pixel limit"
             ));
         }
-        (width, height)
+        if bakes_orientation(kind, target, animated_webp) {
+            orientation = raster_orientation(&bytes)?;
+        }
+        oriented_size(stored_width, stored_height, orientation)
     };
     if width == 0 || height == 0 {
         return Err("image has no pixel dimensions".to_owned());
     }
     let (display_width, display_height) = fit_px(width, height, box_width, box_height);
     // Animated WebP is stored as one PNG of the first frame. GIF stays the
-    // original bytes, including later frames. Orientation is not applied.
+    // original bytes, including later frames. JPEG and TIFF orientations are
+    // baked into the pixels; the rewritten file omits the Orientation tag.
     if animated_webp || !kind.kept_by(target) {
         if kind == ImageKind::Svg {
             bytes = rasterize_svg(&bytes, display_width, display_height)?;
@@ -299,8 +305,16 @@ fn prepare_one(
             ));
         }
         kind = ImageKind::Png;
-    } else if matches!(kind, ImageKind::Jpeg | ImageKind::Tiff) {
-        bytes = clear_stored_orientation(kind, &bytes);
+    } else if matches!(kind, ImageKind::Jpeg | ImageKind::Tiff)
+        && orientation != image::metadata::Orientation::NoTransforms
+    {
+        bytes = encode_oriented(kind, &bytes)?;
+        if bytes.len() > max_bytes {
+            return Err(format!(
+                "image is {} bytes, above the {max_bytes} byte limit",
+                bytes.len()
+            ));
+        }
     }
     Ok(PreparedImage {
         url: url.to_owned(),
@@ -472,132 +486,64 @@ fn webp_animated(bytes: &[u8]) -> bool {
         .unwrap_or(false)
 }
 
-/// Set a stored Orientation tag to 1 without moving pixels.
-fn clear_stored_orientation(kind: ImageKind, bytes: &[u8]) -> Vec<u8> {
-    let mut owned = bytes.to_vec();
+fn bakes_orientation(kind: ImageKind, target: ImageTarget, animated_webp: bool) -> bool {
+    animated_webp || !kind.kept_by(target) || matches!(kind, ImageKind::Jpeg | ImageKind::Tiff)
+}
+
+fn oriented_size(width: u32, height: u32, orientation: image::metadata::Orientation) -> (u32, u32) {
+    use image::metadata::Orientation::{Rotate90, Rotate90FlipH, Rotate270, Rotate270FlipH};
+    if matches!(
+        orientation,
+        Rotate90 | Rotate270 | Rotate90FlipH | Rotate270FlipH
+    ) {
+        (height, width)
+    } else {
+        (width, height)
+    }
+}
+
+fn raster_orientation(bytes: &[u8]) -> Result<image::metadata::Orientation, String> {
+    let mut decoder = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| error.to_string())?
+        .into_decoder()
+        .map_err(|_| "image could not be decoded".to_owned())?;
+    decoder
+        .orientation()
+        .map_err(|_| "image could not be decoded".to_owned())
+}
+
+fn decode_oriented(bytes: &[u8]) -> Result<image::DynamicImage, String> {
+    let mut decoder = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| error.to_string())?
+        .into_decoder()
+        .map_err(|_| "image could not be decoded".to_owned())?;
+    let orientation = decoder
+        .orientation()
+        .map_err(|_| "image could not be decoded".to_owned())?;
+    let mut image = image::DynamicImage::from_decoder(decoder)
+        .map_err(|_| "image could not be decoded".to_owned())?;
+    image.apply_orientation(orientation);
+    Ok(image)
+}
+
+fn encode_oriented(kind: ImageKind, bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let decoded = decode_oriented(bytes)?;
+    let mut output = Cursor::new(Vec::new());
     match kind {
-        ImageKind::Jpeg => {
-            if let Some(tiff_at) = jpeg_exif_tiff_offset(&owned) {
-                let _ = write_orientation_one(&mut owned, tiff_at);
-            }
-        }
-        ImageKind::Tiff => {
-            let _ = write_orientation_one(&mut owned, 0);
-        }
-        _ => {}
+        ImageKind::Jpeg => decoded
+            .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
+                &mut output,
+                100,
+            ))
+            .map_err(|error| error.to_string())?,
+        ImageKind::Tiff => decoded
+            .write_with_encoder(image::codecs::tiff::TiffEncoder::new(&mut output))
+            .map_err(|error| error.to_string())?,
+        _ => return Err("image could not be decoded".to_owned()),
     }
-    owned
-}
-
-fn jpeg_exif_tiff_offset(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 4 || !bytes.starts_with(&[0xff, 0xd8]) {
-        return None;
-    }
-    let mut offset = 2;
-    while offset + 4 < bytes.len() {
-        if bytes[offset] != 0xff {
-            return None;
-        }
-        while offset < bytes.len() && bytes[offset] == 0xff {
-            offset += 1;
-        }
-        if offset >= bytes.len() {
-            return None;
-        }
-        let marker = bytes[offset];
-        offset += 1;
-        if marker == 0xd8 || marker == 0xd9 || (0xd0..=0xd7).contains(&marker) {
-            continue;
-        }
-        if offset + 2 > bytes.len() {
-            return None;
-        }
-        let length = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize;
-        if length < 2 || offset + length > bytes.len() {
-            return None;
-        }
-        if marker == 0xe1 {
-            let segment_at = offset + 2;
-            let segment = &bytes[segment_at..offset + length];
-            if segment.starts_with(b"Exif\0\0") {
-                return Some(segment_at + 6);
-            }
-        }
-        if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc {
-            return None;
-        }
-        offset += length;
-    }
-    None
-}
-
-fn write_orientation_one(bytes: &mut [u8], tiff_start: usize) -> bool {
-    if tiff_start + 8 > bytes.len() {
-        return false;
-    }
-    let little = bytes[tiff_start..].starts_with(b"II");
-    if !little && !bytes[tiff_start..].starts_with(b"MM") {
-        return false;
-    }
-    let read_u16 = |offset: usize| -> Option<u16> {
-        let pair = bytes.get(offset..offset + 2)?;
-        Some(if little {
-            u16::from_le_bytes([pair[0], pair[1]])
-        } else {
-            u16::from_be_bytes([pair[0], pair[1]])
-        })
-    };
-    let read_u32 = |offset: usize| -> Option<u32> {
-        let quad = bytes.get(offset..offset + 4)?;
-        Some(if little {
-            u32::from_le_bytes([quad[0], quad[1], quad[2], quad[3]])
-        } else {
-            u32::from_be_bytes([quad[0], quad[1], quad[2], quad[3]])
-        })
-    };
-    let Some(magic) = read_u16(tiff_start + 2) else {
-        return false;
-    };
-    if magic != 42 {
-        return false;
-    }
-    let Some(ifd_offset) = read_u32(tiff_start + 4) else {
-        return false;
-    };
-    let mut ifd = tiff_start + ifd_offset as usize;
-    let Some(entry_count) = read_u16(ifd) else {
-        return false;
-    };
-    let entry_count = entry_count as usize;
-    ifd += 2;
-    for _ in 0..entry_count {
-        if ifd + 12 > bytes.len() {
-            return false;
-        }
-        let Some(tag) = read_u16(ifd) else {
-            return false;
-        };
-        let Some(field_type) = read_u16(ifd + 2) else {
-            return false;
-        };
-        let Some(count) = read_u32(ifd + 4) else {
-            return false;
-        };
-        if tag == 0x0112 && field_type == 3 && count == 1 {
-            let value = if little {
-                1u16.to_le_bytes()
-            } else {
-                1u16.to_be_bytes()
-            };
-            bytes[ifd + 8] = value[0];
-            bytes[ifd + 9] = value[1];
-            bytes[ifd + 10] = 0;
-            bytes[ifd + 11] = 0;
-            return true;
-        }
-        ifd += 12;
-    }
-    false
+    Ok(output.into_inner())
 }
 
 pub fn content_box_px(profile: &ResolvedExportProfile) -> (u32, u32) {
@@ -640,7 +586,7 @@ pub fn emu(px: u32) -> u64 {
 }
 
 fn transcode_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let decoded = image::load_from_memory(bytes).map_err(|_| "image could not be decoded")?;
+    let decoded = decode_oriented(bytes)?;
     let mut output = Cursor::new(Vec::new());
     decoded
         .write_with_encoder(image::codecs::png::PngEncoder::new(&mut output))
@@ -1121,6 +1067,7 @@ fn percent_decode(value: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use crate::{EpubCover, parse_document, resolve_export_profile};
+    use image::GenericImageView;
     use serde_json::Map;
     use std::io::Read;
 
@@ -1765,46 +1712,48 @@ mod tests {
     }
 
     #[test]
-    fn orientation_tag_is_cleared_without_swapping_the_stored_size() {
-        let jpeg = {
-            let image = image::RgbImage::from_pixel(2, 1, image::Rgb([9, 8, 7]));
-            let mut bytes = Cursor::new(Vec::new());
-            image
-                .write_with_encoder(image::codecs::jpeg::JpegEncoder::new(&mut bytes))
-                .expect("jpeg");
-            with_jpeg_orientation(&bytes.into_inner(), 6)
-        };
-        let mut assets = ImageAssets::new();
-        assets.insert("a.jpg", asset(jpeg, "image/jpeg"));
-        let prepared = prepare_images(
-            &parse_document("![](a.jpg)\n"),
-            &assets,
-            &profile(),
-            ImageTarget::Html,
-            DEFAULT_MAX_IMAGE_BYTES,
-        )
-        .expect("jpeg");
-        let image = prepared.get("a.jpg").expect("image");
-        assert_eq!(image.display_width_px, 2);
-        assert_eq!(image.display_height_px, 1);
-        assert_eq!(stored_orientation(ImageKind::Jpeg, &image.bytes), Some(1));
+    fn orientation_is_baked_into_pixels() {
+        let jpeg = red_blue_jpeg(Some(6));
+        for target in [ImageTarget::Html, ImageTarget::Epub, ImageTarget::Docx] {
+            let mut assets = ImageAssets::new();
+            assets.insert("a.jpg", asset(jpeg.clone(), "image/jpeg"));
+            let prepared = prepare_images(
+                &parse_document("![](a.jpg)\n"),
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("jpeg");
+            let image = prepared.get("a.jpg").expect("image");
+            assert_eq!(image.media_type, "image/jpeg");
+            assert_eq!(image.display_width_px, 1);
+            assert_eq!(image.display_height_px, 2);
+            assert!(stored_orientation(ImageKind::Jpeg, &image.bytes).is_none());
+            assert_upright_red_blue(&image.bytes);
+        }
 
-        let mut synthetic = vec![
-            b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
-            0x01, 0x00, 0x00, 0x00, 6, 0, 0, 0, 0, 0, 0, 0,
-        ];
-        assert_eq!(stored_orientation(ImageKind::Tiff, &synthetic), Some(6));
-        assert!(write_orientation_one(&mut synthetic, 0));
-        assert_eq!(stored_orientation(ImageKind::Tiff, &synthetic), Some(1));
-
-        let tiff = {
-            let image = image::RgbImage::from_pixel(2, 1, image::Rgb([1, 1, 1]));
-            let mut bytes = Cursor::new(Vec::new());
-            image
-                .write_with_encoder(image::codecs::tiff::TiffEncoder::new(&mut bytes))
-                .expect("tiff");
-            bytes.into_inner()
-        };
+        let tiff = red_blue_tiff(Some(6));
+        for target in [ImageTarget::Html, ImageTarget::Epub] {
+            let mut assets = ImageAssets::new();
+            assets.insert("a.tif", asset(tiff.clone(), "image/tiff"));
+            let prepared = prepare_images(
+                &parse_document("![](a.tif)\n"),
+                &assets,
+                &profile(),
+                target,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("tiff png");
+            let image = prepared.get("a.tif").expect("image");
+            assert_eq!(image.media_type, "image/png");
+            assert_eq!(image.display_width_px, 1);
+            assert_eq!(image.display_height_px, 2);
+            let decoded = image::load_from_memory(&image.bytes).expect("png");
+            assert_eq!((decoded.width(), decoded.height()), (1, 2));
+            assert_eq!(decoded.get_pixel(0, 0).0[0..3], [255, 0, 0]);
+            assert_eq!(decoded.get_pixel(0, 1).0[0..3], [0, 0, 255]);
+        }
         let mut assets = ImageAssets::new();
         assets.insert("a.tif", asset(tiff, "image/tiff"));
         let prepared = prepare_images(
@@ -1817,10 +1766,32 @@ mod tests {
         .expect("tiff");
         let image = prepared.get("a.tif").expect("image");
         assert_eq!(image.media_type, "image/tiff");
-        assert_eq!(image.display_width_px, 2);
-        assert_eq!(image.display_height_px, 1);
-        if stored_orientation(ImageKind::Tiff, &image.bytes).is_some() {
-            assert_eq!(stored_orientation(ImageKind::Tiff, &image.bytes), Some(1));
+        assert_eq!(image.display_width_px, 1);
+        assert_eq!(image.display_height_px, 2);
+        assert!(stored_orientation(ImageKind::Tiff, &image.bytes).is_none());
+        let decoded = image::load_from_memory(&image.bytes).expect("tiff");
+        assert_eq!((decoded.width(), decoded.height()), (1, 2));
+        assert_eq!(decoded.get_pixel(0, 0).0[0..3], [255, 0, 0]);
+        assert_eq!(decoded.get_pixel(0, 1).0[0..3], [0, 0, 255]);
+    }
+
+    #[test]
+    fn unoriented_jpeg_bytes_stay() {
+        for jpeg in [red_blue_jpeg(None), red_blue_jpeg(Some(1))] {
+            let mut assets = ImageAssets::new();
+            assets.insert("a.jpg", asset(jpeg.clone(), "image/jpeg"));
+            let prepared = prepare_images(
+                &parse_document("![](a.jpg)\n"),
+                &assets,
+                &profile(),
+                ImageTarget::Html,
+                DEFAULT_MAX_IMAGE_BYTES,
+            )
+            .expect("jpeg");
+            let image = prepared.get("a.jpg").expect("image");
+            assert_eq!(image.bytes, jpeg);
+            assert_eq!(image.display_width_px, 2);
+            assert_eq!(image.display_height_px, 1);
         }
     }
 
@@ -2244,6 +2215,130 @@ mod tests {
         chunk
     }
 
+    fn red_blue_jpeg(orientation: Option<u16>) -> Vec<u8> {
+        let mut image = image::RgbImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        image.put_pixel(1, 0, image::Rgb([0, 0, 255]));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
+                &mut bytes, 100,
+            ))
+            .expect("jpeg");
+        let bytes = bytes.into_inner();
+        match orientation {
+            Some(orientation) => with_jpeg_orientation(&bytes, orientation),
+            None => bytes,
+        }
+    }
+
+    fn red_blue_tiff(orientation: Option<u16>) -> Vec<u8> {
+        let mut image = image::RgbImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        image.put_pixel(1, 0, image::Rgb([0, 0, 255]));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_with_encoder(image::codecs::tiff::TiffEncoder::new(&mut bytes))
+            .expect("tiff");
+        let bytes = bytes.into_inner();
+        match orientation {
+            Some(orientation) => with_tiff_orientation(&bytes, orientation),
+            None => bytes,
+        }
+    }
+
+    fn with_tiff_orientation(tiff: &[u8], orientation: u16) -> Vec<u8> {
+        let little = tiff.starts_with(b"II");
+        assert!(little || tiff.starts_with(b"MM"));
+        let read_u16 = |bytes: &[u8], offset: usize| -> u16 {
+            let pair = [bytes[offset], bytes[offset + 1]];
+            if little {
+                u16::from_le_bytes(pair)
+            } else {
+                u16::from_be_bytes(pair)
+            }
+        };
+        let read_u32 = |bytes: &[u8], offset: usize| -> u32 {
+            let quad = [
+                bytes[offset],
+                bytes[offset + 1],
+                bytes[offset + 2],
+                bytes[offset + 3],
+            ];
+            if little {
+                u32::from_le_bytes(quad)
+            } else {
+                u32::from_be_bytes(quad)
+            }
+        };
+        let write_u16 = |value: u16| {
+            if little {
+                value.to_le_bytes()
+            } else {
+                value.to_be_bytes()
+            }
+        };
+        let write_u32 = |value: u32| {
+            if little {
+                value.to_le_bytes()
+            } else {
+                value.to_be_bytes()
+            }
+        };
+        let ifd = read_u32(tiff, 4) as usize;
+        let count = read_u16(tiff, ifd) as usize;
+        let mut entries = Vec::with_capacity(count + 1);
+        let mut replaced = false;
+        for index in 0..count {
+            let at = ifd + 2 + index * 12;
+            let mut entry = tiff[at..at + 12].to_vec();
+            if read_u16(&entry, 0) == 0x0112 {
+                let value = write_u16(orientation);
+                entry[8] = value[0];
+                entry[9] = value[1];
+                entry[10] = 0;
+                entry[11] = 0;
+                replaced = true;
+            }
+            entries.push(entry);
+        }
+        if !replaced {
+            let mut entry = vec![0u8; 12];
+            let tag = write_u16(0x0112);
+            let field_type = write_u16(3);
+            let count = write_u32(1);
+            let value = write_u16(orientation);
+            entry[0] = tag[0];
+            entry[1] = tag[1];
+            entry[2] = field_type[0];
+            entry[3] = field_type[1];
+            entry[4..8].copy_from_slice(&count);
+            entry[8] = value[0];
+            entry[9] = value[1];
+            entries.push(entry);
+            entries.sort_by_key(|entry| read_u16(entry, 0));
+        }
+        let next = read_u32(tiff, ifd + 2 + count * 12);
+        let mut out = tiff.to_vec();
+        let new_ifd = write_u32(out.len() as u32);
+        out[4..8].copy_from_slice(&new_ifd);
+        out.extend_from_slice(&write_u16(entries.len() as u16));
+        for entry in &entries {
+            out.extend_from_slice(entry);
+        }
+        out.extend_from_slice(&write_u32(next));
+        out
+    }
+
+    fn assert_upright_red_blue(bytes: &[u8]) {
+        let decoded = image::load_from_memory(bytes).expect("decoded");
+        assert_eq!((decoded.width(), decoded.height()), (1, 2));
+        let top = decoded.get_pixel(0, 0).0;
+        let bottom = decoded.get_pixel(0, 1).0;
+        assert!(top[0] > top[2], "{top:?}");
+        assert!(bottom[2] > bottom[0], "{bottom:?}");
+    }
+
     fn with_jpeg_orientation(jpeg: &[u8], orientation: u16) -> Vec<u8> {
         let mut tiff = vec![
             b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
@@ -2259,6 +2354,49 @@ mod tests {
         out.extend_from_slice(&segment);
         out.extend_from_slice(&jpeg[2..]);
         out
+    }
+
+    fn jpeg_exif_tiff_offset(bytes: &[u8]) -> Option<usize> {
+        if bytes.len() < 4 || !bytes.starts_with(&[0xff, 0xd8]) {
+            return None;
+        }
+        let mut offset = 2;
+        while offset + 4 < bytes.len() {
+            if bytes[offset] != 0xff {
+                return None;
+            }
+            while offset < bytes.len() && bytes[offset] == 0xff {
+                offset += 1;
+            }
+            if offset >= bytes.len() {
+                return None;
+            }
+            let marker = bytes[offset];
+            offset += 1;
+            if marker == 0xd8 || marker == 0xd9 || (0xd0..=0xd7).contains(&marker) {
+                continue;
+            }
+            if offset + 2 > bytes.len() {
+                return None;
+            }
+            let length = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize;
+            if length < 2 || offset + length > bytes.len() {
+                return None;
+            }
+            if marker == 0xe1 {
+                let segment_at = offset + 2;
+                let segment = &bytes[segment_at..offset + length];
+                if segment.starts_with(b"Exif\0\0") {
+                    return Some(segment_at + 6);
+                }
+            }
+            if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc
+            {
+                return None;
+            }
+            offset += length;
+        }
+        None
     }
 
     fn stored_orientation(kind: ImageKind, bytes: &[u8]) -> Option<u16> {
