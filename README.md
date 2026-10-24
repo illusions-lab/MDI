@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://mdi.illusions.app/">
+  <a href="https://mdi.illusions.app/en/">
     <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Read the MDI documentation" />
   </a>
 </p>
@@ -35,11 +35,11 @@ The language toolkits below call this same parser instead of reimplementing the 
 
 | Language | Toolkit | Documentation |
 | --- | --- | --- |
-| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust documentation" /></a> |
-| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript and TypeScript documentation" /></a> |
-| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python documentation" /></a> |
-| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift documentation" /></a> |
-| Android / Kotlin *(in development)* | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
+| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/en/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust documentation" /></a> |
+| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/en/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript and TypeScript documentation" /></a> |
+| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/en/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python documentation" /></a> |
+| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/en/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift documentation" /></a> |
+| Android / Kotlin *(in development)* | [`android/`](./android) | <a href="https://mdi.illusions.app/en/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android and Kotlin documentation" /></a> |
 
 > **Android / Kotlin status:** the binding is still in development and is not yet published as a stable public package on Maven Central.
 

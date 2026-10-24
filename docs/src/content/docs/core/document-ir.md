@@ -1,106 +1,68 @@
 ---
 title: Document IR
-description: The exact, versioned tree every MDI renderer and binding consumes — every node type, with real JSON.
+description: すべての renderer と binding が読む、バージョン付きの文書木。
 ---
 
-**Prerequisites:** [Core concepts](/learn/core-concepts/#2-the-document-ir-intermediate-representation).
+**前提:** [コア概念](/learn/core-concepts/)。
 
-## The envelope
+## Envelope
 
-`parse()` (any binding) returns this shape. `irVersion` is currently `"1.0"`; `syntaxVersion` is currently `"2.0"` — they are independent numbers, see [Core concepts](/learn/core-concepts/#2-the-document-ir-intermediate-representation) for why.
+`parse()` は次を返します。`irVersion` は `"1.0"`、`syntaxVersion` は `"2.0"` で、独立したバージョンです。
 
 ```json
-{
-  "irVersion": "1.0",
-  "syntaxVersion": "2.0",
-  "capabilities": { "mdi": true, "commonMark": true, "gfm": true, "frontMatter": true, "sourceSpans": true },
-  "document": { "span": { "startByte": 0, "endByte": 0 }, "children": [] },
-  "diagnostics": []
-}
+{"irVersion":"1.0","syntaxVersion":"2.0","capabilities":{"mdi":true,"commonMark":true,"gfm":true,"frontMatter":true,"sourceSpans":true},"document":{"span":{"startByte":0,"endByte":0},"children":[]},"diagnostics":[]}
 ```
 
-Every capability is currently `true` — `mdi-core` parses the complete document (CommonMark, GFM, front matter, and MDI) in one pass, and every node carries a source span. Check `capabilities` in your own code anyway rather than hardcoding this assumption: the field exists precisely so a consumer never has to guess, and an older or future parse result could legitimately have some of these `false`.
+現在 capability はすべて `true` です。`mdi-core` は CommonMark、GFM、front matter、MDI を一回で解析し、すべての source-backed node に span を付けます。それでも consumer は値を固定せず確認してください。この field は古い結果や将来の結果を推測しないために存在します。
 
 ## `Document`
 
 ```ts
-interface MdiDocument {
-  span: MdiSourceSpan;
-  frontmatter?: MdiFrontmatter;
-  children: MdiNode[];
-}
+interface MdiDocument { span: MdiSourceSpan; frontmatter?: MdiFrontmatter; children: MdiNode[] }
+interface MdiFrontmatter { span: MdiSourceSpan; raw: string; entries: Array<{ key: string; value: unknown }> }
 ```
 
-`frontmatter` is a **sibling** of `children`, not a node inside it — front matter is document metadata, not document content, so it doesn't appear when you iterate `children` to walk the visible document.
+`frontmatter` は `children` 内の node ではなく sibling です。可視コンテンツを走査する際には含まれません。`raw` は YAML block の正確な source text、`entries` は順序を保持し unknown key も含みます。
 
-```ts
-interface MdiFrontmatter {
-  span: MdiSourceSpan;
-  raw: string;             // the YAML block's exact source text
-  entries: Array<{ key: string; value: unknown }>;  // order-preserving, unknown keys included
-}
-```
+## Node 一覧
 
-## `MdiNode` catalogue
+すべての node は `type` と（source-backed node では）`span` を持ち、container node は `children` を持ちます。通常の CommonMark/GFM node は `paragraph`、`heading`（`depth: 1–6`）、`blockquote`、`list`/`listItem`、`code`、`inlineCode`、`thematicBreak`、`html`、`table`/`tableRow`/`tableCell`、`link`、`image`、`emphasis`、`strong`、`delete`、`text`、footnote などです。
 
-Every node has `type` and (for source-backed nodes) `span`. Container nodes have `children`.
-
-**Ordinary Markdown nodes** (CommonMark/GFM, unmodified by MDI): `paragraph`, `heading` (`depth: 1–6`), `blockquote`, `list`/`listItem` (`ordered`, `start`), `code` (`value`, optional `lang`), `inlineCode`, `thematicBreak`, `html`, `table`/`tableRow`/`tableCell`, `link` (`url`, optional `title`), `image` (`url`, `alt`), `emphasis`, `strong`, `delete`, `text` (`value`), `footnoteReference` (`identifier`, `label`), `footnoteDefinition`.
-
-**MDI nodes:**
-
-| `type` | Extra fields | Produced by |
+| `type` | 追加 field | 記法 |
 | --- | --- | --- |
-| `ruby` | `base: string`, `ruby: MdiRubyReading` | `{base\|reading}` |
-| `tcy` | `value: string` | `^text^` |
+| `ruby` | `base`, `ruby` | `{base\|reading}` |
+| `tcy` | `value` | `^text^` |
 | `break` | — | `[[br]]` |
-| `em` | `mark: string`, `children` | `[[em:text]]`, `[[em:<mark>:text]]`, `《《text》》` |
+| `em` | `mark`, `children` | `[[em:text]]` / `《《text》》` |
 | `noBreak` | `children` | `[[no-break:text]]` |
 | `warichu` | `children` | `[[warichu:text]]` |
-| `kern` | `amount: string`, `children` | `[[kern:<amount>:text]]` |
-| `blank` | — | a lone `\` line, `<br>`, or `[[blank]]` |
-| `pagebreak` | `variant: "left" \| "right" \| null` | `[[pagebreak]]`, `[[pagebreak:left\|right]]` |
-| `paragraph` with `indent` or `bottom` | `indent?: number`, `bottom?: number` | `[[indent:N]]` / `[[bottom]]` / `[[bottom:N]]` applied to the following paragraph |
+| `kern` | `amount`, `children` | `[[kern:<amount>:text]]` |
+| `blank` | — | lone `\` line、`<br>`、`[[blank]]` |
+| `pagebreak` | `variant: "left" \| "right" \| null` | `[[pagebreak]]` / `[[pagebreak:left\|right]]` |
+| `paragraph` | `indent?`, `bottom?` | 次の paragraph に対する `[[indent:N]]` / `[[bottom]]` / `[[bottom:N]]` |
 
 ```ts
-type MdiRubyReading =
-  | { type: "group"; value: string }
-  | { type: "split"; value: string[] };
+type MdiRubyReading = { type: "group"; value: string } | { type: "split"; value: string[] };
 ```
 
-A worked example — `{雪女|ゆき.おんな}`:
+`{雪女|ゆき.おんな}` は `base: "雪女"` と `ruby: { type: "split", value: ["ゆき", "おんな"] }` の `ruby` node になります。span は source 全体の UTF-8 byte range を指します。
 
-```json
-{
-  "type": "ruby",
-  "base": "雪女",
-  "ruby": { "type": "split", "value": ["ゆき", "おんな"] },
-  "span": { "startByte": 0, "endByte": 12 }
-}
-```
+## Span
 
-## Spans
+`startByte` / `endByte` は元ソースへの半開 UTF-8 byte range です。host 言語の文字 index に変換する方法は [Diagnostic](/core/diagnostics/) を参照してください。
 
-`span.startByte`/`span.endByte` are a half-open UTF-8 **byte** range into the exact source string passed to `parse()`. See [Diagnostics and UTF-8 source spans](/core/diagnostics/) for the reasoning and for how to convert them into a host language's native string-index type.
+## 旧 `MdiSyntaxDocument`
 
-## The transitional `MdiSyntaxDocument` shape
-
-There is a **second, older, and much simpler** tree shape, produced only by the deprecated `parse_mdi_syntax` / `parseMdiSyntax` compatibility path:
+deprecated な `parse_mdi_syntax` / `parseMdiSyntax` は別の、より単純な形を返します。
 
 ```ts
-interface MdiSyntaxDocument {
-  blocks: Array<
-    | { type: "paragraph"; inlines: MdiInline[]; indent: number | null; bottom: number | null }
-    | { type: "blank" }
-    | { type: "pagebreak"; variant: "left" | "right" | null }
-  >;
-}
+interface MdiSyntaxDocument { blocks: Array<{ type: "paragraph"; inlines: MdiInline[]; indent: number | null; bottom: number | null } | { type: "blank" } | { type: "pagebreak"; variant: "left" | "right" | null }> }
 ```
 
-This shape has **no spans, no front matter, and no ordinary Markdown nodes** — it only ever recognized MDI-specific inline/block constructs, treating everything else as opaque paragraph text. It predates the complete CommonMark/GFM/MDI parser and exists today purely so old callers don't break; new code should always use the `Document` shape above, returned by `parse()`/`parse_document()`. Do not confuse the two when reading source or writing an integration — a function returning `MdiSyntaxDocument` is a signal you're on the deprecated path.
+これは span、front matter、通常 Markdown node を持たず、MDI 構文だけを扱う互換用 API です。完全な CommonMark/GFM/MDI parser より前のもので、その他を opaque paragraph text として扱います。新規コードは `parse()` / `parse_document()` の `Document` を使ってください。`MdiSyntaxDocument` を返す function は deprecated path を使っている合図です。
 
-## Next steps
+## 次へ
 
-- [Diagnostics and UTF-8 source spans](/core/diagnostics/)
-- [Rust Core API status](/core/rust-api/) — which functions return which shape.
-- [Full syntax reference](/syntax/reference/) — the IR snippet for every individual construct.
+- [Diagnostic](/core/diagnostics/)
+- [Rust Core API](/core/rust-api/)
+- [構文リファレンス](/syntax/reference/)

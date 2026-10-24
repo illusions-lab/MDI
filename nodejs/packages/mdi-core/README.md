@@ -53,9 +53,9 @@ and literal fallback are all decided in Rust.
 
 ## Documentation
 
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
-- [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
-- [Rust core API](https://mdi.illusions.app/core/rust-api/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)
+- [JavaScript binding guide](https://mdi.illusions.app/en/bindings/javascript/)
+- [Rust core API](https://mdi.illusions.app/en/core/rust-api/)
 - [Source repository](https://github.com/illusions-lab/MDI)
 
 MIT licensed.

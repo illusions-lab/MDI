@@ -1,94 +1,90 @@
 ---
-title: note export
-description: What `--to note` can preserve, what note only accepts through its editor UI, and how to verify a paste.
+title: note 書き出し
+description: "`--to note` が保持できる内容と、note の UI 操作が必要な内容。"
 ---
 
-`mdi build manuscript.mdi --to note` writes `manuscript_note.txt` in UTF-8.
-The result is a **note-editor input profile**, not a standard Markdown document
-and not a `.note` file. `--to txt-all` includes this sixth text flavor.
+`mdi build manuscript.mdi --to note` は UTF-8 の
+`manuscript_note.txt` を生成します。これは標準 Markdown や `.note`
+ファイルではなく、**note エディタ入力用 profile** です。
+`--to txt-all` にも、この6番目の text flavor が含まれます。
 
-The distinction matters: note documents its Markdown spellings as editor
-shortcuts. Some require a trailing space or Return key, while uploads and
-toolbar-only properties cannot be encoded in a plain-text file. Ruby is
-different: note applies `｜base《reading》` when the draft is saved or
-published, and accepts either a fullwidth or ASCII vertical bar.
+note 公式は Markdown 表記を import format ではなく editor shortcut と
+説明しています。末尾の空白や Return が必要なものがあり、upload や
+toolbar-only property は plain text にできません。一方ルビは
+`｜親文字《よみ》` を下書き保存・公開時に反映し、全角・半角の縦線を
+受け付けます。
 
-The note Import screen accepts WXR (WordPress XML) and MT text, not this file.
-Pasting a whole document is not a documented Markdown-import operation:
-retype the trigger and its following space/Return when the editor does not
-activate a shortcut.
+note の Import 画面が受け付けるのは WXR（WordPress XML）と MT text
+であり、このファイルではありません。文書全体の貼り付けは公式の
+Markdown import ではないため、shortcut が反映されない箇所では trigger
+と後続の空白／Return を入力し直してください。
 
-## Text representation
+## text 表現
 
-| MDI / Markdown input | note output | Contract |
+| 入力 | note 出力 | 契約 |
 | --- | --- | --- |
-| Heading depth 1 | `## heading` | note's large heading |
-| Heading depth 2–6 | `### heading` | note has only large and small headings |
-| Strong / GFM deletion | `**strong** ` / `~~deleted~~ ` | the trailing half-width space is note's documented activation keystroke |
-| Ordered or unordered list | `1. item` / `- item` | readable indentation is retained; create real nesting with Tab/Shift+Tab in note |
-| Block quote | `> quote` | quote source has no plain-text notation |
-| Code block | fenced code with its source label | only an exact triple-backtick `mermaid` fence has a documented diagram contract |
-| Thematic break | `---` | note divider shortcut |
-| MDI ruby | `｜base《reading》` | note's native ruby notation |
-| note TeX already present in body text | `$${...}$$` or a `$$` block | preserved; inline TeX is flattened in headings and quotes, where note disallows it |
-| Bare URL | bare URL | readable source; create an embed by pasting it alone into an empty paragraph, with Enter when required |
-| Link or image | `label (URL)` / `Image: alt (URL)` | readable fallback; note does not document Markdown link/image import |
-| Footnote | numbered reference plus end notes | readable fallback; note has no footnote block |
-| Table | tab-separated text | readable fallback; note has no table block |
+| H1 | `## 見出し` | note の大見出し |
+| H2–H6 | `### 見出し` | note は大・小の2階層 |
+| strong / GFM delete | `**太字** ` / `~~取消~~ ` | 末尾の半角空白までが公式の activation input |
+| ordered / unordered list | `1. item` / `- item` | 可読な字下げを保持。実際の階層は note で Tab／Shift+Tab を使う |
+| blockquote | `> 引用` | 専用の出典欄は text で設定できない |
+| code block | source label 付き fence | diagram 契約があるのは正確な triple-backtick `mermaid` のみ |
+| thematic break | `---` | 区切り線 shortcut |
+| MDI ruby | `｜親文字《よみ》` | note native ruby |
+| 本文内の note TeX | `$${...}$$` / `$$` block | 保持。note が inline TeX を許可しない見出し・引用では中身へ flatten |
+| bare URL | bare URL | readable source。embed は空段落へ URL を単独で貼り、必要なら Enter |
+| link / image | `label (URL)` / `画像: alt (URL)` | readable fallback |
+| footnote | 本文番号 + 文末注 | note に footnote block はない |
+| table | tab-separated text | note に table block はない |
 
-Tate-chu-yoko, boten, warichu, kerning, no-break, page breaks, task-list
-checkboxes, italic emphasis, inline code, and raw HTML have no documented note
-equivalent. Their readable content is retained, while unsupported styling is
-dropped. An MDI page break becomes a visual `---` divider and therefore loses
-pagination semantics.
+縦中横、傍点、割注、kerning、no-break、page break、task checkbox、
+italic、inline code、raw HTML には公式の対応表現がありません。本文を
+残し、未対応の装飾・組版指定だけを落とします。MDI page break は視覚的な
+`---` に変換され、pagination semantics は失われます。
 
-note documents no backslash escape for shortcut or ruby delimiters. Literal
-text is therefore preserved without invented escapes; a literal sequence that
-looks like note markup has no lossless representation in this text profile.
+note は shortcut や ruby delimiter の backslash escape を文書化して
+いません。未定義の escape で通常の記号を汚さず literal text をそのまま
+保持するため、note 記法と同じ literal sequence は lossless に表現できません。
 
-## Capability and platform-property matrix
+## capability・platform property 対応
 
-| note capability | Text export status |
+| note 機能 | text 書き出し |
 | --- | --- |
-| Paragraphs, line breaks, two heading levels, bold, strike, lists, quote, code, divider | Shortcut input sequences are emitted; bulk-paste activation is not guaranteed |
-| Nested lists | Visual indentation is retained; use Tab/Shift+Tab or note's hierarchy shortcuts, up to five levels |
-| Ruby | Native notation is preserved; bold/link selection must cover the complete `｜base《reading》` sequence |
-| Inline/display TeX | Native notation is preserved in supported body contexts; inline TeX is unavailable in headings, code blocks, and quotes, and note documents additional KaTeX/iOS limits |
-| Mermaid code | Exact triple-backtick `mermaid` blocks are retained; a fence collision degrades to readable code |
-| Text links | Label and URL are preserved; applying a link to selected text is editor-only |
-| Center/right alignment | Content retained; alignment is toolbar-only |
-| Quote source and source URL | Quote retained; the dedicated source field is editor-only |
-| Table of contents | Headings retained; inserting/enabling the TOC is editor-only |
-| Body image, alt text, description, size, and image link | Alt text and URL retained; upload and image properties are editor-only |
-| Cover image and title field | Front matter remains outside the body text; set these in the publishing UI |
-| File, native audio, and comic upload | Cannot be represented by a text export |
-| External video, music, audio, SNS, article, design, business, form, map, shopping, event, development, comic/game, crowdfunding, recruiting, news, recipe, and other embeds | A bare URL is preserved; embed creation depends on a separate empty-paragraph paste/Enter, provider permission, and `notebot` access |
-| Japanese/US stock chart shortcuts and note Money URLs | Literal source is preserved; notation is Web-only, requires Return, fixes the chart at six months, and excludes ETF/REIT/funds/indexes |
-| Hashtags, price, paid-preview line, publication state, comments/likes, and other note properties | Not body text; configure in note's publishing UI |
-| note Import/Export | `--to note` is not WXR or MT and cannot be submitted to Import; note's own export is a WXR ZIP with separate assets |
+| 段落、改行、2階層見出し、太字、取消線、list、引用、code、区切り線 | shortcut input sequence を出力。bulk paste での activation は保証しない |
+| nested list | 可読な字下げを保持。実階層は Tab／Shift+Tab 等で最大5階層 |
+| ルビ | native notation を保持。太字／link の選択範囲は `｜親文字《よみ》` 全体を含める |
+| inline/display TeX | 対応する本文 context で native notation を保持。見出し・code・引用では inline 不可。KaTeX/iOS に追加制限あり |
+| Mermaid | exact triple-backtick `mermaid` を保持。fence collision は readable code へ degrade |
+| 文字リンク | label と URL を保持。文字列への link 適用は UI |
+| 中央寄せ・右寄せ | 内容のみ保持。配置は UI |
+| 引用元と引用元 URL | 引用本文のみ自動。専用欄は UI |
+| 目次 | heading を保持。目次の挿入・有効化は UI |
+| 本文画像、ALT、画像説明、size、画像 link | alt と URL を保持。upload と属性は UI |
+| 見出し画像・title field | body text 外。公開 UI で設定 |
+| file、native audio、comic upload | text では表現不可 |
+| 外部 video/music/audio/SNS/article/design/business/form/map/shopping/event/development/comic/game/crowdfunding/recruiting/news/recipe/その他 embed | bare URL を保持。空段落への単独 paste／Enter、provider permission、`notebot` access に依存 |
+| 日米株価 shortcut / note Money URL | literal を保持。notation は Web のみ、Return 必須、6か月固定。ETF／REIT／投資信託／指数は notation 非対応 |
+| hashtag、価格、有料試し読み line、公開状態、comment／スキ等 | body text 外。note の公開 UI で設定 |
+| note Import／Export | `--to note` は WXR/MT ではなく Import 不可。note 自身の export は WXR ZIP + assets |
 
-The external-provider list changes independently of MDI; use note's live
-provider page instead of treating a hard-coded list as a file-format grammar.
+## 確認方法
 
-## Verification
+新規 note 記事の本文へ UTF-8 出力を貼ります。貼り付けは text 保持の
+確認であり shortcut activation の証明ではありません。literal のままの
+block は marker と空白／Return を入力し直し、nested list は Tab／Shift+Tab
+で設定します。embed URL は空段落へ単独で貼り、必要なら Enter を押します。
+下書き保存後にルビを確認し、画像 upload、配置、画像説明、引用元、目次、
+公開 metadata は UI で仕上げます。
 
-Open a new note article and paste the UTF-8 output into the body. This preserves
-the text but does not prove shortcut activation. Where a block remains literal,
-remove and retype its marker plus the documented space/Return. Build nested
-lists with Tab/Shift+Tab. Paste embed URLs separately into empty paragraphs and
-press Enter when required. Save the draft to activate and verify ruby. Complete
-uploads, alignment, image descriptions, quote sources, TOC, and publishing
-metadata in the UI.
+公式資料：
 
-Authoritative references:
-
-- [Editor capabilities](https://www.help-note.com/hc/ja/articles/360012426133-%E3%82%A8%E3%83%87%E3%82%A3%E3%82%BF-%E8%A8%98%E4%BA%8B%E7%B7%A8%E9%9B%86%E7%94%BB%E9%9D%A2-%E3%81%A7%E3%81%A7%E3%81%8D%E3%82%8B%E3%81%93%E3%81%A8)
-- [Markdown shortcuts](https://www.help-note.com/hc/ja/articles/4410617032217-Markdown%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88)
-- [List hierarchy](https://www.help-note.com/hc/ja/articles/4410433722777-%E7%AE%87%E6%9D%A1%E6%9B%B8%E3%81%8D-%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D%E3%83%AA%E3%82%B9%E3%83%88%E3%81%AB%E3%81%99%E3%82%8B)
-- [Ruby notation](https://www.help-note.com/hc/ja/articles/4406430353817-%E3%83%AB%E3%83%93-%E3%81%B5%E3%82%8A%E3%81%8C%E3%81%AA-%E3%82%92%E3%81%B5%E3%82%8B)
-- [TeX notation](https://www.help-note.com/hc/ja/articles/4410665086873-%E6%95%B0%E5%BC%8F%E8%A8%98%E6%B3%95%E3%81%AE%E4%BD%BF%E3%81%84%E6%96%B9)
-- [Mermaid diagrams](https://www.help-note.com/hc/ja/articles/25858251439513-Mermaid%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%83%80%E3%82%A4%E3%82%A2%E3%82%B0%E3%83%A9%E3%83%A0%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B)
-- [Supported embed services](https://www.help-note.com/hc/ja/articles/360019596133-%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E8%A8%98%E4%BA%8B%E3%81%AB%E5%9F%8B%E3%82%81%E8%BE%BC%E3%81%BF%E3%81%A7%E3%81%8D%E3%82%8B%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E4%B8%80%E8%A6%A7)
-- [Import specification](https://www.help-note.com/hc/ja/articles/16143759138329-%E3%82%A4%E3%83%B3%E3%83%9D%E3%83%BC%E3%83%88%E6%A9%9F%E8%83%BD%E3%81%AE%E4%BB%95%E6%A7%98)
-- [Export specification](https://www.help-note.com/hc/ja/articles/16143457500953-%E3%82%A8%E3%82%AF%E3%82%B9%E3%83%9D%E3%83%BC%E3%83%88%E6%A9%9F%E8%83%BD%E3%81%AE%E4%BB%95%E6%A7%98)
-- [Stock charts](https://www.help-note.com/hc/ja/articles/43881079418137-%E8%A8%98%E4%BA%8B%E3%81%AB%E6%A0%AA%E4%BE%A1%E3%83%81%E3%83%A3%E3%83%BC%E3%83%88%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%81%E3%82%8B%E6%A9%9F%E8%83%BD%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6)
+- [エディタでできること](https://www.help-note.com/hc/ja/articles/360012426133-%E3%82%A8%E3%83%87%E3%82%A3%E3%82%BF-%E8%A8%98%E4%BA%8B%E7%B7%A8%E9%9B%86%E7%94%BB%E9%9D%A2-%E3%81%A7%E3%81%A7%E3%81%8D%E3%82%8B%E3%81%93%E3%81%A8)
+- [Markdown shortcut](https://www.help-note.com/hc/ja/articles/4410617032217-Markdown%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88)
+- [list 階層](https://www.help-note.com/hc/ja/articles/4410433722777-%E7%AE%87%E6%9D%A1%E6%9B%B8%E3%81%8D-%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D%E3%83%AA%E3%82%B9%E3%83%88%E3%81%AB%E3%81%99%E3%82%8B)
+- [ルビ](https://www.help-note.com/hc/ja/articles/4406430353817-%E3%83%AB%E3%83%93-%E3%81%B5%E3%82%8A%E3%81%8C%E3%81%AA-%E3%82%92%E3%81%B5%E3%82%8B)
+- [数式](https://www.help-note.com/hc/ja/articles/4410665086873-%E6%95%B0%E5%BC%8F%E8%A8%98%E6%B3%95%E3%81%AE%E4%BD%BF%E3%81%84%E6%96%B9)
+- [Mermaid](https://www.help-note.com/hc/ja/articles/25858251439513-Mermaid%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%83%80%E3%82%A4%E3%82%A2%E3%82%B0%E3%83%A9%E3%83%A0%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B)
+- [embed service 一覧](https://www.help-note.com/hc/ja/articles/360019596133-%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E8%A8%98%E4%BA%8B%E3%81%AB%E5%9F%8B%E3%82%81%E8%BE%BC%E3%81%BF%E3%81%A7%E3%81%8D%E3%82%8B%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E4%B8%80%E8%A6%A7)
+- [Import 仕様](https://www.help-note.com/hc/ja/articles/16143759138329-%E3%82%A4%E3%83%B3%E3%83%9D%E3%83%BC%E3%83%88%E6%A9%9F%E8%83%BD%E3%81%AE%E4%BB%95%E6%A7%98)
+- [Export 仕様](https://www.help-note.com/hc/ja/articles/16143457500953-%E3%82%A8%E3%82%AF%E3%82%B9%E3%83%9D%E3%83%BC%E3%83%88%E6%A9%9F%E8%83%BD%E3%81%AE%E4%BB%95%E6%A7%98)
+- [株価 chart](https://www.help-note.com/hc/ja/articles/43881079418137-%E8%A8%98%E4%BA%8B%E3%81%AB%E6%A0%AA%E4%BE%A1%E3%83%81%E3%83%A3%E3%83%BC%E3%83%88%E3%82%92%E5%9F%8B%E3%82%81%E8%BE%BC%E3%82%81%E3%82%8B%E6%A9%9F%E8%83%BD%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6)

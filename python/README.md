@@ -4,13 +4,13 @@
 [![Python](https://img.shields.io/pypi/pyversions/illusion-markdown?style=flat-square)](https://pypi.org/project/illusion-markdown/)
 [![License](https://img.shields.io/pypi/l/illusion-markdown?style=flat-square)](https://github.com/illusions-lab/MDI/blob/main/LICENSE)
 
-Official Python bindings for [illusion Markdown (MDI)](https://mdi.illusions.app/).
+Official Python bindings for [illusion Markdown (MDI)](https://mdi.illusions.app/en/).
 `illusion-markdown` parses complete MDI documents, returns the versioned
 document IR, and renders HTML, text, EPUB, and DOCX through the canonical
 Rust implementation. Python is an ergonomic API layer only: it does not carry
 a second Markdown parser or renderer.
 
-**[Read the Python API documentation →](https://mdi.illusions.app/bindings/python/)**
+**[Read the Python API documentation →](https://mdi.illusions.app/en/bindings/python/)**
 
 ## Install
 
@@ -65,7 +65,7 @@ with open("book.epub", "wb") as output:
     output.write(epub_bytes)
 ```
 
-See the **[official Python documentation](https://mdi.illusions.app/bindings/python/)**
+See the **[official Python documentation](https://mdi.illusions.app/en/bindings/python/)**
 for API details, the complete MDI syntax, output formats, and architecture.
 
 ## Platform support

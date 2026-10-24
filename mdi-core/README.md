@@ -52,7 +52,7 @@ dimension table.
 ## Documentation
 
 - [API reference](https://docs.rs/mdi-core)
-- [MDI documentation](https://mdi.illusions.app/)
+- [MDI documentation](https://mdi.illusions.app/en/)
 - [Source repository](https://github.com/illusions-lab/MDI)
 
 ## License

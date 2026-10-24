@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.3",
+    "@astrojs/sitemap": "^3.7.2",
     "@astrojs/starlight": "^0.41.3",
     "@illusions-lab/mdi-remark": "workspace:*",
     "@illusions-lab/mdi-to-hast": "workspace:*",

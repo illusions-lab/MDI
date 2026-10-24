@@ -1,15 +1,15 @@
 ---
-title: Editorial comments in MDI 2.1
-description: Editorial comments in MDI 2.1
+title: MDI 2.1 の編集コメント
+description: "MDI 2.1 は HTML コメントを編集コメントとして扱い、出版用の出力からは除く。"
 ---
 
-MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+MDI 2.1 は、宣言済みの 2.0 とバージョン未宣言の原稿を含むすべての文書で `<!-- note -->` をコメントとして認識する。コメントは空でも、複数行でも、Unicode でもよい。最も近い `-->` で閉じ、中身は解釈されない。コード、front matter、リンク先、プレーンテキストの MDI パラメータはリテラルのまま残る。開始記号は `\<!--` でエスケープする。
 
-Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+ソースの保存ではコメントを残す。既定の parse / prepare / mdast API は IR 1.0 としてコメントを省く。`{ includeComments: true }` は位置つきの `comment` ノードと IR 1.1 を返す。どちらも syntax 2.1 と報告する。既存の front matter 宣言は維持される。公開される本文の projection と layout は、コメントを含む木でもコメントを除く。source map の run はその隙間を保つ。
 
-Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+すべての出版形式は、有効なコメントを常に出力しない。これは、コメントを HTML のテキストとして出していた古い 2.0 の出力を意図的に変える。閉じていないコメントはリテラルのまま残り、`mdi.comment.unterminated` を返す。書き出しは許可されるので、隠したつもりの文章が見えることがある。
 
-Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.
+コメントを失わずに残すには、source serialization か、コメントを含む IR を使う。フィルタ済みの外部 IR からは、省かれたコメントを復元できない。
 
 ```mdi
 Before<!-- editorial note -->after

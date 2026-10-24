@@ -26,6 +26,6 @@ pipeline already owns an mdast tree.
 
 ## Documentation
 
-- [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
-- [API reference](https://mdi.illusions.app/api/to-hast/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Remark / mdast adapter guide](https://mdi.illusions.app/en/ecosystem/remark/)
+- [API reference](https://mdi.illusions.app/en/api/to-hast/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)

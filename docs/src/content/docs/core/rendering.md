@@ -1,56 +1,52 @@
 ---
-title: Rendering model and the Chromium/PDF boundary
-description: How Rust turns one MDI document into baseline and configured exports, and where a PDF host takes over.
+title: レンダリングモデルと Chromium/PDF の境界
+description: 一つの MDI document を Rust が baseline／設定付き output にし、PDF host がどこから引き継ぐか。
 ---
 
-**Prerequisites:** [Document IR](/core/document-ir/) and [Export profiles](/ecosystem/export-profiles/).
+**前提:** [Document IR](/core/document-ir/)、[Export profiles](/ecosystem/export-profiles/)。
 
-## One semantic source, one publication contract
+## 一つの意味、一つの publication contract
 
-Rust owns the `.mdi` parse, diagnostic codes and UTF-8 spans, semantic output, and publication-profile resolution. Ruby, tate-chu-yoko, no-break, kerning, blank paragraphs, page breaks, paper dimensions, and EPUB/DOCX layout are therefore decided in one place.
+Rust は `.mdi` parse、diagnostic code と UTF-8 span、semantic output、publication profile の解決を担います。ruby、tate-chu-yoko、改行禁止、kern、blank paragraph、pagebreak に加え、紙面寸法と EPUB/DOCX layout も一か所で決まります。
 
-The profile remains separate from document meaning: changing a font or page size never changes how MDI is parsed. Rust validates that profile and applies metadata, chapters, typography, page setup, and numbering. A PDF host is responsible only for locating or launching Chromium and returning its bytes; application UI preferences remain with the application.
+profile は document の意味から独立しています。font や page size を変えても MDI の解釈は変わりません。Rust が profile を検証して metadata、chapter、typography、page setup、numbering を適用し、PDF host は Chromium の起動と byte の受け取りだけを担当します。
 
-Configured publication exports require one explicit `layout.system`. `japanese-publisher` is the strict Japanese book contract: horizontal pages use `Shirokuban`, 10 pt Mincho, mirrored spreads, left binding, and 27×26; vertical pages use the A4-landscape novel manuscript, mirrored spreads, right binding, and 40×30. `word` is intentionally incompatible: A4, 25.4 mm on all four sides, no mirroring, and flowing `typographic` layout; it rejects `strict`.
+設定付き publication export は `layout.system` を明示します。`japanese-publisher` は strict な和文 book contract です。横書きは `Shirokuban`・10 pt 明朝体・mirror spread・左綴じ 27×26、縦書きは A4 landscape 小説原稿・mirror spread・右綴じ 40×30 です。`word` は意図的に別契約で、A4、四辺 25.4 mm、mirror なし、flowing `typographic` layout を使い、`strict` を reject します。
 
-| Output | Baseline API | Configured route |
+| 出力 | baseline | 設定付き route |
 | --- | --- | --- |
-| HTML | `renderHtml(source)` | `{ bodyOnly: true }`, or `renderHtmlWithDiagnostics` for output + headings/spans. |
-| TXT | `renderTextFormat(source, format, indentPrefix)` | caller supplies text indentation. |
-| EPUB | `renderEpub(source)` | `await renderEpub(source, { profile, cover })` or aliases such as `title`, `chapterSplitLevel`, and `coverImage`. |
-| DOCX | `renderDocx(source)` | `await renderDocx(source, profile)` with metadata, page, type, and page-number values. |
-| PDF | — | `@illusions-lab/mdi/node` hands Rust-prepared HTML, page geometry, and page-number templates to a Chromium-capable host. |
+| HTML | `renderHtml(source)` | `{ bodyOnly: true }`、または diagnostics/headings 付き `renderHtmlWithDiagnostics`。 |
+| TXT | `renderTextFormat` | caller が indent を渡す。 |
+| EPUB | `renderEpub(source)` | `await renderEpub(source, { profile, cover })`。 |
+| DOCX | `renderDocx(source)` | `await renderDocx(source, profile)`。 |
+| PDF | — | `@illusions-lab/mdi/node` が Rust で準備した HTML、page geometry、page-number template を Chromium host に渡す。 |
 
-## Diagnostics, headings, and semantic HTML
+## diagnostics と HTML
 
-Call `parse(source)` or `prepareRender(source)` before offering export when the UI must display warnings. Its `document` preserves spans and `diagnostics`; source errors do not become exceptions merely because an export can fall back to literal text. `renderHtmlWithDiagnostics(source, options)` retains the same information with the HTML plus source-order headings. The renderer cannot yet take a serialized IR handle, so this helper validates and renders from the same source in sequence rather than inventing a second parser.
+export UI では先に `parse(source)`/`prepareRender(source)` を呼びます。`document` は span、`diagnostics` は warning を保持します。`renderHtmlWithDiagnostics` は HTML と headings も返します。Rust ABI は serializable IR handle をまだ renderer に渡せないため、同じ source を順に validate/render し、別 parser を作りません。
 
-HTML is semantic and stable: `renderHtml` returns a complete page including MDI CSS, while `bodyOnly` returns only `<body>` contents for an app shell. Ruby uses `<ruby>`, `<rt>`, and `<rp>`; MDI extensions have predictable `mdi-*` classes for host styling.
+`renderHtml` は stylesheet 付き page、`bodyOnly` は app shell 用の body contents を返します。ruby は `<ruby>`/`<rt>`/`<rp>`、MDI extension は predictable な `mdi-*` class です。
 
-## EPUB and DOCX
+## EPUB/DOCX
 
-The single-argument calls are synchronous Rust baseline exports: useful when front matter is enough and no publication profile is required. The configured JavaScript calls retain their asynchronous shape for compatibility, but profile validation and EPUB/DOCX archive generation now run in Rust. JavaScript does not keep a parallel page-size table or document generator.
+一引数の synchronous call は Rust baseline export です。設定付き JavaScript call は互換性のため async の形を保ちますが、profile の検証と EPUB/DOCX archive の生成は Rust で行います。JavaScript に別の page-size table や document generator はありません。EPUB は metadata、縦書き、font、indent、chapter level、JPEG/PNG cover を、DOCX は metadata、page size/orientation/margin、font/size/line spacing/indent、page number を受け取ります。
 
-Configured EPUB accepts title/author/publisher/language/date/identifier, vertical writing, font family, text indent, `h1`/`h2`/`h3`/`none` chapter splitting, and a JPEG/PNG cover. Configured DOCX accepts metadata; page size, orientation and four margins; writing direction, font family, font size, line spacing and indent; and page-number visibility, position and `simple`/`dash`/`fraction` format.
+DOCX は pagebreak、書字方向、paragraph と可能な inline/run formatting を OOXML に map します。ruby、tate-chu-yoko、禁則/改行禁止、kern、強制 blank は browser identical ではなく OOXML の近似です。重要な組版は実際の reader で確認してください。
 
-DOCX maps page breaks, writing direction, ordinary paragraphs, and available inline/run formatting to OOXML. Its ruby, tate-chu-yoko, kinsoku/no-break, kerning, and forced-blank behavior is necessarily an OOXML approximation, not a claim of browser-identical typography. Verify a target reader when those features determine layout.
+## Chromium/PDF の境界
 
-## The Chromium/PDF boundary
+`@illusions-lab/mdi/node` の `preparePdfExport(source, profile)` は Rust で準備済みの HTML と print data を返し、Electron は自前 BrowserWindow で print できます。`renderPdfWithChromium` は別 install の `@illusions-lab/mdi-to-pdf` (Playwright) を load するか Electron-compatible `{ renderHtmlToPdf }` を使います。
 
-`preparePdfExport(source, profile)` in `@illusions-lab/mdi/node` returns Rust-prepared HTML and resolved print data. Electron can print that request through its own BrowserWindow. `renderPdfWithChromium(source, profile)` instead loads the optional, separately installable `@illusions-lab/mdi-to-pdf` Node host (Playwright) unless you pass an Electron-compatible `{ renderHtmlToPdf }` implementation.
+paper、landscape、margin、縦横、font/size/line spacing、文字数/行数、indent、page-number template は Rust が解決して適用します。host は Chromium の実行を担当します。browser WASM は Chromium を spawn できないため request を Node/Electron/Tauri/CLI host へ送ります。Chromium が受け取るのは完成 HTML/CSS と print data であり `.mdi` ではありません。
 
-Rust resolves and applies paper size, landscape, margins, vertical/horizontal flow, font family/size/line spacing, characters-per-line, lines-per-page, first-line indentation, and page-number templates. The host owns Chromium execution. Browser WASM cannot spawn Chromium, so browser code should prepare the request and send it to a Node, Electron, Tauri, or CLI host. Chromium receives completed HTML/CSS and print data, never `.mdi` source.
+## Contract test が確認すること
 
-## What the contracts check
+最初に unit test と coverage を通し、その後で publication contract を
+実行します。DOCX は .NET Open XML SDK と LibreOffice、PDF は構造と
+page geometry、EPUB は W3C EPUBCheck、HTML は出力 contract で確認します。
+ZIP として開けるだけでなく、読者が使う application で扱えることまで
+release 前に確かめます。
 
-Unit and coverage tests run first. Once they pass, the publication suite opens
-DOCX with the .NET Open XML SDK and LibreOffice, checks PDF structure and page
-geometry, validates EPUB with W3C EPUBCheck, and verifies HTML. This catches
-files that are valid ZIP archives but still fail in the applications readers
-actually use.
-
-## Next steps
-
-- [JavaScript / TypeScript](/bindings/javascript/) for executable API examples.
-- [CLI](/bindings/cli/) for profile-driven shell exports.
-- [Diagnostics](/core/diagnostics/) for error codes and byte spans.
+- [JavaScript / TypeScript](/bindings/javascript/)
+- [CLI](/bindings/cli/)
+- [Diagnostics](/core/diagnostics/)

@@ -1,39 +1,33 @@
 ---
-title: Diagnostics and UTF-8 source spans
-description: Every diagnostic code MDI currently emits, and exactly what a byte span is and isn't.
+title: Diagnostic と UTF-8 source span
+description: 現在出力される diagnostic と byte span の正確な意味。
 ---
 
-**Prerequisites:** [Core concepts](/learn/core-concepts/#4-diagnostics-are-data-not-exceptions).
+**前提:** [コア概念](/learn/core-concepts/)。
 
-## Shape
+## 形
 
 ```ts
-interface MdiDiagnostic {
-  severity: "warning" | "error";
-  code: string;
-  message: string;
-  span?: MdiSourceSpan; // { startByte: number; endByte: number }
-}
+interface MdiDiagnostic { severity: "warning" | "error"; code: string; message: string; span?: { startByte: number; endByte: number } }
 ```
 
-Diagnostics live in the `diagnostics` array of a parse result — they are always data, never a thrown exception. Most MDI documents parse with an empty `diagnostics` array; malformed or ambiguous MDI notation is handled by each construct's own **literal-fallback rule** (documented on the [syntax reference](/syntax/reference/) page for every construct) rather than by raising a diagnostic. This mirrors how Markdown itself treats unrecognized syntax: keep it as text, don't fail the whole document.
+Diagnostic は parse 結果の `diagnostics` 配列に入るデータで、例外ではありません。不正・曖昧な MDI 記法の大半は syntax reference の literal fallback により単なるテキストとなります。
 
-## Every diagnostic code today
+## 現在の全コード
 
-There are currently **two** diagnostic codes implemented in `mdi-core`:
+実装されている code は二つです。
 
 ### `mdi.version.unsupported`
 
-- **Severity:** `warning`
-- **When it fires:** front matter declares an `mdi:` version string that is greater than the crate's own `MDI_SPEC_VERSION` ("2.0" today).
-- **Span:** the entire front-matter block.
-- **Message shape:** `"MDI {declared} is newer than the supported {MDI_SPEC_VERSION}"`.
+- severity: `warning`
+- front matter の `mdi:` が `MDI_SPEC_VERSION`（現在 `"2.0"`）より新しいときに出ます。
+- span は front-matter block 全体です。
+- message は `MDI {declared} is newer than the supported {MDI_SPEC_VERSION}` の形です。
 
 ```mdi
 ---
 mdi: "2.1"
 ---
-
 本文。
 ```
 
@@ -41,46 +35,40 @@ mdi: "2.1"
 [{ "severity": "warning", "code": "mdi.version.unsupported", "message": "MDI 2.1 is newer than the supported 2.0", "span": { "startByte": 0, "endByte": 15 } }]
 ```
 
-Per `SYNTAX.md`, encountering a newer-than-supported version is a **SHOULD warn and continue**, never a **MUST reject** — parsing proceeds on a best-effort basis using the rules the parser knows, and the rest of the document still produces a normal tree alongside this one diagnostic.
+これは warn して継続する仕様で、文書は通常どおり木になります。現在の `mdi-core` は semver ではなく文字列比較を使用します。従って一般には `"2.10" < "2.9"` となり得る、実装上の既知の制限です。invalid kerning や split-ruby segment の不一致などに別 diagnostic はありません。各構文の literal fallback が意図して text として扱います。
 
 ### `mdi.parser.recovered`
 
-- **Severity:** `warning`
-- **When it fires:** a malformed, frontmatter-shaped sequence would trigger an
-  upstream Markdown parser failure. MDI preserves the complete source as one
-  literal text block instead of failing or trapping in WebAssembly.
-- **Span:** the complete document.
-- **Message:** `"The parser recovered by projecting the source as literal text"`.
+- severity: `warning`
+- malformed な frontmatter 風の並びが upstream Markdown parser の failure を
+  起こし得るときに出ます。MDI は failure や WebAssembly の trap にせず、source
+  全体を一つの literal text block として保持します。
+- span は document 全体です。
+- message は `The parser recovered by projecting the source as literal text` です。
 
-This is a defensive recovery path, not a normal syntax diagnostic. Ordinary
-malformed inline MDI continues to use its construct-specific literal fallback
-without adding a diagnostic.
+これは防御的な recovery path であり、通常の構文 diagnostic ではありません。
+通常の不正な MDI inline は従来どおり construct ごとの literal fallback になり、
+diagnostic は追加されません。
 
-:::caution[Current implementation status]
-The comparison `mdi-core` uses today is a plain **string** comparison (`declared > MDI_SPEC_VERSION`), not a semantic version comparison. This is correct for every realistic case while MDI is at a single digit `major.minor`, but note it is not semver-aware in general — e.g. `"2.10"` would compare as lexicographically *less than* `"2.9"`. This is a known limitation of the current implementation, not a documented part of the spec's version-comparison rule.
-:::
+## Span
 
-That's the complete list — if you're looking for a diagnostic for, say, invalid kerning amounts or mismatched split-ruby segments, there isn't one: those cases are silently handled by literal fallback (see the relevant section of the [syntax reference](/syntax/reference/)), by design, not as a gap.
+- 単位は `parse()` に渡した元文字列の UTF-8 byte です。
+- 範囲は半開区間（`startByte` は含む、`endByte` は含まない）です。
+- Unicode code point、JavaScript の UTF-16 index、表示上の grapheme ではありません。
 
-## Spans, precisely
-
-- **Unit:** UTF-8 bytes of the exact source string passed to `parse()`.
-- **Range:** half-open — `startByte` inclusive, `endByte` exclusive. `endByte - startByte` is the byte length of the spanned text.
-- **Not** Unicode code points, not UTF-16 code units (what JavaScript string indices are), not grapheme clusters (what a cursor position in a text editor usually is).
-
-### Converting a byte span to a JavaScript string index
+### byte span を JavaScript string index に変換する
 
 ```js
 function byteSpanToUtf16Index(source, byteOffset) {
   const bytes = new TextEncoder().encode(source);
   const prefix = new TextDecoder().decode(bytes.subarray(0, byteOffset));
-  return prefix.length; // UTF-16 code unit index, usable as a JS string index
+  return prefix.length; // JS string index に使える UTF-16 code unit index
 }
 ```
 
-This round-trip (encode the whole string once, decode a byte-prefix, take its length) is the simplest correct approach; don't try to approximate it by counting characters, since any codepoint outside the Basic Multilingual Plane (many emoji, some kanji) is more than one UTF-16 unit and more than one byte, in different ratios.
+全文を一度 encode し、byte prefix を decode して長さを取るのが簡単で正確です。文字を数えて近似しないでください。BMP 外の文字（多くの emoji や一部の漢字）は UTF-16 unit と byte の両方で複数になり、その比率は同じではありません。
 
-## Next steps
+## 次へ
 
-- [Full syntax reference](/syntax/reference/) — the literal-fallback rule for each construct that *doesn't* produce a diagnostic.
-- [Document IR](/core/document-ir/) — where spans appear in the tree.
+- [構文リファレンス](/syntax/reference/)
+- [Document IR](/core/document-ir/)

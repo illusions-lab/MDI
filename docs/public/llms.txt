@@ -1,0 +1,11 @@
+# MDI
+
+MDI（illusion Markdown）は、日本語組版のための Markdown です。ルビ、縦中横、傍点、割注、縦書きを Rust の一つの文法で解析し、HTML、PDF、EPUB、DOCX、テキストへ出力します。MIT License。
+
+- [MDI とは？](https://mdi.illusions.app/learn/what-is-mdi/)
+- [構文リファレンス](https://mdi.illusions.app/syntax/reference/)
+- [記法の対照](https://mdi.illusions.app/learn/notation-comparison/)
+- [はじめに](https://mdi.illusions.app/guides/getting-started/)
+- [JavaScript API](https://mdi.illusions.app/en/api/mdi/readme/)
+- [仕様 SYNTAX.md](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
+- [ソース](https://github.com/illusions-lab/MDI)

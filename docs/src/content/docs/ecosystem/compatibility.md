@@ -1,48 +1,46 @@
 ---
-title: Migration and compatibility
-description: Every place the current implementation and SYNTAX.md diverge, tracked explicitly — plus how to move off deprecated APIs.
+title: Migration と compatibility
+description: SYNTAX.md と現在の実装との差分、および deprecated API。
 ---
 
-**Prerequisites:** none beyond general familiarity with the site; this page is a reference you'll be linked to from wherever a gap is relevant.
-
-MDI 2.0 syntax is specified in exactly one place: [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md). Package versions use the `2.0.x` line for releases implementing that specification (see the repository [README](https://github.com/illusions-lab/MDI/blob/main/README.md#releases) for the exact versioning scheme). This page exists so that whenever the shipped implementation doesn't yet fully match the spec, that gap is written down in one place instead of discovered by surprise — per MDI's own rule: never silently pick a side, always say which is normative and which is current behavior.
+MDI 2.0 syntax の規範は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) です。このページは実装との差分を明示します。
 
 ## Stylesheet parity
 
-`SYNTAX.md` specifies exact CSS for every MDI construct. `@illusions-lab/mdi-to-hast`'s stylesheet (used by this documentation site itself, and by anything using the `to-hast`/`to-html` adapter path) matches it precisely. `mdi-core`'s own embedded stylesheet — the one baked directly into `render_html`'s output, which is what the CLI's `--to html` and every direct `renderHtml()` call actually ship — currently differs in three places:
+`mdi-to-hast` の stylesheet は `SYNTAX.md` と一致します。一方 `mdi-core` の `render_html` embedded stylesheet（CLI `--to html` と direct `renderHtml()` が出荷する CSS）には三つの差があります。
 
-| Selector | `SYNTAX.md` / `mdi-to-hast` | `mdi-core`'s `render_html` | Practical effect |
+| selector | SYNTAX.md / mdi-to-hast | mdi-core | 影響 |
 | --- | --- | --- | --- |
-| `.mdi-em` | `text-emphasis: var(--mdi-em, "﹅")` + `-webkit-text-emphasis` + `text-emphasis-position: over right` + `.mdi-em rt { text-emphasis: none; }` | `text-emphasis: var(--mdi-em, filled sesame)`, no position rule, no `rt` suppression, no `-webkit-` prefix | The custom `<mark>` character still renders (both use the same `--mdi-em` CSS variable and the same `<span class="mdi-em" style="--mdi-em:...">` markup), but without an explicit `text-emphasis-position`, placement follows the browser default instead of MDI's documented "over" (horizontal) / "right" (vertical) rule, and boten wrapping ruby may double marks onto the `<rt>` reading text. |
-| `.mdi-warichu` | `display: inline-block; font-size: 0.5em; line-height: 1.1; max-inline-size: 10em; vertical-align: middle; text-align: start;` (two-line wrap approximation) | `font-size: .6em` only | The note renders smaller inline, but without the two-line wrap the spec's CSS approximates. |
-| `.mdi-blank` | `min-block-size: 1lh` (logical property) | `min-height: 1em` (physical property) | Matches in horizontal writing; in vertical writing, `min-height` does not correspond to the inline space a blank paragraph is meant to reserve. |
+| `.mdi-em` | emphasis position、`-webkit-`、`rt` suppression | これらなし | ruby の reading に boten が重なる可能性 |
+| `.mdi-warichu` | 2行 wrap 用 inline-block CSS | `font-size: .6em` のみ | 2行近似がない |
+| `.mdi-blank` | `min-block-size: 1lh` | `min-height: 1em` | vertical writing で意図した space にならない |
 
-In every case the **HTML element structure and class names are identical** — this is purely a difference in the accompanying CSS, and only matters if you rely on `render_html`'s embedded `<style>` block instead of supplying `@illusions-lab/mdi-to-hast`'s CSS (or your own spec-matching CSS) yourself. If you need exact spec-parity styling today, use `mdi-to-hast`'s stylesheet; if this gap has closed since this page was written, [`mdi-core/src/lib.rs`](https://github.com/illusions-lab/MDI/blob/main/mdi-core/src/lib.rs)'s `MDI_STYLESHEET` constant is the source of truth to check.
+HTML element/class 構造は同一です。spec-parity が必要なら `mdi-to-hast` stylesheet を使ってください。
 
-## Deprecated APIs and their replacements
+## Deprecated APIs
 
-| Deprecated | Use instead | Why |
+| Deprecated | 代替 | 理由 |
 | --- | --- | --- |
-| `parseMdiSyntax` (JavaScript) | `parse` | Same function today (`parseMdiSyntax` is a direct alias) — the name exists only for callers migrating from before the JS package had a full-document `parse`. |
-| `parse_mdi_syntax` (Rust) | `parse_document` / `parse_output` | Returns the older `MdiSyntaxDocument` shape — see [Document IR: the transitional `MdiSyntaxDocument` shape](/core/document-ir/#the-transitional-mdisyntaxdocument-shape) for exactly what's missing from it (no spans, no front matter, no ordinary Markdown nodes). |
+| JS `parseMdiSyntax` | `parse` | 現在は direct alias |
+| Rust `parse_mdi_syntax` | `parse_document` / `parse_output` | span/front matter/通常 Markdown node のない旧 `MdiSyntaxDocument` |
 
-## IR version handling
+## IR version の扱い
 
-Treat `irVersion` as a wire-protocol version, not a cosmetic string — reject a version your code doesn't recognize rather than guessing at its shape. `@illusions-lab/mdi`'s own `parse()` already does this (`throw new Error('Unsupported MDI IR version: ...')`); replicate the same check in any new integration you write directly against the JSON wire format.
+`irVersion` は見た目の文字列ではなく wire protocol version として扱い、未知の値を推測して読まないでください。`@illusions-lab/mdi` の `parse()` 自身も、対応しない version なら `Unsupported MDI IR version` を throw します。JSON wire format を直接使う新しい integration でも同じ確認を行ってください。
 
-## Byte spans, not character indexes
+## 文字 index ではなく byte span
 
-Every span in the IR is a UTF-8 byte offset. Do not reinterpret it as a host-language character index without an explicit conversion — see [Diagnostics and UTF-8 source spans](/core/diagnostics/#spans-precisely) for the exact JavaScript conversion helper, [Bindings: Python](/bindings/python/#ir-version-and-utf-8-byte-spans) for the Python equivalent, and the same caution applies to Swift bindings.
+すべての span は UTF-8 byte offset です。host language の文字 index としてそのまま扱わず、明示的に変換してください。JavaScript の変換例は [Diagnostics](/core/diagnostics/#span) を、Python の注意点は [Python binding](/bindings/python/) を参照してください。Swift を含むすべての binding で同じ注意が必要です。
 
-## Remark adapter: one-way today
+## Remark adapter は現在一方向
 
-`@illusions-lab/mdi-remark` parses real Rust output into `mdast`, but round-tripping an edited `mdast` tree back to `.mdi` text does not yet apply Rust's own recommended-form normalization (the same normalization `serializeMdi()` performs, like converting a `《《...》》` alias to `[[em:...]]`). See [Ecosystem: Remark / mdast adapter](/ecosystem/remark/#current-implementation-status-one-way-today) for detail.
+`@illusions-lab/mdi-remark` は実際の Rust 出力を `mdast` に解析する adapter です。ただし編集済み `mdast` を `.mdi` text に戻す際には、Rust の recommended-form normalization（たとえば `《《...》》` を `[[em:...]]` にする処理）はまだ適用しません。詳しくは [Remark / mdast adapter](/ecosystem/remark/) を参照してください。
 
-## Documentation build note
+## ドキュメントのビルドについて
 
-This documentation site's own Markdown/MDI examples are rendered through `@illusions-lab/mdi-remark` (see `astro.config.mjs`) — the same Rust-backed adapter described above, not a separate documentation-only parser. If an example on this site ever renders differently than the same source would through the CLI or the JavaScript package directly, that's a bug to report, not an intentional site-specific behavior.
+このサイト内の Markdown/MDI 例は `astro.config.mjs` により `@illusions-lab/mdi-remark` で描画されます。専用の別 parser ではありません。サイトの例が CLI や JavaScript package と異なる結果になれば、それは意図した差ではなく報告すべきバグです。
 
-## Next steps
+## 次へ
 
-- [Rust Core API status](/core/rust-api/#not-yet-implemented) — the authoritative, function-level list of what doesn't exist yet.
-- [Full syntax reference](/syntax/reference/) — each construct's own "Current implementation status" callout, where one applies.
+- [Rust Core API](/core/rust-api/#not-yet-implemented)
+- [構文リファレンス](/syntax/reference/)

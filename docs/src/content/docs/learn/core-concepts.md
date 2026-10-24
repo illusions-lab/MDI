@@ -1,27 +1,27 @@
 ---
-title: Core concepts
-description: The five ideas — grammar, IR, spans, diagnostics, capabilities — that every MDI interface shares.
+title: コア概念
+description: 文法・IR・span・診断・capabilities ―― すべての MDI インターフェースが共有する 5 つの考え方。
 ---
 
-**Prerequisites:** [What is MDI?](/learn/what-is-mdi/)
+**前提知識:** [MDI とは？](/learn/what-is-mdi/)
 
-Every MDI interface — the Rust crate, the JavaScript package, the Python package, the CLI, and Swift — shares the same five ideas. Learn them once here; every later page on this site (and every binding's own docs) assumes you already know what these words mean.
+Rust クレート、JavaScript・Python・Swift・Kotlin パッケージ、CLI のすべての MDI インターフェースは、同じ 5 つの考え方を共有しています。ここで一度学べば、このサイトの他のすべてのページ（そして各バインディング自身のドキュメント）は、これらの語をすでに理解している前提で書かれています。
 
-## 1. One grammar, one implementation
+## 1. 文法は1つ、実装も1つ
 
-`mdi-core` (Rust) is the only code that decides whether a piece of text is MDI syntax. It receives the **entire UTF-8 document** in one call — never a fragment — because MDI boundaries depend on surrounding Markdown context. The three lines below all contain the substring `^12^`, and only `mdi-core`, looking at the whole line, knows which ones are tate-chu-yoko:
+`mdi-core`（Rust）だけが、あるテキストが MDI 構文かどうかを決定します。呼び出しごとに**文書全体の UTF-8**を受け取ります ―― 断片を渡すことはありません。MDI の境界は周囲の Markdown 文脈に依存するからです。次の3行はすべて `^12^` という部分文字列を含みますが、行全体を見ている `mdi-core` だけが、どれが縦中横かを判断できます。
 
 ```markdown
-第^12^話                 ← tate-chu-yoko: renders "12" upright
-`^12^`                   ← literal code span: ^12^ is inert here
-**第^12^話**              ← tate-chu-yoko still applies inside strong emphasis
+第^12^話                 ← 縦中横：「12」が直立して描画される
+`^12^`                   ← リテラルなコードスパン：ここでは ^12^ は不活性
+**第^12^話**              ← 強調（太字）の中でも縦中横は適用される
 ```
 
-No other language or tool is allowed to reimplement this decision. A JavaScript, Python, or Swift package may call into Rust, cache the result, or reshape it into idiomatic types — but it may not contain its own copy of the ruby/tate-chu-yoko/boten grammar rules. This is what "Rust-authoritative" means concretely: if two tools ever disagreed about whether something is valid MDI, that would be a bug, because there is only supposed to be one grammar to disagree with.
+この判断を再実装することは、他のどの言語・ツールにも許されていません。JavaScript、Python、Swift のパッケージは Rust を呼び出したり、結果をキャッシュしたり、各言語に自然な形へ整形し直したりすることはできますが、ルビ／縦中横／傍点の文法規則を独自に持つことはできません。これが「Rust 主導」という言葉が具体的に意味することです ―― もし2つのツールが「これは有効な MDI か」で食い違ったら、それはバグです。そもそも文法は1つしかない前提だからです。
 
-## 2. The document IR (intermediate representation)
+## 2. ドキュメント IR（中間表現）
 
-Parsing produces a **tree**, not styled output. This tree is called the IR, and it's the one artifact every renderer consumes. Calling `parse()` on a tiny document returns something shaped like this:
+解析が生み出すのはスタイル付き出力ではなく**木構造**です。この木を IR と呼び、すべてのレンダラーが消費する唯一の成果物です。小さな文書に対して `parse()` を呼ぶと、次のような形が返ります。
 
 ```json
 {
@@ -44,40 +44,40 @@ Parsing produces a **tree**, not styled output. This tree is called the IR, and 
 }
 ```
 
-A few things worth noticing:
+いくつか気づいてほしい点があります。
 
-- **It's versioned twice.** `syntaxVersion` ("2.0") is the MDI *language* version — which constructs exist and what they mean. `irVersion` ("1.0") is the *wire format* version — the JSON shape above. They change independently: a future MDI 2.1 syntax addition might ship with no IR change at all, while an IR-breaking refactor could happen without a syntax version bump.
-- **It's one tree for CommonMark, GFM, and MDI together.** There's no separate "Markdown tree" and "MDI tree" that get merged — headings, links, tables, and ruby nodes are siblings and children in the same structure, because MDI syntax can nest inside Markdown (and vice versa; see [Inline nesting](/syntax/reference/#inline-nesting)).
-- **Every source-backed node carries a `span`.** That's the next concept.
+- **バージョンが2つあります。** `syntaxVersion`（"2.0"）は MDI という*言語*のバージョン ―― どの構文が存在し、何を意味するか。`irVersion`（"1.0"）は*ワイヤーフォーマット*のバージョン ―― 上記の JSON の形そのものです。これらは独立して変化します。将来 MDI 2.1 で構文が追加されても IR が一切変わらないこともあれば、IR を破壊的に作り直しても構文バージョンは上がらないこともあります。
+- **CommonMark、GFM、MDI が1つの木にまとまっています。** 「Markdown の木」と「MDI の木」を別々に作ってマージするのではなく、見出し・リンク・表・ルビのノードは同じ構造の中で兄弟・親子になります。MDI 構文は Markdown の中に（あるいはその逆にも）入れ子になれます。例は [構文リファレンス](/syntax/reference/) の「インラインの入れ子」を参照してください。
+- **ソースに由来するすべてのノードは `span` を持ちます。** これが次の項目です。
 
-Read [Document IR](/core/document-ir/) for the full node catalogue.
+ノードの完全な一覧は [Document IR](/core/document-ir/) を参照してください。
 
-## 3. Spans are UTF-8 byte offsets, not character indexes
+## 3. span は UTF-8 バイトオフセットであり、文字インデックスではない
 
-`span.startByte` / `span.endByte` are a half-open range (`startByte` inclusive, `endByte` exclusive) measured in **UTF-8 bytes** of the original source string — not Unicode code points, not UTF-16 code units, and not grapheme clusters.
+`span.startByte` / `span.endByte` は、元のソース文字列の **UTF-8 バイト**を単位とした半開区間（`startByte` は含み、`endByte` は含まない）です。Unicode コードポイントでも、UTF-16 コード単位でも、書記素クラスタでもありません。
 
-This matters concretely: `雪` is one character but three UTF-8 bytes. If you're in a JavaScript environment (where strings are UTF-16) and you want to highlight a span in a `<textarea>`, you cannot use the byte offset as a string index directly — you need to convert. The reason MDI uses byte offsets rather than a host language's native string-index type is that byte offsets are the one representation every language can compute from without ambiguity; a "character index" is not a well-defined concept until you pick a definition (UTF-16 units? code points? grapheme clusters?), and MDI does not want to bake a JavaScript-specific or Python-specific choice into the wire format.
+これは実務上重要です。「雪」は1文字ですが UTF-8 では3バイトです。JavaScript（文字列が UTF-16）の `<textarea>` で span をハイライトしたい場合、バイトオフセットをそのまま文字列インデックスとして使うことはできず、変換が必要です。MDI がホスト言語ネイティブの文字列インデックス型ではなくバイトオフセットを使う理由は、バイトオフセットがすべての言語が曖昧さなく計算できる唯一の表現だからです。「文字インデックス」は定義を選ぶまで well-defined な概念ではなく（UTF-16 単位？コードポイント？書記素クラスタ？）、MDI は JavaScript 固有・Python 固有の選択をワイヤーフォーマットに焼き込みたくありません。
 
-## 4. Diagnostics are data, not exceptions
+## 4. 診断はデータであり、例外ではない
 
-A **diagnostic** reports a recoverable problem — it is a plain object in the `diagnostics` array, never a thrown error:
+**診断（diagnostic）**は回復可能な問題を報告するものです ―― `diagnostics` 配列内の単なるオブジェクトであり、決して例外として投げられません。
 
 ```json
 { "severity": "warning", "code": "mdi.version.unsupported", "message": "MDI 2.1 is newer than the supported 2.0", "span": { "startByte": 0, "endByte": 34 } }
 ```
 
-`parse()` almost never throws. Malformed or ambiguous MDI syntax (an unmatched `^`, a `[[kern:` with an invalid amount, mismatched ruby dot segments) is handled by the **literal-fallback rule** documented on each syntax page — the text is kept as-is in the tree, usually without even a diagnostic, because it's the same tolerant behavior Markdown itself has for unrecognized syntax. Exceptions are reserved for things a diagnostic can't describe: a non-string argument, or a native resource failure (e.g., no Chromium executable for PDF). See [Diagnostics and UTF-8 source spans](/core/diagnostics/) for the complete current list of diagnostic codes.
+`parse()` はほとんど例外を投げません。不正・曖昧な MDI 構文（閉じない `^`、無効な量の `[[kern:`、一致しないルビの分割ドット）は、各構文ページに書かれた**リテラルフォールバック規則**で処理されます ―― たいてい診断すら出さずにテキストをそのまま木に残します。これは Markdown 自身が未知の構文を扱うのと同じ寛容な振る舞いです。例外は診断で表現できないもの ―― 文字列でない引数や、ネイティブリソースの失敗（PDF 用の Chromium が見つからないなど）―― のためにとってあります。診断コードの現在の完全な一覧（今日はちょうど1つ）は [診断とUTF-8ソーススパン](/core/diagnostics/) を参照してください。
 
-## 5. Capabilities describe *this* parse, not a promise about the future
+## 5. capabilities は「今回の解析」を表すものであり、将来の約束ではない
 
-`capabilities` is a set of booleans (`mdi`, `commonMark`, `gfm`, `frontMatter`, `sourceSpans`) attached to every parse result. Check it instead of assuming a feature is present — this is what let earlier, transitional versions of the JavaScript binding tell callers "I only parsed MDI-specific constructs, not full CommonMark" before the Rust core grew a complete parser. Today every capability is `true`; the field still exists because the IR is explicitly versioned and bindings must not guess.
+`capabilities` は、すべての解析結果に付く真偽値の集合（`mdi`、`commonMark`、`gfm`、`frontMatter`、`sourceSpans`）です。機能があると決め打ちせず、この値を確認してください ―― これは、Rust コアが完全な CommonMark パーサーへ育つ前の過渡期の JavaScript バインディングが「MDI 固有の構文しか解析していない、CommonMark 全体ではない」と呼び出し側に伝えるために使われていた仕組みです。今日はすべての capability が `true` ですが、IR が明示的にバージョン管理されており、バインディングが推測してはいけないという理由でこのフィールドは今も存在します。
 
-## Presentation is a separate layer
+## 表現（見た目）は別の層
 
-Everything above describes **meaning** — what the source says. A separate, later step decides **appearance**: page size, font, margins, writing mode for a specific export, indentation style. That's an [export profile](/ecosystem/export-profiles/), and it is deliberately incapable of changing what a document *is* — only how a renderer lays it out. Renderers (`renderHtml`, `renderText`, `renderEpub`, `renderDocx`, and the PDF path through Chromium) consume the IR and a profile; see [Rendering model and the Chromium/PDF boundary](/core/rendering/) for exactly where Chromium's job starts and stops.
+ここまでは**意味**―― ソースが何を言っているか ―― の話でした。**外見**（ページサイズ、フォント、特定の出力用のマージン、字下げの方式）を決めるのは、別の後段のステップです。それが [export profile](/ecosystem/export-profiles/) であり、これは文書が*何であるか*を変えることはできず、レンダラーがそれを*どうレイアウトするか*しか変えられません。レンダラー（`renderHtml`、`renderText`、`renderEpub`、`renderDocx`、そして Chromium を経由する PDF パス）は IR とプロファイルを消費します。Chromium の役割がどこで始まりどこで終わるかは [レンダリングモデルと Chromium/PDF の境界](/core/rendering/) を参照してください。
 
-## Next steps
+## 次のステップ
 
-- [Document IR](/core/document-ir/) — every node type, in detail.
-- [Diagnostics and UTF-8 source spans](/core/diagnostics/) — the full diagnostic-code table.
-- [Getting Started](/guides/getting-started/) — put these concepts to use with the real CLI and JavaScript API.
+- [Document IR](/core/document-ir/) ―― すべてのノード型を詳しく。
+- [診断とUTF-8ソーススパン](/core/diagnostics/) ―― 診断コードの完全な一覧表。
+- [はじめに](/guides/getting-started/) ―― これらの概念を、実際の CLI と JavaScript API で使ってみます。

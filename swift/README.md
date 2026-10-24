@@ -26,7 +26,7 @@ Then depend on the `MDI` product and import it in Swift:
 import MDI
 ```
 
-See the [Swift binding documentation](https://mdi.illusions.app/bindings/swift/)
+See the [Swift binding documentation](https://mdi.illusions.app/en/bindings/swift/)
 for the complete API reference and examples.
 
 ## Development

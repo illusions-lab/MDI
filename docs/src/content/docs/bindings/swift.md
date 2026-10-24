@@ -1,55 +1,43 @@
 ---
 title: Swift
-description: Install and use MDI from Swift with Swift Package Manager.
+description: Swift Package Manager で MDI をインストールして使用する。
 ---
 
-`IllusionMarkdown` is MDI's Swift Package Manager distribution. Its product and
-import module are both named `MDI`:
+`IllusionMarkdown` は MDI の Swift Package Manager 配布名です。product と import module はどちらも `MDI` です。
 
 ```swift
 import MDI
 ```
 
-Swift forwards parsing and rendering to the Rust `mdi-core` through a compact C
-ABI. It does not reimplement the grammar, so all bindings share the same
-syntax, document IR, diagnostics, and renderers.
+Swift は小さな C ABI を通じて Rust の `mdi-core` に解析とレンダリングを委譲します。文法を再実装しないため、全バインディングで同じ構文、document IR、diagnostics、renderer を共有します。
 
-## Installation
+## インストール
 
-Add MDI to your package dependencies, then add the `MDI` product to the target
-that uses it:
+`Package.swift` に依存関係を追加し、使用する target に `MDI` product を追加します。
 
 ```swift
 dependencies: [
     .package(url: "https://github.com/illusions-lab/MDI.git", from: "2.0.3"),
 ]
 
-// In a target:
+// target の dependencies:
 .product(name: "MDI", package: "MDI")
 ```
 
-The binary package supports macOS 13+ and iOS 15+ on Apple Silicon and Intel
-simulators where applicable.
+バイナリパッケージは macOS 13+、iOS 15+、Apple Silicon、および該当する Intel simulator をサポートします。
 
-## Parsing
-
-`MDI.parse(_:)` returns the versioned, Rust-owned document IR:
+## 解析と IR
 
 ```swift
 let result = try MDI.parse("# 見出し\n\n{東京|とうきょう}で第^12^話")
-
 print(result.irVersion)          // "1.0"
 print(result.capabilities.mdi)   // true
 print(result.diagnostics)
 ```
 
-`result.document` is a lossless `MDIJSONValue` tree. Use pattern matching on
-`.object`, `.array`, `.string`, `.number`, `.bool`, and `.null` when consuming
-nodes. Source positions are UTF-8 byte offsets in `MDISourceSpan`.
+`result.document` は可逆な `MDIJSONValue` ツリーです。`.object`、`.array`、`.string`、`.number`、`.bool`、`.null` の pattern matching で node を扱えます。`MDISourceSpan` は UTF-8 byte offset です。
 
-## Rendering and serialization
-
-All renderers take MDI source text:
+## レンダリング
 
 ```swift
 let html = try MDI.renderHTML("{東京|とうきょう} ^12^")
@@ -59,23 +47,17 @@ let note = try MDI.renderTextFormat(
     "# Title\n\n{東京|とうきょう}",
     format: .note
 )
-
 let epub: Data = try MDI.renderEPUB("# Chapter")
 let docx: Data = try MDI.renderDOCX("# Chapter")
 ```
 
-`MDITextFormat` exposes the same six Rust-owned conventions as the other
-bindings: `plain`, `ruby`, `narou`, `kakuyomu`, `aozora`, and `note`.
-`renderEPUB` and `renderDOCX` return ZIP-based `Data`; write the data to a
-file with the appropriate extension.
+`MDITextFormat` は他の binding と同じ6種類（`plain`、`ruby`、`narou`、
+`kakuyomu`、`aozora`、`note`）を Rust core から提供します。
+EPUB と DOCX は ZIP ベースの `Data` を返すため、対応する拡張子でファイルへ書き出してください。
 
-## Errors
+## エラー
 
-Every public operation throws `MDIError`:
-
-- `MDIError.core` reports a failure returned by the Rust core.
-- `MDIError.invalidWireFormat` indicates an invalid or unsupported native
-  response.
+すべての API は `MDIError` を throw します。`core` は Rust core の失敗、`invalidWireFormat` は無効または未対応の native response を表します。
 
 ```swift
 do {
@@ -86,18 +68,13 @@ do {
 }
 ```
 
-## Development and releases
+## 開発とリリース
 
-The repository's `swift/Package.swift` is the local development package. CI
-builds an XCFramework, runs XCTest with a 95% line-coverage gate for
-`swift/Sources/MDI`, and uploads the report to Codecov. The release workflow
-creates a manifest pull request and publishes the approved artifact after that
-PR is merged. It uses GitHub Actions' built-in token; no PAT or second
-repository is required.
+リポジトリの `swift/Package.swift` はローカル開発用パッケージです。CI は XCFramework をビルドし、XCTest を実行して `swift/Sources/MDI` に 95% の line-coverage gate を適用し、レポートを Codecov に送信します。release workflow は manifest 用の pull request を作成し、その PR がマージされた後に承認済み artifact を公開します。GitHub Actions 組み込みの token を使うため、PAT や別リポジトリは不要です。
 
-## Automatic warichu layout
+## 割注の自動組版
 
-Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+分割規則は Rust が一元管理します。本文の50%の字級、固定2行、行間なしで表示します。先頭の断片には本文行の残り幅、後続には行全体の幅を指定できます。幅の単位は割注字級の半角emです。文字幅の推定であり、比例フォントの厳密な均衡は保証しません。
 
 ```swift
 let fragments = try MDI.layoutWarichu(
@@ -105,7 +82,7 @@ let fragments = try MDI.layoutWarichu(
     capacity: 4, firstCapacity: 2)
 ```
 
-Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+戻り値は `lines`、`html`、`widths`、`overflow`、`hardBreakAfter`、`sources` を含みます。`path` は入力配列からの子インデックス列、`startUtf8` / `endUtf8` は可視文字列内の半開UTF-8バイト範囲です。同一の `group` は書式境界をまたぐ書記素も分割しません。ルビ、縦中横、改行禁止は一体として扱います。明示改行を保ち、自動分割は正規MDIや平文に書き戻しません。静的HTML/EPUBは閲覧ソフトにより再配置が異なります。DOCXはネイティブの双行グループを使います。XMLやインポーターの検証をWordの描画実測とは記載しません。
 
 
 ## Editorial comments in MDI 2.1

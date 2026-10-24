@@ -1,15 +1,15 @@
 ---
-title: What is MDI?
-description: MDI is Markdown for Japanese typography — one Rust grammar, rendered identically everywhere.
+title: MDI とは？
+description: MDI は日本語組版のための Markdown ―― 1つの Rust 文法を、どこでも同じように描画します。
 ---
 
-**Prerequisites:** none. This page assumes no prior MDI knowledge, but does assume you already know ordinary Markdown (`#` headings, `*emphasis*`, `[links](url)`).
+**前提知識:** なし。このページは MDI の知識がないことを前提にしていますが、通常の Markdown（`#` 見出し、`*強調*`、`[リンク](url)`）は既に知っているものとします。
 
-## What is MDI?
+## MDI とは？
 
-MDI (**illusion Markdown**, file extension `.mdi`) is plain-text Markdown with a small set of extra notations for Japanese typography: **ruby** (振り仮名 reading glosses), **tate-chu-yoko** (縦中横, upright numerals in vertical text), **boten** (傍点, emphasis dots), **warichu** (割注, two-line inline notes), explicit line breaks, page breaks, block alignment, and vertical writing.
+MDI（**illusion Markdown**、拡張子 `.mdi`）は、日本語組版のための拡張構文をいくつか加えた、ふつうの Markdown です。**ルビ**（振り仮名）、**縦中横**（縦書き中の数字を横向きに組む）、**傍点**（圏点による強調）、**割注**（行内の二行組注記）、明示的な改行、改ページ、ブロック指定、縦書きなどを追加します。
 
-Every ordinary Markdown document is already a valid MDI document — MDI adds syntax, it does not remove or reinterpret anything from CommonMark or GFM. A `.mdi` file is a normal UTF-8 text file; nothing about its byte-level format differs from a `.md` file. The extension is a convention, not something the parser inspects.
+通常の Markdown 文書はすべて、そのまま有効な MDI 文書でもあります。MDI は構文を追加するだけで、CommonMark や GFM の何かを取り除いたり意味を変えたりしません。`.mdi` ファイルは通常の UTF-8 テキストファイルであり、バイト列としては `.md` ファイルと何ら変わりません。拡張子は単なる慣習であり、パーサーがそれを検査するわけではありません。
 
 ```mdi
 ---
@@ -25,61 +25,61 @@ writing-mode: vertical
 [[em:決して]]忘れない、と彼は思った。
 ```
 
-If you deleted the front matter and the `{...}`/`^...^`/`[[em:...]]` notations from that example, it would still be a perfectly ordinary Markdown document. That's the whole design: **MDI is Markdown, plus typography extensions that fall back to being ignored or literal when something doesn't match.**
+この例からフロントマターと `{...}`／`^...^`／`[[em:...]]` の記法を取り除けば、ごく普通の Markdown 文書になります。これが MDI の設計そのものです。**MDI は Markdown に、フォールバックする（一致しない場合は無視されるかリテラルになる）組版拡張を足したものです。**
 
-## Why MDI exists
+## MDI が存在する理由
 
-Japanese fiction, especially light novels and web novels, relies on typographic devices that have no notation in CommonMark, GFM, or Pandoc Markdown:
+日本の小説、特にライトノベルやウェブ小説は、CommonMark にも GFM にも Pandoc Markdown にも記法が存在しない組版上の工夫に依存しています。
 
-- A word needs a **reading gloss** printed above or beside it (ruby), because the kanji alone is ambiguous or unfamiliar — `{東京|とうきょう}`.
-- A handful of Arabic numerals inside vertical text need to sit **upright and horizontal**, not stacked one digit per line — `第^12^話`.
-- A phrase needs **emphasis dots** next to each character, because Japanese typography does not use italics for emphasis — `[[em:それ]]`.
-- A short aside needs to be set as a **two-line annotation** within the line, not a footnote — `[[warichu:注記]]`.
-- The whole document may need to be typeset **vertically, right-to-left** (縦書き) instead of horizontally.
+- 漢字だけでは曖昧・不慣れなため、**読み仮名**を文字の上や脇に添える必要がある（ルビ）―― `{東京|とうきょう}`。
+- 縦書きの中で、数個の算用数字を1文字ずつ縦に積むのではなく**横向きに直立**させたい（縦中横）―― `第^12^話`。
+- 日本語の組版はイタリックで強調しないため、文字の脇に**圏点**を打って強調したい ―― `[[em:それ]]`。
+- 脚注ではなく、行の中に**二行組の注記**を挟みたい ―― `[[warichu:注記]]`。
+- 文書全体を横書きではなく**縦書き・右から左**（縦書き）で組みたい。
 
-Existing tools solve pieces of this ad hoc: some publishing platforms (Kakuyomu, Narou) invented their own bracket notations; some editors bolt on custom Markdown extensions with no shared grammar. MDI's contribution is a **single specification** (`SYNTAX.md`) with **one executable implementation** (the `mdi-core` Rust crate), so the same `.mdi` file parses identically no matter which tool opens it — editor, CLI, web app, or publishing pipeline.
+既存のツールはこれらを場当たり的に解決してきました。一部の投稿プラットフォーム（カクヨム、なろう）は独自の括弧記法を発明し、一部のエディタは共有された文法のない独自の Markdown 拡張を後付けしています。MDI が提供するのは、**単一の仕様**（`SYNTAX.md`）と**単一の実行可能な実装**（`mdi-core` Rust クレート）です。これにより、同じ `.mdi` ファイルはどのツールで開いても ―― エディタでも、CLI でも、Web アプリでも、出版パイプラインでも ―― 同じように解析されます。
 
-## MDI vs. plain Markdown
+## MDI と通常の Markdown
 
-| | Plain Markdown (CommonMark/GFM) | MDI |
+| | 通常の Markdown（CommonMark/GFM） | MDI |
 | --- | --- | --- |
-| Headings, lists, links, tables, code fences, emphasis | Yes | Yes, unchanged |
-| Front matter (`--- ... ---`) | Not part of CommonMark; tool-specific | Yes, with MDI-specific keys (`writing-mode`, `page-progression`) |
-| Ruby, tate-chu-yoko, boten, warichu, kerning | No notation | Yes |
-| Explicit line break vs. paragraph break | Only the fragile trailing-two-spaces hardbreak | `[[br]]` (unambiguous) vs. blank line |
-| Vertical writing | No concept | A front-matter property, because it changes how several constructs render |
-| Who decides what's valid syntax | Whatever library you used | One spec (`SYNTAX.md`), one implementation (`mdi-core`) |
+| 見出し・リスト・リンク・表・コードフェンス・強調 | あり | あり、変更なし |
+| フロントマター（`--- ... ---`） | CommonMark の一部ではなく、ツール依存 | あり。MDI 固有のキー（`writing-mode`、`page-progression`）を追加 |
+| ルビ・縦中横・傍点・割注・字間調整 | 記法なし | あり |
+| 明示的な改行 vs 段落改行 | 末尾2スペースの壊れやすいハードブレークのみ | `[[br]]`（曖昧さなし） vs 空行 |
+| 縦書き | 概念がない | フロントマターの属性。複数の構文の描画方法に影響するため |
+| どの構文が有効かを決めるのは誰か | 使用しているライブラリ次第 | 単一の仕様（`SYNTAX.md`）、単一の実装（`mdi-core`） |
 
-A `.md` file with no MDI constructs and an `.mdi` file with no MDI constructs render identically. The difference only shows up once you use MDI-specific notation — and even then, invalid or ambiguous MDI notation is designed to **fall back to literal text** rather than corrupt the document (see each syntax page's "Common mistakes" section for the exact fallback rule).
+MDI 固有の構文を含まない `.md` ファイルと `.mdi` ファイルは、まったく同じように描画されます。違いが現れるのは MDI 固有の記法を使ったときだけです ―― しかもそのときでさえ、無効・曖昧な MDI 記法は文書を壊さず**リテラルテキストへフォールバック**するよう設計されています（各構文ページの「よくある間違い」節に正確なフォールバック規則があります）。
 
-## The complete pipeline, from source to output
+## ソースから出力までの全体パイプライン
 
-This is the one flow every MDI tool follows, regardless of language:
+言語に関わらず、すべての MDI ツールが従う唯一の流れです。
 
 ```text
-.mdi source (UTF-8 text)
+.mdi ソース（UTF-8 テキスト）
         │
         ▼
-   mdi-core (Rust)  ── parses CommonMark + GFM + front matter + MDI in one pass
+   mdi-core（Rust）── CommonMark + GFM + フロントマター + MDI を一度に解析
         │
         ▼
-versioned document IR  ── a tagged tree; every node has a UTF-8 byte span
+バージョン付きドキュメント IR ── タグ付きの木構造。すべてのノードが UTF-8 バイト span を持つ
         │
-        ├──▶ renderHtml()        → HTML string
-        ├──▶ renderText(format)  → TXT / narou / kakuyomu / aozora string
-        ├──▶ renderEpub()        → EPUB 3 bytes
-        ├──▶ renderDocx()        → DOCX bytes
-        └──▶ renderHtml() + Chromium printToPDF → PDF bytes
+        ├──▶ renderHtml()        → HTML 文字列
+        ├──▶ renderText(format)  → TXT / なろう / カクヨム / 青空文庫 文字列
+        ├──▶ renderEpub()        → EPUB 3 バイト列
+        ├──▶ renderDocx()        → DOCX バイト列
+        └──▶ renderHtml() + Chromium printToPDF → PDF バイト列
 ```
 
-Two things to notice:
+2点、注目してください。
 
-1. **Parsing happens once, in Rust.** No renderer re-reads the original text or re-decides where a ruby span starts; every renderer consumes the same tree that `mdi-core` already built.
-2. **PDF is HTML plus a print step.** Rust renders the same HTML/CSS it would give a browser, then asks a locally installed Chromium-family browser to lay that HTML out on paper and call `printToPDF`. Chromium never reads `.mdi` source and never makes a syntax decision — it only lays out HTML it's handed. See [Rendering model and the Chromium/PDF boundary](/core/rendering/) for the exact division of labor.
+1. **解析は Rust で一度だけ行われます。** どのレンダラーも元のテキストを読み直したり、ルビの範囲をどこから始めるか再判定したりしません。すべてのレンダラーは `mdi-core` が既に構築した同じ木を消費します。
+2. **PDF は「HTML＋印刷ステップ」です。** Rust はブラウザに渡すのと同じ HTML/CSS を描画し、ローカルにインストールされた Chromium 系ブラウザにそのレイアウトと `printToPDF` の呼び出しを依頼します。Chromium は `.mdi` ソースを読むことも、構文上の判断をすることも一切ありません ―― 渡された HTML をレイアウトするだけです。Chromium の責務がどこで始まりどこで終わるかは [レンダリングモデルと Chromium/PDF の境界](/core/rendering/) を参照してください。
 
-### Try it: source in, HTML out
+### 試してみる：ソース → HTML
 
-This is the real, current `@illusions-lab/mdi` JavaScript API — every line below runs today:
+以下は実際に今日動く `@illusions-lab/mdi` の JavaScript API です。
 
 ```js
 import { parse, renderHtml } from "@illusions-lab/mdi";
@@ -87,36 +87,34 @@ import { parse, renderHtml } from "@illusions-lab/mdi";
 const source = "{雪女|ゆきおんな}が第^12^話に現れた。";
 
 const { document, diagnostics } = parse(source);
-console.log(diagnostics); // [] — nothing wrong with this source
-console.log(document.children[0]); // the parsed paragraph node, MDI ruby/tcy included
+console.log(diagnostics); // [] ―― このソースには問題なし
+console.log(document.children[0]); // 解析済みの段落ノード。MDI のルビ／縦中横を含む
 
 console.log(renderHtml(source));
 ```
 
 ```html
-<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>/* the .mdi-* stylesheet Rust ships alongside the markup */</style></head><body>
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>/* Rust がマークアップと一緒に出力する .mdi-* スタイルシート */</style></head><body>
 <p><ruby class="mdi-ruby">雪女<rp>（</rp><rt>ゆきおんな</rt><rp>）</rp></ruby>が第<span class="mdi-tcy">12</span>話に現れた。</p>
 </body></html>
 ```
 
-The `<rp>（</rp>`/`<rp>）</rp>` pair is a fallback for the rare browser or reader with no ruby support — it's hidden by CSS wherever ruby rendering works, and shown as plain parentheses where it doesn't.
+自分で CLI と JavaScript パッケージをインストールして実行する手順は [はじめに](/guides/getting-started/) にあります。
 
-The [Getting Started](/guides/getting-started/) page walks through installing the CLI and the JavaScript package and running this yourself.
+## どんなときに MDI を使うべきか
 
-## When should you reach for MDI?
+- ルビ・縦書き・圏点強調が必要な日本語の小説（ライトノベル、ウェブ小説、脚本）をプレーンテキストで、バージョン管理しやすいソース形式で書きたいとき。
+- **1つのソースファイル**から、HTML（Web リーダー向け）、EPUB（電子書籍リーダー向け）、DOCX（出版社向け）、プレーンテキスト（なろうやカクヨムなど特定プラットフォームへの投稿用）を、各出力を手作業で編集せずに得たいとき。
+- 同じソースがエディタでも、ビルドパイプラインでも、CLI でも同じように解析される保証がほしいとき ―― 3つの異なる再実装ではなく、3つとも同じ Rust コードを呼び出しているからです。
 
-- You're writing Japanese fiction (light novels, web novels, scripts) and need ruby, vertical writing, or emphasis dots in a plain-text, version-controllable source format.
-- You want **one source file** to produce HTML (for a web reader), EPUB (for e-readers), DOCX (for a publisher), and plain text (for submission to a specific platform like Narou or Kakuyomu) without hand-editing each output.
-- You want the guarantee that the same source parses the same way in your editor, your build pipeline, and your CLI — because all three call the same Rust code, not three different reimplementations.
+## MDI が *ではないもの*
 
-## What MDI is *not*
+- **ワープロや WYSIWYG 形式ではありません。** MDI はソース記法であり、DOCX/PDF 出力はその描画結果であって、逆ではありません。
+- **汎用の組版言語ではありません。** `SYNTAX.md` に列挙された、名前の付いた日本語組版の仕組みをカバーするだけで、構文自体に「任意の CSS プロパティ」という汎用エスケープハッチはありません。
+- **対応プラットフォームで利用できます。** Rust、Node.js、Swift、Kotlin、Python はすべて同じ Rust-authoritative grammar と Document IR を利用します。各プラットフォームは [Bindings](/bindings/javascript/) を参照してください。
 
-- **Not a word processor or WYSIWYG format.** MDI is a source notation; DOCX/PDF output is a rendering of it, not the other way around.
-- **Not a general-purpose typesetting language.** It covers the specific, named Japanese typographic devices in `SYNTAX.md` — it does not have a generic "any CSS property" escape hatch in the syntax itself.
-- **Available across the supported platforms.** Rust, Node.js, Swift, Kotlin, and Python all use the same Rust-authoritative grammar and document IR. See [Bindings](/bindings/javascript/) for each platform.
+## 次のステップ
 
-## Next steps
-
-- [Core concepts](/learn/core-concepts/) — the vocabulary (IR, diagnostics, spans, capabilities) used by every other page on this site.
-- [Getting Started](/guides/getting-started/) — install the CLI and JavaScript package and run your first conversion.
-- [Full syntax reference](/syntax/reference/) — every MDI construct, one tutorial section each.
+- [コア概念](/learn/core-concepts/) ―― IR・診断・span・capabilities など、他のすべてのページで使う語彙。
+- [はじめに](/guides/getting-started/) ―― CLI と JavaScript パッケージをインストールし、最初の変換を実行します。
+- [完全構文リファレンス](/syntax/reference/) ―― すべての MDI 構文を1つずつ解説します。

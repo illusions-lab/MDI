@@ -1,15 +1,15 @@
 ---
-title: Getting Started
-description: Install the CLI and the JavaScript package, then convert a real .mdi file to HTML, PDF, and text.
+title: はじめに
+description: CLI と JavaScript パッケージをインストールし、実際の .mdi ファイルを HTML・PDF・テキストに変換します。
 ---
 
-**Prerequisites:** [What is MDI?](/learn/what-is-mdi/) and [Core concepts](/learn/core-concepts/) — this page assumes you already know what the IR, spans, and diagnostics are. You'll also need [Node.js](https://nodejs.org) 20 or later.
+**前提知識:** [MDI とは？](/learn/what-is-mdi/) と [コア概念](/learn/core-concepts/) ―― IR・span・診断が何かを既に知っている前提です。[Node.js](https://nodejs.org) 20 以降も必要です。
 
-This page implements **MDI 2.0**, whose normative human-readable definition is [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md). Every command and code sample below is copy-pasteable and runs against the packages actually published from this repository — nothing here is aspirational.
+このページは **MDI 2.0** を実装しています。規範的な人間向け仕様は [`SYNTAX.md`](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) です。以下のすべてのコマンドとコードはそのままコピーして実行できます ―― このリポジトリから実際に公開されているパッケージに対して動くもので、架空のものはありません。
 
-## 1. Write a `.mdi` file
+## 1. `.mdi` ファイルを書く
 
-Create `novel.mdi`:
+`novel.mdi` を作成します。
 
 ```mdi
 ---
@@ -27,73 +27,70 @@ writing-mode: vertical
 その日は大安[[warichu:六曜の一つで吉日とされる]]であった。
 ```
 
-## 2. Convert it with the CLI
+## 2. CLI で変換する
 
-Install the CLI globally:
+CLI をグローバルにインストールします。
 
 ```bash
 npm install --global @illusions-lab/mdi-cli
 ```
 
-Run it (HTML is the default):
+実行します。
 
 ```bash
-mdi novel.mdi
-mdi build novel.mdi --to html
+mdi novel.mdi                    # HTML の既定出力
+mdi build novel.mdi --to html    # 明示形式も利用可能
 ```
 
 ```text
 Written /path/to/novel.html
 ```
 
-The full command shape, taken directly from the CLI's own usage message:
+CLI 自身の使用方法メッセージそのままの、完全なコマンド形式です。
 
 ```text
 mdi <input.mdi> [--to <format>] [--config export.json] [-o <output>]
 mdi build <input.mdi> [--to <format>] [--config export.json] [-o <output>]
 ```
 
-| Flag | Meaning |
+| フラグ | 意味 |
 | --- | --- |
-| `--to <format>` | Optional. One of the formats listed above; defaults to `html`. |
-| `-o <path>` | Optional. Output path. Without it, output is written beside the input using the format's extension. If `--to` is omitted, a recognized output extension (`.html`, `.json`, `.pdf`, `.epub`, `.docx`, `.txt`) selects the format. An explicit format that conflicts with the extension is rejected. |
-| `--config <path>` | Optional. Path to an [export profile](/ecosystem/export-profiles/) JSON file controlling page size, fonts, margins, and text-indent settings. |
+| `--to <format>` | 任意。上記のいずれかの形式。省略時は `html`。 |
+| `-o <path>` | 省略可。出力パス。指定しない場合、入力ファイルのそばに形式の拡張子で保存されます ―― `novel.mdi --to pdf` は `novel.pdf` を、`--to txt-ruby` は `novel_ruby.txt` を書き出します（CLI はテキストの各バリアントを `<stem>_<variant>.txt` と命名し、プレーンな `txt` にはサフィックスがありません）。 |
+| `--config <path>` | 省略可。ページサイズ、フォント、マージン、テキストの字下げを制御する[エクスポート・プロファイル](/ecosystem/export-profiles/) JSON ファイルへのパス。 |
 
-Try every output format:
+すべての出力形式を試してみます。
 
 ```bash
 mdi build novel.mdi --to html                          # novel.html
 mdi build novel.mdi --to pdf                            # novel.pdf
 mdi build novel.mdi --to epub -o dist/novel.epub        # dist/novel.epub
 mdi build novel.mdi --to docx                           # novel.docx
-mdi build novel.mdi --to txt                            # novel.txt      — ruby discarded
-mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt — ruby kept as {base|reading}
-mdi build novel.mdi --to narou                          # novel_narou.txt   — 小説家になろう notation
-mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt — カクヨム notation
-mdi build novel.mdi --to aozora                         # novel_aozora.txt  — 青空文庫 notation, Shift_JIS-encoded
-mdi build novel.mdi --to note                           # novel_note.txt    — note editor input, UTF-8
-mdi build novel.mdi --to txt-all                        # writes all six text variants; rejects -o
+mdi build novel.mdi --to txt                            # novel.txt      ―― ルビは破棄
+mdi build novel.mdi --to txt-ruby                       # novel_ruby.txt ―― ルビは {base|reading} として保持
+mdi build novel.mdi --to narou                          # novel_narou.txt   ―― 小説家になろうの記法
+mdi build novel.mdi --to kakuyomu                       # novel_kakuyomu.txt ―― カクヨムの記法
+mdi build novel.mdi --to aozora                         # novel_aozora.txt  ―― 青空文庫の記法、Shift_JIS でエンコード
+mdi build novel.mdi --to note                           # novel_note.txt    ―― note エディタ入力、UTF-8
+mdi build novel.mdi --to txt-all                        # 6 種類のテキストをすべて書き出す。-o は拒否される
 ```
 
-`--to txt-all` and `-o` are mutually exclusive — using both is a usage error, because `txt-all` always writes multiple files next to the input.
+Parser diagnostics は `mdi check novel.mdi` で確認できます。warning は status
+`0`、error diagnostic は status `1` です。`mdi --version` は version を表示し、
+`mdi update --check` は npm を確認するだけ、`mdi update --yes` は明示的に許可した
+自動更新に使えます。通常の実行でも一日一回だけバックグラウンド確認を行いますが、
+失敗しても command の結果には影響しません。CI では `MDI_NO_UPDATE_CHECK=1` で
+通知を無効化できます。
 
-For parser diagnostics, run `mdi check novel.mdi`. Warnings are reported but
-exit `0`; an error diagnostic exits `1`. `mdi --version` prints the installed
-version. `mdi update --check` checks npm without installing, while
-`mdi update --yes` performs an explicitly authorized update. Normal invocations
-perform a best-effort daily cached update check in the background; failures do
-not affect the command. Set `MDI_NO_UPDATE_CHECK=1` in CI when you do not want
-the notice.
+### 各形式で実際に何が起きるか
 
-### What actually happens on each format
+- **HTML、TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`、EPUB、DOCX** はすべて **Rust コアが直接**描画します（`@illusions-lab/mdi` の `renderHtml`、`renderTextFormat`、`renderEpub`、`renderDocx`）―― CLI はその間で何も再解析・再解釈しません。
+- **PDF** は同じ Rust 描画の HTML を、ローカルにインストールされた Chromium 系ブラウザに渡し、そのブラウザがページ分割と `printToPDF` の呼び出しを行います。Chromium は `.mdi` ソースを一切受け取らず、構文上の判断もしません。Chromium 系ブラウザが見つからない場合、コマンドは不足している依存関係を名指しするエラーで失敗します ―― 特定の実行ファイルを指す方法は [レンダリングモデル](/core/rendering/) を参照してください。
+- **`aozora`** は書き出し時に **Shift_JIS** でエンコードされます。青空文庫自身の投稿ツールが期待する形式に合わせたものです。他のテキストバリアントはすべて UTF-8 で書き出されます。
 
-- **HTML, TXT/`txt-ruby`/`narou`/`kakuyomu`/`aozora`/`note`, EPUB, and DOCX** are rendered **directly by the Rust core** (`renderHtml`, `renderTextFormat`, `renderEpub`, `renderDocx` in `@illusions-lab/mdi`) — the CLI does not reparse or reinterpret anything.
-- **PDF** takes the same Rust-rendered HTML and hands it to a locally installed Chromium-family browser, which performs pagination and calls `printToPDF`. Chromium never receives `.mdi` source and makes no syntax decision. If no Chromium-family browser is found, the command fails with an error naming the missing dependency — see [Rendering model](/core/rendering/) for how to point it at a specific executable.
-- **`aozora`** is encoded to **Shift_JIS** on write, matching what Aozora Bunko's own submission tooling expects; every other text variant is written as UTF-8.
+### 何か問題が起きたとき
 
-### When something goes wrong
-
-The CLI never throws a stack trace at you. Errors go to stderr as a single line, and the process exits with code `1`:
+CLI はスタックトレースを表示しません。エラーは stderr へ**1行**書き出され、プロセスは終了コード `1` で終了します。
 
 ```bash
 mdi build missing.mdi --to html
@@ -111,11 +108,11 @@ mdi build novel.mdi --to svg
 Usage: mdi <command> [options]
 ```
 
-An unrecognized `--to` value (or any other malformed argument list) prints the usage line above and exits `1` — it does not attempt a best-effort guess at what you meant.
+認識できない `--to` の値（や、その他の不正な引数列）は、意味を推測しようとせず、上記の使用方法を表示して終了コード `1` を返します。
 
-## 3. Parse and render from JavaScript
+## 3. JavaScript から解析・描画する
 
-If you're building an application rather than shelling out to the CLI, install the primary package:
+CLI に頼らずアプリケーションを構築する場合は、主要パッケージをインストールします。
 
 ```bash
 npm install @illusions-lab/mdi
@@ -129,24 +126,24 @@ const source = await readFile("novel.mdi", "utf8");
 
 const { document, diagnostics, syntaxVersion, irVersion } = parse(source);
 console.log(syntaxVersion, irVersion); // "2.0" "1.0"
-console.log(diagnostics);              // [] for this file — nothing to warn about
+console.log(diagnostics);              // このファイルには [] ―― 警告すべきものはない
 console.log(document.frontmatter.entries);
 // [{ key: "mdi", value: "2.0" }, { key: "title", value: "雪女" }, ...]
 
 const html = renderHtml(source);
 ```
 
-`parse` never needs a host Markdown parser — CommonMark, GFM, front matter, and MDI are all decided inside the single `parse` call. Ordinary malformed syntax comes back as a usable document plus (usually empty) diagnostics; reserve `try`/`catch` for programming errors, such as passing a non-string:
+`parse` はホスト側の Markdown parser を一切必要としません ―― CommonMark、GFM、フロントマター、MDI はすべて1回の `parse` 呼び出しの中で決定されます。通常の不正な構文は利用可能な文書と（大抵は空の）診断を返します。`try`/`catch` はプログラミングエラー、例えば文字列でない値を渡した場合のためにとっておきます。
 
 ```js
-parse(42); // throws TypeError: source must be a string
+parse(42); // TypeError: source must be a string を投げる
 ```
 
-See [Bindings: JavaScript / TypeScript](/bindings/javascript/) for every exported function (`renderEpub`, `renderDocx`, `renderText`, `renderTextFormat`, `serializeMdi`) with full signatures and examples.
+すべてのエクスポート関数（`renderEpub`、`renderDocx`、`renderText`、`renderTextFormat`、`serializeMdi`）の完全なシグネチャと例は [Bindings: JavaScript / TypeScript](/bindings/javascript/) を参照してください。
 
-## 4. Front matter, explained
+## 4. フロントマターの解説
 
-The front matter block at the top of `novel.mdi` is ordinary YAML, parsed as part of the same `parse()` call:
+`novel.mdi` の先頭のフロントマターブロックは、同じ `parse()` 呼び出しの中で解析される通常の YAML です。
 
 ```yaml
 ---
@@ -158,13 +155,13 @@ writing-mode: vertical
 ---
 ```
 
-- `mdi` declares the syntax version the document targets. Omit it and the parser assumes its own latest supported version. Declare a version *newer* than the parser supports, and you get a `mdi.version.unsupported` warning diagnostic — parsing still proceeds on a best-effort basis (see [Diagnostics](/core/diagnostics/)).
-- `writing-mode: vertical` changes how `renderHtml` lays out the document (`writing-mode: vertical-rl` on the root element) and is why tate-chu-yoko and boten exist at all — they're vertical-writing typography devices that also degrade gracefully in horizontal writing.
-- Key order and unknown keys are preserved in `document.frontmatter.entries`; renderers ignore keys they don't recognize rather than erroring.
+- `mdi` は文書が対象とする構文バージョンを宣言します。省略すると、パーサーは自身が対応する最新バージョンを前提とします。パーサーが対応するより*新しい*バージョンを宣言すると、`mdi.version.unsupported` という警告診断が出ます ―― 解析はベストエフォートで続行されます（[診断](/core/diagnostics/)参照）。
+- `writing-mode: vertical` は `renderHtml` のレイアウト方法を変えます（ルート要素に `writing-mode: vertical-rl`）。これが、縦中横や傍点がそもそも存在する理由です ―― どちらも縦書き特有の組版デバイスであり、横書きでも自然に劣化して動作します。
+- キーの順序と未知のキーは `document.frontmatter.entries` に保持されます。レンダラーは認識しないキーがあってもエラーにせず無視します。
 
-## 5. Optional: plug into a `unified`/`remark` pipeline
+## 5. 任意: `unified`/`remark` パイプラインへの組み込み
 
-Skip this section unless you already have a `unified` pipeline (e.g. Astro, a static-site generator, a `remark`-based linter) that expects `mdast` nodes. `@illusions-lab/mdi-remark` is an **adapter**, not a second parser — it calls the same Rust `parse()` and reshapes the result into `mdast`:
+すでに `mdast` ノードを期待する `unified` パイプライン（Astro、静的サイトジェネレーター、`remark` ベースの lint ツールなど）がある場合以外は、この節は読み飛ばしてかまいません。`@illusions-lab/mdi-remark` は**アダプター**であり第二のパーサーではありません ―― 同じ Rust の `parse()` を呼び出し、その結果を `mdast` へ整形し直すだけです。
 
 ```js
 import { unified } from "unified";
@@ -175,10 +172,10 @@ const processor = unified().use(remarkMdi).use(remarkStringify);
 const tree = processor.parse(await readFile("novel.mdi", "utf8"));
 ```
 
-Full detail, including exactly what does and doesn't round-trip, is in [Remark / mdast adapter](/ecosystem/remark/).
+何が正しくラウンドトリップし、何がしないかを含む詳細は [Remark / mdast アダプター](/ecosystem/remark/) にあります。
 
-## Next steps
+## 次のステップ
 
-- [Full syntax reference](/syntax/reference/) — every construct used in `novel.mdi` above, explained one at a time.
-- [Rust-authoritative architecture](/core/architecture/) — the ownership rules behind "one grammar, one implementation."
-- [Export profiles](/ecosystem/export-profiles/) — control page size, fonts, and margins with `--config`.
+- [完全構文リファレンス](/syntax/reference/) ―― 上の `novel.mdi` で使ったすべての構文を1つずつ解説します。
+- [Rust 主導アーキテクチャ](/core/architecture/) ―― 「文法は1つ、実装も1つ」の背後にある所有権規則。
+- [エクスポート・プロファイル](/ecosystem/export-profiles/) ―― `--config` でページサイズ、フォント、マージンを制御します。
