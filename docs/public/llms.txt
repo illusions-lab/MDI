@@ -1,11 +1,24 @@
 # MDI
 
-MDI（illusion Markdown）は、日本語組版のための Markdown です。ルビ、縦中横、傍点、割注、縦書きを Rust の一つの文法で解析し、HTML、PDF、EPUB、DOCX、テキストへ出力します。MIT License。
+> MDI（illusion Markdown）は、日本語組版のための Markdown です。ルビ、縦中横、傍点、割注、縦書きを Rust の一つの文法で解析し、HTML、PDF、EPUB、DOCX、テキストへ出力します。MIT License。
 
-- [MDI とは？](https://mdi.illusions.app/learn/what-is-mdi/)
-- [構文リファレンス](https://mdi.illusions.app/syntax/reference/)
-- [記法の対照](https://mdi.illusions.app/learn/notation-comparison/)
-- [はじめに](https://mdi.illusions.app/guides/getting-started/)
-- [JavaScript API](https://mdi.illusions.app/en/api/mdi/readme/)
-- [仕様 SYNTAX.md](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md)
-- [ソース](https://github.com/illusions-lab/MDI)
+日本語が既定の言語です。英語の手引きは `/en/`、生成された JavaScript API は英語のみで `/en/api/` にあります。
+
+## 日本語
+
+- [MDI とは？](https://mdi.illusions.app/learn/what-is-mdi/): 何のための記法か
+- [記法の対照](https://mdi.illusions.app/learn/notation-comparison/): でんでんマークダウン、なろう、カクヨム、青空文庫との違い
+- [構文リファレンス](https://mdi.illusions.app/syntax/reference/): ルビ、縦中横、傍点、割注、改ページ
+- [はじめに](https://mdi.illusions.app/guides/getting-started/): インストールして HTML を出す
+- [仕様 SYNTAX.md](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md): 文法の原文
+
+## English
+
+- [What is MDI?](https://mdi.illusions.app/en/learn/what-is-mdi/): What the notation is for
+- [Notation comparison](https://mdi.illusions.app/en/learn/notation-comparison/): Differences from DenDen Markdown, Narou, Kakuyomu, and Aozora Bunko
+- [Syntax reference](https://mdi.illusions.app/en/syntax/reference/): Ruby, tate-chu-yoko, boten, warichu, page breaks
+- [JavaScript API](https://mdi.illusions.app/en/api/mdi/readme/): Generated API reference, English only
+
+## Optional
+
+- [ソース](https://github.com/illusions-lab/MDI): illusions-lab/MDI
