@@ -1,0 +1,118 @@
+---
+title: Rust
+description: Using mdi-core directly from a Rust project — the native, zero-FFI-overhead path.
+---
+
+**Prerequisites:** [Document IR](/en/core/document-ir/), [Rust Core API status](/en/core/rust-api/).
+
+## What this binding solves
+
+Every other language interface (JavaScript/WASM, and eventually Python and Swift) is a thin wrapper around this crate. If you're writing a Rust application, tool, or another language's native binding, you can depend on `mdi-core` directly and skip the FFI/WASM boundary entirely.
+
+## Install
+
+Install `mdi-core` from [crates.io](https://crates.io/crates/mdi-core):
+
+```toml
+[dependencies]
+mdi-core = "2.0"
+```
+
+## Minimal executable example
+
+```rust
+use mdi_core::{parse_document, render_html};
+
+fn main() {
+    let source = "第^12^話。{東京|とうきょう}は雨だった。";
+
+    let document = parse_document(source);
+    assert_eq!(document.children.len(), 1); // one paragraph
+
+    println!("{}", render_html(source));
+}
+```
+
+```bash
+cargo run
+```
+
+```html
+<!DOCTYPE html><html lang="ja">...<body><p><span class="mdi-tcy">12</span>話。<ruby class="mdi-ruby">東京<rp>（</rp><rt>とうきょう</rt><rp>）</rp></ruby>は雨だった。</p></body></html>
+```
+
+## Input and output types
+
+`parse_document(&str) -> Document` and `parse_output(&str) -> ParseOutput` are the two parsing entry points; every renderer (`render_html`, `render_text`, `render_text_format`, `render_epub`, `render_docx`, `render_pdf`) accepts either the raw `&str` source (and parses internally) or a `&Document` you already parsed, via the `*_document` suffix variant — e.g. `render_html(source)` vs. `render_html_document(&document)`. Use the `_document` variants when you need to parse once and render multiple formats from the same tree. Full signatures: [Rust Core API status](/en/core/rust-api/).
+
+## Diagnostics and error handling
+
+`parse_document`/`parse_output` never panic on malformed MDI syntax — that's handled by literal fallback, same as every other binding (see [Diagnostics](/en/core/diagnostics/)). The renderer functions that touch the filesystem or a subprocess (`render_epub`, `render_docx`, `render_pdf`) return `Result<Vec<u8>, String>` instead, because those really can fail for reasons outside MDI's control (I/O errors, a missing Chromium executable):
+
+```rust
+use mdi_core::{render_pdf, PdfOptions};
+
+match render_pdf(source, &PdfOptions::default()) {
+    Ok(bytes) => std::fs::write("out.pdf", bytes)?,
+    Err(message) => eprintln!("PDF render failed: {message}"),
+    // e.g. "Chromium executable not found; set PdfOptions.chromium_path"
+}
+```
+
+## IR version and UTF-8 byte spans
+
+`MDI_IR_VERSION` and `MDI_SPEC_VERSION` are `&'static str` constants exported directly — check them if you're persisting a `ParseOutput` and reloading it later, the same way any other binding must. `SourceSpan { start_byte: u32, end_byte: u32 }` is a half-open UTF-8 byte range, exactly as described in [Diagnostics and UTF-8 source spans](/en/core/diagnostics/) — being in Rust doesn't change the unit; it's still bytes, not `char` indices, because `str` in Rust is itself UTF-8 bytes and indexing by anything else would require an extra pass every binding would have to pay for.
+
+For searchable canonical text, use `get_mdi_text_blocks(source)`. Its inverse,
+`resolve_mdi_source_span(source, span)`, validates ordering, bounds, and UTF-8
+boundaries, then returns all maximal block-text and annotation grapheme ranges.
+Coverage is `Complete`, `Partial`, or `None`; matches are `Exact` only when the
+complete forward coverage equals the input. Empty spans return no matches, and
+structural, synthetic, or unmapped bytes do not gain invented ranges. Ruby's
+separate channels and multi-to-one/discontinuous mappings mean round trips are
+not generally bijective.
+
+For a diagnostics or decoration batch, use `resolve_mdi_source_spans(source,
+spans)`. It validates the full slice, parses/projects once, and returns the
+resolutions in input order.
+
+## Current implementation status
+
+Parsing (`parse_document`/`parse_output`), serialization (`serialize_mdi`), and every renderer (`render_html`, `render_text_format`, `render_epub`, `render_docx`, `render_pdf`) are implemented today, at the "baseline" level described on [Rust Core API status](/en/core/rust-api/#not-yet-implemented). There is no separate `validate`/`normalize` API distinct from `parse_output`/`serialize_mdi` — see that same page for exactly what's missing.
+
+## What this binding doesn't do
+
+- **No async API.** Every function here is synchronous; `render_pdf` blocks on the Chromium subprocess. Wrap it in `spawn_blocking` (Tokio) or an equivalent if you're calling it from an async runtime.
+
+## Next steps
+
+- [Rust Core API status](/en/core/rust-api/) — every function, in full.
+- [API reference on docs.rs](https://docs.rs/mdi-core/).
+- [Rendering model](/en/core/rendering/) — what each renderer's output actually contains, including the Chromium/PDF boundary.
+
+## Automatic warichu layout
+
+Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+
+```rust
+let children = serde_json::json!([{"type":"text", "value":"一二三四五六"}]);
+let fragments = mdi_core::layout_warichu_with_options(children.as_array().unwrap(),
+    &mdi_core::WarichuOptions { first_capacity: 2, continuation_capacity: 4 });
+```
+
+Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+
+
+## Editorial comments in MDI 2.1
+
+```rust
+parse_output_with_options(source, ParseOptions { include_comments: true })
+```
+
+MDI 2.1 recognizes `<!-- note -->` in all documents, including declared 2.0 and unversioned source. Comments can be empty, multiline or Unicode; the nearest `-->` closes them and their contents are not interpreted. Code, front matter, link destinations and plain-text MDI parameters remain literal. Escape an opener as `\<!--`.
+
+Source saving retains comments. Default parse/prepare/mdast APIs omit them with IR 1.0; `{ includeComments: true }` returns positional `comment` nodes and IR 1.1. Both report syntax 2.1. Existing front-matter declarations are retained. Public body projections and layout exclude comments even with an inclusive tree, and their source-map runs preserve the gaps.
+
+Every publication format always omits valid comments. This intentionally changes old 2.0 output that displayed them as HTML text. Unterminated comments remain literal and return `mdi.comment.unterminated`: export is allowed, so intended private text may be visible.
+
+Use source serialization or an inclusive IR for lossless comment retention. A filtered external IR cannot restore omitted comments.

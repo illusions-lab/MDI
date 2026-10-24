@@ -1,13 +1,15 @@
 ---
 title: Python
-description: illusion-markdown on PyPI — the real, PyO3-backed Python API, verified against its published source.
+description: PyPI の illusion-markdown による実装済み PyO3 binding。
 ---
 
-**Prerequisites:** [Getting Started](/guides/getting-started/), [Document IR](/core/document-ir/).
+**前提:** [Getting Started](/guides/getting-started/)、[Document IR](/core/document-ir/)。
 
-## What this binding solves
+`illusion-markdown` は PyO3/maturin native extension として同じ `mdi-core` を呼びます。Python 側に独自 grammar はありません。
 
-You need to parse or render `.mdi` documents from Python — a Django/Flask publishing backend, a Jupyter-based manuscript pipeline, or a Python static-site generator — without shelling out to the CLI. `illusion-markdown` compiles `mdi-core` to a native extension via [PyO3](https://pyo3.rs)/[maturin](https://www.maturin.rs) and exposes it as ordinary Python functions; the Python-side wrapper module is about 60 lines and contains no MDI grammar of its own — every function is a direct call into the same Rust code every other binding calls.
+## この binding で解決すること
+
+Django/Flask の publishing backend、Jupyter を使う manuscript pipeline、Python の static-site generator から、CLI を起動せずに `.mdi` を解析・描画できます。Python 側の wrapper は約 60 行で、全関数が他の binding と同じ Rust code を直接呼びます。
 
 ## Install
 
@@ -15,121 +17,79 @@ You need to parse or render `.mdi` documents from Python — a Django/Flask publ
 pip install illusion-markdown
 ```
 
-The **distribution name** on PyPI is `illusion-markdown`; the **import name** is `mdi`. Requires Python 3.10+. Prebuilt wheels are published for macOS (Intel and Apple Silicon), Linux x64, and Windows x64; other platforms fall back to the source distribution, which needs a Rust toolchain to build.
+PyPI distribution 名は `illusion-markdown`、import 名は `mdi` です。Python 3.10+。macOS、Linux x64、Windows x64 の wheel があり、その他では Rust toolchain を必要とする source distribution に fallback します。
 
-## Minimal executable example
+## 最小例
 
 ```python
 import mdi
-
-source = """---
-title: 東京の夜
-lang: ja
----
-
-# {東京|とうきょう}の夜
-
-第^12^話
-"""
-
+source = "# {東京|とうきょう}の夜\n\n第^12^話\n"
 result = mdi.parse(source)
-print(result["document"]["children"][0]["type"])  # "heading"
-
-html = mdi.render_html(source)
-open("book.html", "w", encoding="utf-8").write(html)
+print(result["document"]["children"][0]["type"])
+open("book.html", "w", encoding="utf-8").write(mdi.render_html(source))
 ```
 
-## Every exported function
+## Export される全 API
 
 ```python
-import mdi
-
-mdi.MDI_SPEC_VERSION      # "2.0"
-mdi.MDI_IR_VERSION        # "1.0"
-mdi.TextFormat            # Literal["txt", "txt-ruby", "narou", "kakuyomu", "aozora", "note"]
-mdi.MdiRenderError        # Exception subclass — see "Diagnostics and error handling"
-
-mdi.parse(source: str) -> dict                                    # versioned IR + diagnostics
+mdi.MDI_SPEC_VERSION; mdi.MDI_IR_VERSION; mdi.TextFormat; mdi.MdiRenderError
+mdi.parse(source: str) -> dict
 mdi.render_html(source: str) -> str
-mdi.render_text(source: str) -> str                               # the plain "txt" flavor
-mdi.render_text_format(source: str, format: TextFormat, indent_prefix: str = "") -> str
+mdi.render_text(source: str) -> str
+mdi.render_text_format(source: str, format, indent_prefix: str = "") -> str
 mdi.render_epub(source: str) -> bytes
 mdi.render_docx(source: str) -> bytes
-mdi.serialize_mdi(source: str) -> str                              # canonical MDI round-trip
-mdi.parse_mdi_syntax                                               # deprecated alias for mdi.parse
+mdi.serialize_mdi(source: str) -> str
+mdi.parse_mdi_syntax  # deprecated alias
 ```
 
-There is currently **no `render_pdf`** in this binding — see "What this binding doesn't do" below.
+## 入出力の型
 
-## Input and output types
+`parse` は typed class や `dataclass` ではなく、JSON wire format をそのまま decode した `dict[str, Any]` を返します。key は正確に camelCase です。たとえば `result["document"]["children"][0]["type"]`、span は `startByte`/`endByte` であり `start_byte`/`end_byte` ではありません。[Document IR](/core/document-ir/) の node 一覧をそのまま dict に適用できます。`render_epub` と `render_docx` は `bytes` を返すため、`"wb"` で開いた file に書き込んでください。
 
-`parse()` does **not** return a typed class or a `dataclass` — it returns a plain `dict[str, Any]`, decoded directly from the same JSON wire format every other binding uses, with the **exact same camelCase keys** (`irVersion`, `syntaxVersion`, `document`, `diagnostics`; and inside the tree, `startByte`/`endByte`, not `start_byte`/`end_byte`). This is a deliberate, verified detail: the Python wrapper does `json.loads(_native.parse_json(source))` and returns the result as-is, so [Document IR](/core/document-ir/)'s node catalogue applies to this binding's dictionaries verbatim — just access fields with `result["document"]["children"][0]["type"]` instead of dot notation.
+## Diagnostic と error handling
 
-`render_epub`/`render_docx` return real `bytes` objects (backed by `PyBytes` on the Rust side) — write them with a file opened in binary mode (`"wb"`), not text mode.
-
-## Diagnostics and error handling
-
-Ordinary malformed MDI syntax never raises — it's handled by each construct's literal-fallback rule, exactly like every other binding. See [Diagnostics](/core/diagnostics/) for the complete warning list:
+不正な MDI 記法は例外ではなく literal fallback と diagnostics で扱います。warning の全一覧は [Diagnostics](/core/diagnostics/) を参照してください。non-string input は PyO3 により `TypeError`、未知の text format は `ValueError`、EPUB/DOCX archive writer の実際の失敗だけは `mdi.MdiRenderError` です。`mdi.parse()` を diagnostics の代わりに `try`/`except` で包まないでください。
 
 ```python
-result = mdi.parse("---\nmdi: '3.0'\n---\n\n本文")
-result["diagnostics"]
-# [{'severity': 'warning', 'code': 'mdi.version.unsupported',
-#   'message': 'MDI 3.0 is newer than the supported 2.0',
-#   'span': {'startByte': 0, 'endByte': 18}}]
+mdi.parse(None)                              # TypeError
+mdi.render_text_format("text", "invalid")  # ValueError
 ```
 
-Three real, distinct failure modes exist, and each raises a different exception:
+## IR version と UTF-8 byte span
 
-```python
-mdi.parse(None)
-# TypeError — PyO3's automatic argument-type check; every function rejects non-str input this way
-
-mdi.render_text_format("text", "invalid")
-# ValueError: Unsupported text format: invalid
-
-mdi.render_epub(some_source_that_makes_rust_fail)
-# mdi.MdiRenderError — raised only when the Rust EPUB/DOCX archive writer itself fails
-# (e.g. an underlying I/O error); ordinary documents never trigger this
-```
-
-`TypeError` comes for free from PyO3's own argument marshalling — every function in this module takes `&str` on the Rust side, so passing anything that isn't `str` (including `None`) fails before any MDI-specific code runs. `ValueError` and `MdiRenderError` are the two cases the binding's own Rust wrapper (`python/src/lib.rs`) raises explicitly. Reserve `try`/`except` for these three; do not wrap `mdi.parse()` in `try`/`except` as a substitute for checking `result["diagnostics"]`.
-
-## IR version and UTF-8 byte spans
-
-`mdi.parse()` checks the decoded `irVersion` against `mdi.MDI_IR_VERSION` itself and raises `RuntimeError: Unsupported MDI IR version: ...` if they don't match — the same defensive check [JavaScript's `parse()`](/bindings/javascript/) performs. Every span in the returned dict is a UTF-8 **byte** offset (see [Diagnostics and UTF-8 source spans](/core/diagnostics/#spans-precisely)) — Python's `str` is a sequence of code points, not bytes, so converting a span into a Python string index needs the same explicit `source.encode("utf-8")`-based conversion JavaScript needs; there is no implicit conversion.
+`mdi.parse()` は decoded `irVersion` を `mdi.MDI_IR_VERSION` と照合し、違えば `RuntimeError` を送出します。返るすべての span は UTF-8 **byte** offset です。Python の `str` は code point の列なので、文字 index にするには明示的な変換が必要です。
 
 ```python
 def byte_span_to_str_index(source: str, byte_offset: int) -> int:
     return len(source.encode("utf-8")[:byte_offset].decode("utf-8", errors="ignore"))
 ```
 
-## Current implementation status
+## 現在の実装状況
 
-Everything listed above is real, published, and tested — the package's own test suite (`python/tests/test_mdi.py`) asserts the exact IR shape, diagnostic format, byte-span validity, all six text-format outputs, EPUB/DOCX archive structure, and every error path shown on this page, with a minimum 95% branch-coverage requirement. This is not a thin or speculative binding.
+Python binding は **実装済み・公開済み・テスト済み** です。test suite は IR shape、diagnostic、byte span、六つの text format、EPUB/DOCX archive、ここにある error path を検証し、branch coverage 95% を要求します。
 
-## What this binding doesn't do
+## この binding がしないこと
 
-- **No PDF function yet.** Unlike the [JavaScript/WASM binding](/bindings/javascript/), Python *can* spawn a subprocess — there's no fundamental barrier like WASM's — but `mdi.render_pdf` simply isn't exposed in this package today. Use the [CLI](/bindings/cli/) for PDF output from a Python-adjacent workflow in the meantime.
-- **No grammar of its own.** Every function calls straight into the same `mdi-core` crate every other binding uses; a discrepancy between this binding and the CLI or Rust directly would be a bug in the ~60-line wrapper, not an independent parser to fix.
-- **No export-profile arguments yet.** `render_epub`/`render_docx` currently take only `source`. Rust already provides the configured EPUB/DOCX implementation; the Python wrapper has not exposed those profile and cover parameters yet.
+- **PDF function はまだありません。** Python には WASM のような原理的制限はありませんが、現在 `mdi.render_pdf` は export されていません。Python 隣接 workflow の PDF は [CLI](/bindings/cli/) を使ってください。
+- **独自 grammar はありません。** CLI/Rust と差があれば短い wrapper か core のバグです。
+- **export profile の引数はまだありません。** `render_epub`/`render_docx` は現在 source だけを受け取ります。設定付き EPUB/DOCX の実装は既に Rust にあり、Python wrapper が profile と cover の引数をまだ公開していない状態です。
 
-## Next steps
+## 次へ
 
-- [Rust Core API status](/core/rust-api/) — the exact Rust functions this package wraps.
-- [Document IR](/core/document-ir/) — the node catalogue for the dictionaries `mdi.parse()` returns.
-- [Bindings: CLI](/bindings/cli/) — the same functions, from the command line, including PDF.
+- [Rust Core API](/core/rust-api/)
+- [出力形式](/ecosystem/outputs/)
 
-## Automatic warichu layout
+## 割注の自動組版
 
-Rust is the only splitting implementation. Layout uses two lines at half the body font size with zero line gap. The first fragment can use remaining body-line capacity; later fragments use full capacity. Capacity and widths are half-em units at note size, using character-width estimates rather than exact proportional-font balancing.
+分割規則は Rust が一元管理します。本文の50%の字級、固定2行、行間なしで表示します。先頭の断片には本文行の残り幅、後続には行全体の幅を指定できます。幅の単位は割注字級の半角emです。文字幅の推定であり、比例フォントの厳密な均衡は保証しません。
 
 ```python
 from mdi import layout_warichu
 fragments = layout_warichu([{"type": "text", "value": "一二三四五六"}], 4, first_capacity=2)
 ```
 
-Results include `lines`, `html`, `widths`, `overflow`, `hardBreakAfter` and `sources`. Source paths are child indices relative to the input array; `startUtf8` and `endUtf8` are half-open byte offsets in visible leaf text. Indivisible `group` IDs keep clusters across formatting boundaries together. Ruby, tcy and no-break stay whole. Hard breaks are retained; automatic splits do not change canonical MDI or plain text. Static HTML/EPUB readers may reflow differently. DOCX uses native combination groups; XML and importer checks are not a claim of Microsoft Word rendering tests.
+戻り値は `lines`、`html`、`widths`、`overflow`、`hardBreakAfter`、`sources` を含みます。`path` は入力配列からの子インデックス列、`startUtf8` / `endUtf8` は可視文字列内の半開UTF-8バイト範囲です。同一の `group` は書式境界をまたぐ書記素も分割しません。ルビ、縦中横、改行禁止は一体として扱います。明示改行を保ち、自動分割は正規MDIや平文に書き戻しません。静的HTML/EPUBは閲覧ソフトにより再配置が異なります。DOCXはネイティブの双行グループを使います。XMLやインポーターの検証をWordの描画実測とは記載しません。
 
 
 ## Editorial comments in MDI 2.1

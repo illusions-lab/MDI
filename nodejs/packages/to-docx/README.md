@@ -51,7 +51,7 @@ pixel-equivalent Japanese layout across Word-compatible readers.
 
 ## Documentation
 
-- [Output model](https://mdi.illusions.app/ecosystem/outputs/)
-- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
-- [API reference](https://mdi.illusions.app/api/to-docx/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Output model](https://mdi.illusions.app/en/ecosystem/outputs/)
+- [Export-profile guide](https://mdi.illusions.app/en/ecosystem/export-profiles/)
+- [API reference](https://mdi.illusions.app/en/api/to-docx/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)

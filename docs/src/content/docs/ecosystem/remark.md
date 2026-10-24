@@ -1,102 +1,52 @@
 ---
 title: Remark / mdast adapter
-description: How @illusions-lab/mdi-remark maps Rust's IR into mdast — and exactly what it doesn't do.
+description: "@illusions-lab/mdi-remark が Rust の Document IR を mdast に渡す方法。"
 ---
 
-**Prerequisites:** [Document IR](/core/document-ir/), [Rust-authoritative architecture](/core/architecture/).
+**前提:** [JavaScript binding](/bindings/javascript/)。`@illusions-lab/mdi-remark` は unified user 向けの adapter で、独自 parser ではありません。`Parser` を `@illusions-lab/mdi` の real Rust `parse()` と IR→mdast 変換で置き換えます。
 
-## Remark is an adapter, not a parser
+## Remark は parser ではなく adapter
 
-`@illusions-lab/mdi-remark` lets an existing [unified](https://unifiedjs.com)/`remark` pipeline (an Astro site, a `remark`-based linter, a static-site generator) consume MDI documents as ordinary `mdast` trees, without giving `remark` any authority over what MDI syntax means. Concretely, and this is the entire point of this page: **it does not register a micromark tokenizer for MDI.** Reading its ~35-line source confirms exactly what it does:
+`unified`/`remark` pipeline で MDI を使うときの入口です。MDI の意味を JavaScript で再解釈するのではなく、Rust が返した Document IR を標準 `mdast` と MDI 拡張 node に写します。したがって CLI や direct JavaScript API と構文の意味が分岐することはありません。
 
-```ts
-export default function remarkMdi(this: Processor): void {
-	const data = this.data();
-	(data.toMarkdownExtensions ??= []).push(mdiToMarkdown());
-	this.use(remarkGfm);
-	this.use(remarkFrontmatter, ["yaml"]);
-	(this as unknown as { parser: (source: string) => Root }).parser = (source) => {
-		const tree = toMdast(parse(source).document);
-		resolveFrontmatter(tree);
-		return tree;
-	};
-}
-```
-
-It **replaces `Parser` entirely** with a function that calls the real Rust `parse()` from `@illusions-lab/mdi` and reshapes the result into `mdast`. `remark-gfm` and `remark-frontmatter` are used only for their `mdast`→Markdown **stringify** handlers (needed for round-tripping back to text); their own *parsing* hooks are registered but never reached, because this adapter's `parser` function runs instead of `remark`'s normal parse phase.
-
-```text
-complete .mdi source
-        │
-        ▼
-   @illusions-lab/mdi  parse()  ── the same Rust call every other binding makes
-        │
-        ▼
-  Rust document IR  ──▶  toMdast()  ──▶  mdast tree  ──▶  your unified plugins
-```
-
-## Minimal executable example
+## 最小の実行例
 
 ```ts
 import { unified } from "unified";
 import remarkMdi from "@illusions-lab/mdi-remark";
 import remarkStringify from "remark-stringify";
-
 const processor = unified().use(remarkMdi).use(remarkStringify);
 const tree = processor.parse("{雪女|ゆき.おんな}が現れた。");
-
-console.log(tree.children[0].children[0]);
-// { type: "mdiRuby", base: "雪女", ruby: ["ゆき", "おんな"], data: {...} }
 ```
 
-## Node type mapping
+`processor.parse()` が返す tree は通常の `mdast` として、次の unified plugin に渡せます。`remark-stringify` を加えれば編集後の tree を text に戻せますが、下記の one-way の注意を確認してください。
 
-MDI's own node types get an `mdi`-prefixed `mdast` type so they don't collide with any existing `mdast` convention:
+## Node type の対応
 
-| Rust IR `type` | `mdast` type |
+| Rust IR | mdast |
 | --- | --- |
-| `ruby` | `mdiRuby` (`ruby` field is unwrapped to a plain string or string array, dropping the `{type, value}` wrapper) |
-| `tcy` | `mdiTcy` |
-| `break` | `mdiBreak` |
-| `em` | `mdiEm` |
-| `noBreak` | `mdiNoBreak` |
-| `warichu` | `mdiWarichu` |
-| `kern` | `mdiKern` |
-| `blank` | `mdiBlank` |
-| `pagebreak` | `mdiPagebreak` (a `null` variant is dropped entirely rather than kept as `variant: null`) |
-| `paragraph` with `indent`/`bottom` | ordinary `paragraph`, with `indent`/`bottom` moved into `data.mdiIndent`/`data.mdiBottom` — `mdast`'s convention is that renderer-specific fields live under `data`, not as top-level node properties |
+| `ruby`, `tcy`, `break`, `em` | `mdiRuby`, `mdiTcy`, `mdiBreak`, `mdiEm` |
+| `noBreak`, `warichu`, `kern` | `mdiNoBreak`, `mdiWarichu`, `mdiKern` |
+| `blank`, `pagebreak` | `mdiBlank`, `mdiPagebreak` |
+| paragraph `indent`/`bottom` | `data.mdiIndent` / `data.mdiBottom` |
 
-Every other node (`heading`, `list`, `link`, `text`, GFM tables, footnotes, ...) passes through unchanged, because it was already a standard `mdast` shape coming out of Rust.
+普通の Markdown/GFM node はそのまま mdast shape になります。
 
-## Front matter as structured data
+## Front matter は structured data
 
-`resolveFrontmatter` parses the raw YAML block into `tree.data.frontmatter`, with real defaults filled in — not just the raw string:
+front matter は `tree.data.frontmatter` に structured data（default `mdi: "2.0"`、`lang: "ja"`、horizontal writing 等）として置かれます。malformed YAML は throw せず default に fallback します。front matter node を文字列として再解析する必要はありません。
 
-```ts
-interface MdiFrontmatter {
-  mdi: string;                              // defaults to "2.0"
-  title?: string;
-  author?: string;
-  lang: string;                             // defaults to "ja"
-  date?: string;
-  writingMode: "horizontal" | "vertical";   // defaults to "horizontal"
-  pageProgression: "ltr" | "rtl";           // defaults to "rtl" when writingMode is "vertical", else "ltr"
-}
-```
+## 現在の状況: one-way の注意
 
-Malformed YAML degrades to all-defaults rather than throwing — this adapter never fails a `unified` pipeline over front-matter syntax errors; Rust's own `mdi.version.unsupported` diagnostic (see [Diagnostics](/core/diagnostics/)) is the one place a version problem is actually reported, and it isn't surfaced through this adapter today.
+`.mdi` → mdast parsing は実装済みで Rust-backed です。編集後 mdast の `.mdi` stringify も `mdiToMarkdown()` でできますが、Rust `serialize_mdi` の recommended-form normalization はまだ通りません。例えば `《《...》》` を自動で `[[em:...]]` にする保証はありません。
 
-## Current implementation status: one-way today
+## この adapter がしないこと
 
-Parsing (`.mdi` source → `mdast`) is fully Rust-backed and real. **Serializing back** (an edited `mdast` tree → canonical `.mdi` text) is also implemented, via `mdiToMarkdown()` — but it operates on the `mdast` shapes above directly; it is not yet wired through Rust's own `serialize_mdi` normalization (see [Rust Core API status](/core/rust-api/)), so an edited-and-restringified document is not guaranteed to apply MDI's recommended-form normalization (e.g. automatically converting a `《《...》》` alias someone typed into `[[em:...]]`) the way `serializeMdi()` from `@illusions-lab/mdi` does.
+- **独自の MDI parser は持ちません。** Rust/CLI と結果が違えば adapter か core のバグです。
+- **rendering はしません。** これは `.mdi` と `mdast` の橋渡しであり、HTML/PDF/EPUB/DOCX は各 renderer または CLI を使います。
+- **Rust の normalization を補いません。** 編集済み tree を stringify する場合、canonical な recommended form が必要なら Rust の `serializeMdi()` を別途使ってください。
 
-## What this adapter doesn't do
+## 次へ
 
-- **It is not required.** `@illusions-lab/mdi`'s `parse()`/`renderHtml()` etc. work standalone; use this adapter only if you already have unified plugins that expect `mdast`.
-- **It has no MDI grammar of its own** — if `remarkMdi` and `@illusions-lab/mdi`'s `parse()` ever produced different trees for the same input, that would be a bug in the `toMdast()` mapping function, not a second parser to fix.
-- **It does not normalize on stringify** the way Rust's `serialize_mdi` does — see above.
-
-## Next steps
-
-- [Bindings: JavaScript / TypeScript](/bindings/javascript/) — the underlying `parse()`/`renderHtml()` this adapter calls.
-- [Ecosystem: Migration and compatibility](/ecosystem/compatibility/) — the serializer-normalization gap tracked in context with other current gaps.
+- [JavaScript binding](/bindings/javascript/)
+- [Compatibility](/ecosystem/compatibility/)

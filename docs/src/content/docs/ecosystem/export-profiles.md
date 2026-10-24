@@ -1,34 +1,21 @@
 ---
-title: Export profiles
-description: The real, validated ExportProfile schema — every field, its default, and which output formats currently honor it.
+title: Export profile
+description: 検証される ExportProfile schema、二つの layout system、そして各出力形式が現在使う設定。
 ---
 
-**Prerequisites:** [Getting Started](/guides/getting-started/).
+**前提:** [Getting Started](/guides/getting-started/)。
 
-An export profile configures **presentation** — page size, fonts, margins, indentation, page numbers — for a specific output. It never changes MDI syntax or meaning; the same source with two different profiles produces two different-looking PDFs of the *same document*. The package is `@illusions-lab/mdi-export-profile`; its JavaScript functions pass validation and default resolution to `mdi-core`, then return a friendly typed result or a descriptive `Error`.
+export profile は page、font、margin、indent、page number という**表示**を決めます。MDI syntax や document の意味は変えません。package は `@illusions-lab/mdi-export-profile` です。JavaScript API は validation と default resolution を `mdi-core` に渡し、typed result または field 名を含む読みやすい `Error` を返します。
 
-## The schema
+## Schema と必須の system
 
 ```json
 {
   "layout": { "system": "word" },
-  "metadata": {
-    "title": "The Last Station",
-    "author": "A Writer",
-    "publisher": "Example Press",
-    "identifier": "isbn:9780000000000"
-  },
-  "typesetting": {
-    "writingMode": "horizontal",
-    "fontFamily": "Noto Serif JP",
-    "textIndentEm": 1,
-    "fullwidthSpaceIndent": false
-  },
+  "metadata": { "title": "The Last Station", "author": "A Writer", "publisher": "Example Press", "identifier": "isbn:9780000000000" },
+  "typesetting": { "writingMode": "horizontal", "fontFamily": "Noto Serif JP", "fontSize": 10.5, "lineSpacing": 1.4, "textIndentEm": 1 },
   "pagination": {
-    "pageSize": "A4",
-    "landscape": false,
-    "charactersPerLine": 40,
-    "linesPerPage": 34,
+    "pageSize": "A4", "landscape": false, "gridMode": "typographic",
     "margins": { "top": 25.4, "bottom": 25.4, "left": 25.4, "right": 25.4 },
     "pageNumbers": { "enabled": true, "format": "simple", "position": "bottom-center" }
   },
@@ -37,33 +24,26 @@ An export profile configures **presentation** — page size, fonts, margins, ind
 }
 ```
 
-`resolveExportProfile({})` is available for internal/default resolution, but every configured CLI or `@illusions-lab/mdi` export must state `layout.system`. Choose one contract: `"japanese-publisher"` for a strict, mirrored Japanese book grid, or `"word"` for flowing Word-style pages. They are intentionally not mixed.
+`resolveExportProfile({})` は internal の default resolution 用ですが、CLI の `--config` と設定付き `@illusions-lab/mdi` export では `layout.system` が必須です。`"japanese-publisher"`（strict な和文 book）か `"word"`（flowing Word page）を一つ選びます。二つの contract は混ぜません。
 
-| Field | Type | Default | Validation |
-| --- | --- | --- | --- |
-| `layout.system` | `"japanese-publisher" \| "word"` | publisher for internal resolution; **required at configured-export boundaries** | Selects the complete layout contract. |
-| `layout.marginMode` / `bindingSide` / `gutter` | `"single"\|"mirror"` / `"left"\|"right"` / mm | publisher: mirror, direction-dependent binding, 0 mm | `word` has no gutter and defaults to single margins. |
-| `metadata.title`/`author`/`publisher`/`identifier`/`language`/`date` | `string` | — | Must be a string if present. |
-| `typesetting.writingMode` | `"horizontal" \| "vertical"` | `"horizontal"` | Must be exactly one of the two. |
-| `typesetting.fontFamily` | `string` | Mincho fallback stack | Must be a non-empty string; whitespace-only falls back to default. |
-| `typesetting.textIndentEm` | `number` | `1` | `0`–`4`. |
-| `typesetting.fullwidthSpaceIndent` | `boolean` | `false` | — |
-| `pagination.pageSize` | one of `PAGE_SIZES` | publisher: `"Shirokuban"`; word: `"A4"` | Must be one of the 67 Rust-owned catalogue keys exposed through `PAGE_DIMENSIONS`. |
-| `pagination.landscape` | `boolean` | `false` | — |
-| `pagination.charactersPerLine` / `linesPerPage` | `number` | publisher horizontal: `27`×`26`; vertical: `40`×`30`; word: informational | `10`–`400`. |
-| `pagination.gridMode` | `"strict" \| "typographic"` | publisher: strict; word: typographic | `word` rejects strict; strict rejects explicit line spacing. |
-| `pagination.margins.{top,bottom,left,right}` | `number` (mm) | publisher: 16.5/18/18/15.5; word: `25.4` each | Must leave printable width and height. |
-| `pagination.pageNumbers.enabled` | `boolean` | `true` | — |
-| `pagination.pageNumbers.format` | `"simple" \| "dash" \| "fraction"` | `"simple"` | Must be one of the three. |
-| `pagination.pageNumbers.position` | one of the six `*-{left,center,right}` combinations | `"bottom-center"` | Must be one of the six. |
-| `epub.chapterSplitLevel` | `"h1" \| "h2" \| "h3" \| "none"` | `"h1"` | Must be one of the four. |
-| `epub.coverPath` | `string` (path, resolved relative to the `--config` file) | — | Must be `.jpg`/`.jpeg`/`.png` when used by the CLI. |
-| `text.fullwidthSpaceIndent` | `boolean` | `false` | — |
-| `text.indentCount` | `number` | `1` | `1`–`4`. |
+| Field | 型 / default | 条件 |
+| --- | --- | --- |
+| `layout.system` | `"japanese-publisher" \| "word"` | 設定付き export では必須。layout 全体を選ぶ。 |
+| `layout.marginMode` / `bindingSide` / `gutter` | publisher: mirror / direction-dependent / 0 mm | `word` は single margin、gutter なし。 |
+| `metadata.*` | optional `string` | 指定時は string。 |
+| `typesetting.writingMode` | `"horizontal"` | `"horizontal" \| "vertical"`。 |
+| `fontFamily` / `fontSize` / `lineSpacing` | Mincho stack / system default / optional | `lineSpacing` は typographic のみ。 |
+| `pagination.pageSize` | publisher horizontal: `Shirokuban`; vertical: A4 landscape; word: `A4` | Rust が持つ 67 種の catalogue key。 |
+| `charactersPerLine` / `linesPerPage` | publisher horizontal: 27×26; vertical: 40×30 | 10–400。word の count は情報用で、page contract ではない。 |
+| `gridMode` | publisher: `strict`; word: `typographic` | `word` は strict を reject。strict は line spacing を reject。 |
+| `margins` | publisher: 16.5/18/18/15.5 mm; word: 四辺 25.4 mm | printable area を残す必要がある。 |
+| `pageNumbers` | enabled / simple / bottom-center | format は `simple` / `dash` / `fraction`、位置は 6 種。 |
+| `epub.chapterSplitLevel` / `coverPath` | `h1` / optional | `h1`/`h2`/`h3`/`none`。CLI cover は PNG/JPEG。 |
+| `text.fullwidthSpaceIndent` / `indentCount` | false / 1 | boolean / 1–4。 |
 
-Any value outside these constraints — an unsupported `pageSize`, a `charactersPerLine` of `5`, a `writingMode` of `"rtl"` — throws a specific `Error` naming the offending field, both from `resolveExportProfile()` directly and from `parseExportProfileJson()` (used by the CLI's `--config`), rather than clamping or ignoring it silently.
+`japanese-publisher` の default は mirror spread です。横書きは 10 pt Mincho の `Shirokuban`、左綴じ 27 字 × 26 行、縦書きは A4 landscape の小説原稿、右綴じ 40 字 × 30 行の strict grid になります。`word` の default は A4、四辺 25.4 mm、mirror なしの flowing `typographic` layout です。
 
-## Using it
+## 使用方法
 
 ```bash
 mdi build novel.mdi --to pdf --config novel.export.json -o novel.pdf
@@ -76,26 +56,26 @@ mdi build novel.mdi --to txt-ruby --config novel.export.json
 import { parseExportProfileJson, resolveExportProfile } from "@illusions-lab/mdi-export-profile";
 
 const profile = parseExportProfileJson(await readFile("novel.export.json", "utf8"));
-const resolved = resolveExportProfile(profile); // every field filled in, fully validated
+const resolved = resolveExportProfile(profile);
 ```
 
-`resolvePrintProfile(profile, sourceWritingMode)` is the PDF/print convenience wrapper: a document's front matter supplies the writing-mode default, while an explicit profile wins. It does not silently switch paper orientation.
+`resolvePrintProfile(profile, sourceWritingMode)` は PDF/print 用の wrapper です。front matter の writing mode を default とし、明示した profile を優先します。paper orientation を vertical のために勝手に landscape へ変更しません。
 
-## Format support today
+## 現在の format support
 
-| Setting | PDF | TXT / `txt-ruby` | EPUB / DOCX |
+| 設定 | PDF | TXT / `txt-ruby` | EPUB / DOCX |
 | --- | --- | --- | --- |
-| Page geometry, fonts, page numbers | Yes | — | DOCX: Yes; EPUB uses typography but is reflowable |
-| Metadata / writing mode | Yes | — | EPUB / DOCX: Yes |
-| Full-width-space indent | Yes | Yes (1–4 spaces via `text.indentCount`) | EPUB / DOCX: Yes |
-| Cover image, chapter split level | — | — | EPUB: Yes |
+| page geometry、font、page number | Yes | — | DOCX: Yes。EPUB は typography を使うが reflowable。 |
+| metadata / writing mode | Yes | — | EPUB / DOCX: Yes。 |
+| full-width-space indent | Yes | Yes（`text.indentCount` で 1–4） | EPUB / DOCX: Yes。 |
+| cover image、chapter split | — | — | EPUB: Yes。 |
 
-`mdi-core` owns the defaults, validation rules, physical paper dimensions,
-and renderer-facing profile. The JavaScript package adds TypeScript types and
-Japanese UI labels without copying the layout table. EPUB cannot promise fixed
-physical pages because it is reflowable.
+default、validation rule、physical paper dimensions、renderer 用 profile は
+`mdi-core` が管理します。JavaScript package は TypeScript type と日本語 UI
+label を加えますが、別の layout table は持ちません。EPUB は reflowable
+なので固定の physical page を約束しません。
 
-## Next steps
+## 次へ
 
-- [Bindings: CLI](/bindings/cli/) — `--config` in context.
-- [Rust Core API status](/core/rust-api/) — exactly which renderer functions exist and what they currently accept.
+- [CLI](/bindings/cli/)
+- [レンダリングモデル](/core/rendering/)

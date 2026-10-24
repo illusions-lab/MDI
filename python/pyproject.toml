@@ -27,7 +27,7 @@ build-backend = "maturin"
 
 [project.urls]
 Homepage = "https://github.com/illusions-lab/MDI"
-Documentation = "https://mdi.illusions.app/bindings/python/"
+Documentation = "https://mdi.illusions.app/en/bindings/python/"
 Repository = "https://github.com/illusions-lab/MDI"
 Issues = "https://github.com/illusions-lab/MDI/issues"
 

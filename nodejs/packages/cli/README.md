@@ -53,5 +53,5 @@ EPUB, DOCX, and text call the Rust engine through `@illusions-lab/mdi`.
 Profile defaults, validation, paper dimensions, and print CSS also come from
 Rust. The host-specific step is launching Chromium for PDF.
 
-See the [CLI guide](https://mdi.illusions.app/bindings/cli/) for the complete
+See the [CLI guide](https://mdi.illusions.app/en/bindings/cli/) for the complete
 format and export-profile reference.

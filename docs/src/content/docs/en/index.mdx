@@ -1,0 +1,59 @@
+---
+title: Markdown for Japanese Typography
+description: Rust-powered tooling for illusion Markdown (MDI) — one parser and consistent output across every platform.
+template: splash
+hero:
+  tagline: Markdown for Japanese typography — ruby, tate-chu-yoko, boten, warichu, and vertical writing — parsed once in Rust and rendered identically to HTML, PDF, EPUB, DOCX, and text.
+  actions:
+    - text: Getting Started
+      link: /en/guides/getting-started/
+      icon: right-arrow
+    - text: What is MDI?
+      link: /en/learn/what-is-mdi/
+      icon: open-book
+      variant: minimal
+    - text: MDI 2.0 Specification
+      link: https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+
+<Code code={`{雪女|ゆき.おんな}が現れたのは、第^12^話のことだった。\n彼は[[em:決して]]忘れないと誓った。`} lang="markdown" title="novel.mdi" />
+
+<CardGrid>
+	<Card title="One grammar, one implementation" icon="seti:rust">
+		`mdi-core` parses CommonMark, GFM, front matter, and every MDI construct into one versioned document IR, in a single pass. No other language or tool contains a second copy of the grammar — see [Rust-authoritative architecture](/en/core/architecture/).
+	</Card>
+	<Card title="Japanese typography, for real" icon="translate">
+		Ruby (ルビ), tate-chu-yoko (縦中横), boten (傍点), warichu (割注), kerning, page breaks, and vertical writing are first-class syntax with worked examples, parsed IR, and rendered output for each — see the [full syntax reference](/en/syntax/reference/) or the [live showcase](/en/syntax/showcase/).
+	</Card>
+	<Card title="Real publication outputs from one source" icon="document">
+		`renderHtml`, `renderTextFormat` (six flavors, including note, 小説家になろう, and 青空文庫 conventions), `renderEpub`, `renderDocx`, and Rust-rendered PDF via Chromium — all implemented today, not planned. See [HTML / TXT / EPUB / DOCX / PDF outputs](/en/ecosystem/outputs/).
+	</Card>
+	<Card title="Thin, honest language interfaces" icon="puzzle">
+		Rust, Node.js, Swift, and Python are supported today, all backed by the same Rust core. The Android / Kotlin binding is still in development and is not yet available as a stable public package on Maven Central. See [Bindings](/en/bindings/javascript/) for platform-specific setup and APIs.
+	</Card>
+</CardGrid>
+
+## Try it in 30 seconds
+
+```bash
+npm install --global @illusions-lab/mdi-cli
+echo '{雪女|ゆき.おんな}が現れた。第^12^話のことである。' > novel.mdi
+mdi build novel.mdi --to html
+```
+
+```ts
+// or from code:
+import { parse, renderHtml } from "@illusions-lab/mdi";
+
+const source = "{雪女|ゆき.おんな}が現れた。第^12^話のことである。";
+const { document, diagnostics } = parse(source); // versioned IR + diagnostics
+const html = renderHtml(source);                 // <ruby>...<span class="mdi-tcy">12</span>...
+```
+
+Full walkthrough, including PDF/EPUB/DOCX and export profiles, in [Getting Started](/en/guides/getting-started/).
+
+Built by [illusions](https://www.illusions.app/).

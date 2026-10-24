@@ -72,11 +72,11 @@ required. This package exists only to connect the same Rust parse result to the
 remark ecosystem.
 
 Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the
-[architecture documentation](https://mdi.illusions.app/guides/architecture/)
+[architecture documentation](https://mdi.illusions.app/en/guides/architecture/)
 for ownership and wire-contract details.
 
 ## Documentation
 
-- [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
-- [JavaScript binding guide](https://mdi.illusions.app/bindings/javascript/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Remark / mdast adapter guide](https://mdi.illusions.app/en/ecosystem/remark/)
+- [JavaScript binding guide](https://mdi.illusions.app/en/bindings/javascript/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)

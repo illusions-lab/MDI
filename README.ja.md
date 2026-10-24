@@ -7,7 +7,7 @@
   ルビ、縦中横、傍点、割注、縦書きなどを扱えます。
 </p>
 <p align="center">
-  <a href="https://mdi.illusions.app/ja/">
+  <a href="https://mdi.illusions.app/">
     <img src="https://img.shields.io/badge/Read%20the%20documentation-0B7285?style=for-the-badge&logo=readthedocs&logoColor=white" alt="MDI ドキュメントを読む" />
   </a>
 </p>
@@ -34,11 +34,11 @@
 
 | 言語 | ツールキット | ドキュメント |
 | --- | --- | --- |
-| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/ja/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust ドキュメント" /></a> |
-| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/ja/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript / TypeScript ドキュメント" /></a> |
-| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/ja/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python ドキュメント" /></a> |
-| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/ja/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift ドキュメント" /></a> |
-| Android / Kotlin *（開発中）* | [`android/`](./android) | <a href="https://mdi.illusions.app/ja/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android / Kotlin ドキュメント" /></a> |
+| Rust | [`mdi-core`](./mdi-core) | <a href="https://mdi.illusions.app/bindings/rust/"><img src="https://img.shields.io/badge/Rust%20docs-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust ドキュメント" /></a> |
+| JavaScript / TypeScript | [`nodejs/`](./nodejs) | <a href="https://mdi.illusions.app/bindings/javascript/"><img src="https://img.shields.io/badge/JavaScript%20%2F%20TypeScript%20docs-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JavaScript / TypeScript ドキュメント" /></a> |
+| Python | [`python/`](./python) | <a href="https://mdi.illusions.app/bindings/python/"><img src="https://img.shields.io/badge/Python%20docs-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python ドキュメント" /></a> |
+| Swift | [`swift/`](./swift) | <a href="https://mdi.illusions.app/bindings/swift/"><img src="https://img.shields.io/badge/Swift%20docs-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift ドキュメント" /></a> |
+| Android / Kotlin *（開発中）* | [`android/`](./android) | <a href="https://mdi.illusions.app/bindings/android/"><img src="https://img.shields.io/badge/Android%20%2F%20Kotlin%20docs-3DDC84?style=flat-square&logo=android&logoColor=black" alt="Android / Kotlin ドキュメント" /></a> |
 
 > **Android / Kotlin の状態:** バインディングは現在開発中で、Maven Central では安定版の公開パッケージとしてまだ配布していません。
 

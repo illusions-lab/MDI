@@ -21,4 +21,4 @@ pnpm-debug.log*
 .DS_Store
 
 # generated API reference (starlight-typedoc, regenerated every build)
-src/content/docs/api/
+src/content/docs/en/api/

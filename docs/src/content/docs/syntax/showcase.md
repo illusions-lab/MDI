@@ -1,18 +1,11 @@
 ---
-title: Live Showcase
-description: Every MDI 2.0 construct, parsed by mdi-core and rendered live by this site.
+title: 構文ショーケース
+description: MDI 2.0 の主要な記法と表示例
 ---
 
-Every example below is **rendered by this documentation site itself**. The
-complete page source is parsed by Rust through `@illusions-lab/mdi`, and the
-resulting document IR is rendered with the same HTML semantics exposed to
-applications. What you see is what the MDI renderer produces.
+このページでは、主要な MDI 記法を実際の表示とともに紹介する。例はこのドキュメントサイトで `mdi-core` により解析・描画されている。規範的な仕様は [MDI 2.0 仕様書](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md) を参照のこと。
 
-The full syntax definition lives in the
-[MDI 2.0 specification](https://github.com/illusions-lab/MDI/blob/main/SYNTAX.md);
-this page is a demonstration, not the normative reference.
-
-## Ruby（ルビ）
+## ルビ
 
 ```
 私は{雪女|ゆき.おんな}を見た。
@@ -26,10 +19,10 @@ this page is a demonstration, not the normative reference.
 
 </div>
 
-`{base|reading}` is group ruby; dots in the reading (`ゆき.おんな`) split it
-per base character (mono ruby).
+`{親文字|ルビ}` はグループルビ。ルビ側のドット（`ゆき.おんな`）は
+親文字 1 文字ごとの分割ルビ（モノルビ）になります。
 
-## Tate-chu-yoko（縦中横）
+## 縦中横
 
 ```
 第^12^話。令和^7^年。^OK^。
@@ -41,16 +34,15 @@ per base character (mono ruby).
 
 </div>
 
-`^text^` composes 1–6 alphanumeric characters upright within vertical text —
-which is why this demo box is vertical. In horizontal writing it renders as
-plain text.
+`^text^` は縦書き内で 1〜6 文字の英数字を正立させます — だからこの
+デモボックスは縦書きです。横書きでは通常のテキストとして描画されます。
 
-## Boten（傍点）
+## 傍点
 
 ```
 彼は[[em:それ]]を見た。
 [[em:●:決して]]忘れない。
-彼は《《それ》》を見た。（compatibility alias）
+彼は《《それ》》を見た。（互換記法）
 ```
 
 <div class="mdi-demo">
@@ -61,11 +53,11 @@ plain text.
 
 </div>
 
-The default mark is ﹅; `[[em:<mark>:text]]` sets any single character as the
-mark. `《《…》》` is a compatibility spelling that normalizes to `[[em:…]]`
-on save.
+既定の記号は ﹅。`[[em:<記号>:テキスト]]` で任意の 1 文字を記号に
+指定できます。`《《…》》` は互換記法で、保存時に `[[em:…]]` へ
+正規化されます。
 
-## No-break（改行抑止）
+## 改行抑止
 
 ```
 [[no-break:東京都新宿区]]に住んでいます。
@@ -77,7 +69,7 @@ on save.
 
 </div>
 
-## Explicit line break & blank paragraphs
+## 改行マーカーと空白段落
 
 ```
 春は曙。[[br]]
@@ -105,11 +97,10 @@ on save.
 
 </div>
 
-`[[br]]` is an explicit in-paragraph line break; a line containing only `\`
-is one blank paragraph (N lines → N blank paragraphs). `[[blank]]` and
-`<br>` are compatibility spellings of the same construct.
+`[[br]]` は段落内の明示的な改行。`\` 1 文字だけの行は空白段落 1 つ
+（N 行 → 空白段落 N 個）。`[[blank]]` と `<br>` は同じ構文の互換記法です。
 
-## Warichu（割注）
+## 割注
 
 ```
 その日は大安[[warichu:六曜の一つで吉日とされる]]であった。
@@ -121,7 +112,7 @@ is one blank paragraph (N lines → N blank paragraphs). `[[blank]]` and
 
 </div>
 
-## Kerning（字間調整）
+## 字間調整
 
 ```
 彼は[[kern:-0.1em:確実]]にそう言った。
@@ -135,7 +126,7 @@ is one blank paragraph (N lines → N blank paragraphs). `[[blank]]` and
 
 </div>
 
-## Block alignment（字下げ・地付き）
+## 字下げ・地付き
 
 ```
 [[indent:2]]
@@ -161,10 +152,10 @@ is one blank paragraph (N lines → N blank paragraphs). `[[blank]]` and
 
 </div>
 
-`[[indent:N]]` indents the following block by N em; `[[bottom]]` aligns it to
-the line end (地付き), `[[bottom:N]]` with an N-em shift.
+`[[indent:N]]` は直後のブロックを N 字下げ、`[[bottom]]` は行末へ
+揃え（地付き）、`[[bottom:N]]` は N 字分ずらします。
 
-## Page break（改ページ）
+## 改ページ
 
 ```
 第一章はここで終わる。
@@ -174,16 +165,16 @@ the line end (地付き), `[[bottom:N]]` with an N-em shift.
 第二章が始まる。
 ```
 
-Page breaks render as invisible `break-after: page` markers on screen — they
-take effect in paged output (PDF) and split the spine in EPUB.
-`[[pagebreak:right]]` / `[[pagebreak:left]]` request recto/verso openings
-(改丁).
+改ページは画面上では不可視の `break-after: page` マーカーとして描画され、
+ページ付き出力（PDF）で効果を持ち、EPUB では spine を分割します。
+`[[pagebreak:right]]` / `[[pagebreak:left]]` は改丁（奇数/偶数ページ
+開始）を指定します。
 
-## Inline nesting
+## インラインの入れ子
 
 ```
-[[em:{東京|とうきょう}]]（boten wrapping ruby）
-[[no-break:第^12^話]]（tate-chu-yoko inside a bracket macro）
+[[em:{東京|とうきょう}]]（傍点がルビを包む）
+[[no-break:第^12^話]]（ブラケットマクロ内の縦中横）
 ```
 
 <div class="mdi-demo">
@@ -193,7 +184,7 @@ take effect in paged output (PDF) and split the spine in EPUB.
 
 </div>
 
-## Escapes
+## エスケープ
 
 ```
 \{これはリテラルの中括弧\}、\^キャレット\^、\[角括弧\]。
@@ -205,7 +196,7 @@ take effect in paged output (PDF) and split the spine in EPUB.
 
 </div>
 
-## Vertical writing, all together（縦書き総合）
+## 縦書き総合
 
 <div class="mdi-demo mdi-demo-vertical">
 
@@ -213,6 +204,6 @@ take effect in paged output (PDF) and split the spine in EPUB.
 
 </div>
 
-In real output, vertical writing is driven by the front matter
-(`writing-mode: vertical`), which the converters apply document-wide — HTML
-gets `writing-mode: vertical-rl` on the root element, DOCX a vertical section.
+実際の出力では、縦書きはフロントマター（`writing-mode: vertical`）が
+ドキュメント全体に適用します — HTML はルート要素に
+`writing-mode: vertical-rl`、DOCX は縦書きセクションになります。

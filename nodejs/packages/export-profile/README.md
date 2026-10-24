@@ -87,6 +87,6 @@ reading existing JSON, but new profiles should use `fontSize` and
 
 ## Documentation
 
-- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
-- [API reference](https://mdi.illusions.app/api/export-profile/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Export-profile guide](https://mdi.illusions.app/en/ecosystem/export-profiles/)
+- [API reference](https://mdi.illusions.app/en/api/export-profile/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)

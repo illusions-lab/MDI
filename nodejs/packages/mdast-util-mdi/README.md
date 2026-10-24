@@ -29,11 +29,11 @@ with [`@illusions-lab/mdi`](https://www.npmjs.com/package/@illusions-lab/mdi);
 Rust remains the sole executable syntax authority.
 
 Part of the [MDI](https://github.com/illusions-lab/MDI) monorepo. See the
-[architecture documentation](https://mdi.illusions.app/guides/architecture/)
+[architecture documentation](https://mdi.illusions.app/en/guides/architecture/)
 for ownership and wire-contract details.
 
 ## Documentation
 
-- [Remark / mdast adapter guide](https://mdi.illusions.app/ecosystem/remark/)
-- [API reference](https://mdi.illusions.app/api/mdast-util-mdi/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Remark / mdast adapter guide](https://mdi.illusions.app/en/ecosystem/remark/)
+- [API reference](https://mdi.illusions.app/en/api/mdast-util-mdi/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)

@@ -28,7 +28,7 @@ The CLI follows that route as well.
 
 ## Documentation
 
-- [Output model](https://mdi.illusions.app/ecosystem/outputs/)
-- [Export-profile guide](https://mdi.illusions.app/ecosystem/export-profiles/)
-- [API reference](https://mdi.illusions.app/api/to-epub/)
-- [JavaScript documentation](https://mdi.illusions.app/bindings/javascript/)
+- [Output model](https://mdi.illusions.app/en/ecosystem/outputs/)
+- [Export-profile guide](https://mdi.illusions.app/en/ecosystem/export-profiles/)
+- [API reference](https://mdi.illusions.app/en/api/to-epub/)
+- [JavaScript documentation](https://mdi.illusions.app/en/bindings/javascript/)
