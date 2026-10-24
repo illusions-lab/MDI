@@ -1,9 +1,12 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
+import type { SitemapItem } from '@astrojs/sitemap';
 
 const docsDir = fileURLToPath(new URL('./content/docs/', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 function walk(dir: string): string[] {
 	if (!fs.existsSync(dir)) return [];
@@ -45,14 +48,62 @@ export function sitemapFilter(page: string): boolean {
 }
 
 type SitemapLink = { url: string; lang?: string };
-type SitemapItem = { url: string; links?: SitemapLink[] };
+
+const lastmodCache = new Map<string, string | undefined>();
+
+function gitLastmod(target: string): string | undefined {
+	try {
+		const stamp = execFileSync('git', ['log', '-1', '--format=%cI', '--', target], {
+			cwd: repoRoot,
+			encoding: 'utf8',
+		}).trim();
+		return stamp || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function contentFile(pathname: string): string | undefined {
+	const slug = pathname.replace(/^\/|\/$/g, '');
+	const base = slug ? path.join(docsDir, slug) : path.join(docsDir, 'index');
+	for (const ext of ['.md', '.mdx']) {
+		if (fs.existsSync(base + ext)) return base + ext;
+		if (fs.existsSync(path.join(base, 'index' + ext))) return path.join(base, 'index' + ext);
+	}
+	return undefined;
+}
+
+function lastmodFor(url: string): string | undefined {
+	const pathname = new URL(url).pathname;
+	if (lastmodCache.has(pathname)) return lastmodCache.get(pathname);
+	const file = contentFile(pathname);
+	let stamp = file ? gitLastmod(path.relative(repoRoot, file)) : undefined;
+	if (!stamp && pathname.startsWith('/en/api/')) {
+		const pkg = pathname.split('/')[3];
+		if (pkg) stamp = gitLastmod(path.join('nodejs/packages', pkg));
+	}
+	lastmodCache.set(pathname, stamp);
+	return stamp;
+}
 
 export function sitemapSerialize(item: SitemapItem): SitemapItem {
-	const links = item.links;
-	if (!links || links.length < 2) return item;
+	const links: SitemapLink[] = item.links ?? [];
+	let next = links;
 	const japanese = links.find((link) => link.lang === 'ja');
-	if (!japanese || links.some((link) => link.lang === 'x-default')) return item;
-	return { ...item, links: [...links, { url: japanese.url, lang: 'x-default' }] };
+	if (japanese && !links.some((link) => link.lang === 'x-default')) {
+		next = [...links, { url: japanese.url, lang: 'x-default' }];
+	} else if (links.length === 0 && item.url.includes('/en/api/')) {
+		next = [
+			{ url: item.url, lang: 'en' },
+			{ url: item.url, lang: 'x-default' },
+		];
+	}
+	const lastmod = lastmodFor(item.url);
+	return { ...item, links: next.length > 0 ? next : item.links, ...(lastmod ? { lastmod } : {}) };
+}
+
+export function sitemapApiChunk(item: SitemapItem): SitemapItem | undefined {
+	return item.url.includes('/en/api/') ? item : undefined;
 }
 
 function yamlString(value: string): string {

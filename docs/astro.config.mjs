@@ -4,7 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import astroExpressiveCode from 'astro-expressive-code';
 import mdx from '@astrojs/mdx';
 import starlight from '@astrojs/starlight';
-import { seoLocale, sitemapFilter, sitemapSerialize } from './src/seo-locale.ts';
+import { seoLocale, sitemapApiChunk, sitemapFilter, sitemapSerialize } from './src/seo-locale.ts';
 import { createStarlightTypeDocPlugin } from 'starlight-typedoc';
 import remarkMdi from '@illusions-lab/mdi-remark';
 import { mdiHandlers } from '@illusions-lab/mdi-to-hast';
@@ -59,6 +59,7 @@ export default defineConfig({
 		sitemap({
 			filter: sitemapFilter,
 			serialize: sitemapSerialize,
+			chunks: { api: sitemapApiChunk },
 			i18n: {
 				defaultLocale: 'root',
 				locales: { root: 'ja', en: 'en', 'zh-tw': 'zh-TW' },
