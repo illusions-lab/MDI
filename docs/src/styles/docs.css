@@ -201,10 +201,17 @@ header.header {
 }
 
 .hero h1 {
-	font-size: clamp(4rem, 12vw, 8rem);
+	font-size: clamp(2.4rem, 7.2vw, 6.25rem);
 	font-weight: 500;
-	letter-spacing: 0.06em;
+	letter-spacing: 0.02em;
+	line-height: 1.12;
+	text-wrap: balance;
 	text-shadow: 0 1px 18px rgba(255, 255, 255, 0.13);
+}
+
+html[lang='ja'] .hero h1 {
+	word-break: keep-all;
+	line-break: strict;
 }
 
 .hero .tagline {
