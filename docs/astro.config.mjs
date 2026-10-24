@@ -77,6 +77,7 @@ export default defineConfig({
 			description: '幻想 Markdown（MDI）のための Rust-powered tooling。',
 			head: [
 				{ tag: 'meta', attrs: { name: 'theme-color', content: '#111827' } },
+				{ tag: 'link', attrs: { rel: 'describedby', href: '/llms.txt', type: 'text/markdown' } },
 				{
 					tag: 'script',
 					attrs: { async: true, src: `https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}` },

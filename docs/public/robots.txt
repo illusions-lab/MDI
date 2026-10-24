@@ -1,4 +1,9 @@
+# MDI is public documentation under the MIT License.
+# search: index the site. ai-input: quote it in answers. ai-train: learn the syntax from this manual.
+# Overview for agents: https://mdi.illusions.app/llms.txt
+
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 
 Sitemap: https://mdi.illusions.app/sitemap-index.xml
